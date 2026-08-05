@@ -21,6 +21,17 @@ public sealed class MasterOptions
     /// </summary>
     public int RegistrationTimeoutSeconds { get; init; } = DEFAULT_REGISTRATION_TIMEOUT_SECONDS;
 
+    /// <summary>Intervalle par defaut de sondage du tableau de bord distribue, en secondes.</summary>
+    public const int DEFAULT_LIVE_POLL_INTERVAL_SECONDS = 2;
+
+    /// <summary>
+    /// Frequence a laquelle le maitre sonde <c>/worker/report/raw</c> sur chaque worker pour
+    /// rafraichir <c>/report/live</c> pendant le tir. Ne remplace pas le rapport final — celui-la
+    /// reste construit une seule fois, a partir des rapports pousses par les workers a la fin de
+    /// leur tir local (voir <see cref="TempestHostOptions"/>), pas d'un sondage approximatif.
+    /// </summary>
+    public int LivePollIntervalSeconds { get; init; } = DEFAULT_LIVE_POLL_INTERVAL_SECONDS;
+
     /// <summary>Valide la coherence des reglages.</summary>
     public void Validate()
     {
@@ -32,6 +43,11 @@ public sealed class MasterOptions
         if (RegistrationTimeoutSeconds < 1)
         {
             throw new ArgumentException("RegistrationTimeoutSeconds doit valoir au moins 1.", nameof(RegistrationTimeoutSeconds));
+        }
+
+        if (LivePollIntervalSeconds < 1)
+        {
+            throw new ArgumentException("LivePollIntervalSeconds doit valoir au moins 1.", nameof(LivePollIntervalSeconds));
         }
     }
 }

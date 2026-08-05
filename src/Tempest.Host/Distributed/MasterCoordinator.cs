@@ -28,6 +28,13 @@ public sealed class MasterCoordinator
     /// <summary>Verdict des seuils sur le rapport fusionne.</summary>
     public ThresholdReport? FinalThresholds { get; set; }
 
+    /// <summary>
+    /// Dernier rapport combine obtenu par sondage des workers pendant le tir — approximatif
+    /// (intervalle de sondage), rafraichi en continu, contrairement a <see cref="FinalReport"/>
+    /// qui n'est construit qu'une seule fois, a partir des rapports pousses par les workers.
+    /// </summary>
+    public LoadTestReport? LiveReport { get; set; }
+
     /// <summary>Enregistre un worker. Idempotent : un doublon n'est compte qu'une fois.</summary>
     public void Register(string workerUrl)
     {

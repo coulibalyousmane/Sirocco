@@ -6,12 +6,14 @@ namespace Tempest.Host.Distributed;
 
 /// <summary>
 /// Deroule le tir distribue : attend les workers, leur distribue un profil reduit, les
-/// synchronise sur un depart commun (prepare puis start, plutot qu'un depart immediat), et
-/// fusionne leurs rapports une fois tous rentres.
+/// synchronise sur un depart commun (prepare puis start, plutot qu'un depart immediat),
+/// sonde en continu un tableau de bord combine pendant le tir, et fusionne leurs rapports
+/// finaux une fois tous rentres.
 /// <para>
-/// Agregation uniquement en fin de tir (choix de portee) : le maitre n'expose un rapport
-/// combine qu'une fois tous les workers termines. Chaque worker garde son propre
-/// <c>/report/live</c> pendant le tir pour un suivi individuel.
+/// Deux notions de rapport combine, deliberement separees : <see cref="MasterCoordinator.LiveReport"/>
+/// (rafraichi en continu par sondage, approximatif par nature) et
+/// <see cref="MasterCoordinator.FinalReport"/> (construit une seule fois, a partir des rapports
+/// pousses par les workers a la fin de leur tir local — l'un ne remplace pas l'autre).
 /// </para>
 /// </summary>
 internal sealed class MasterOrchestrationHostedService(
@@ -51,8 +53,17 @@ internal sealed class MasterOrchestrationHostedService(
             logger.LogInformation("{Count} worker(s) enregistre(s) : {Workers}", workers.Count, string.Join(", ", workers));
         }
 
-        WorkerPrepareRequest prepareRequest = BuildPrepareRequest(workers.Count);
         HttpClient client = httpClientFactory.CreateClient();
+
+        // Le sondage tourne des maintenant, en tache de fond, pendant tout le reste de la
+        // sequence (preparation, depart, tir, remontee des rapports finaux) — annule une fois
+        // les rapports finaux en main, puisqu'ils remplacent alors avantageusement la derniere
+        // valeur sondee.
+        using CancellationTokenSource livePollingCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        DateTime livePollingStartedAt = DateTime.UtcNow;
+        Task livePolling = PollLiveReportsAsync(client, workers, livePollingStartedAt, livePollingCts.Token);
+
+        WorkerPrepareRequest prepareRequest = BuildPrepareRequest(workers.Count);
 
         await Task.WhenAll(workers.Select(worker => PrepareAsync(client, worker, prepareRequest, stoppingToken))).ConfigureAwait(false);
         logger.LogInformation("Tous les workers sont prets.");
@@ -63,6 +74,8 @@ internal sealed class MasterOrchestrationHostedService(
 
         IReadOnlyList<WorkerReport> reports = await coordinator.WaitForReportsAsync(workers.Count, CancellationToken.None).ConfigureAwait(false);
         TimeSpan duration = DateTime.UtcNow - startedAt;
+
+        await StopLivePollingAsync(livePollingCts, livePolling).ConfigureAwait(false);
 
         LoadTestReport report = ClusterReportAggregator.Merge(reports, duration);
         coordinator.FinalReport = report;
@@ -88,6 +101,79 @@ internal sealed class MasterOrchestrationHostedService(
         }
 
         ExitIfConfigured(thresholds.Passed);
+    }
+
+    /// <summary>
+    /// Sonde <c>/worker/report/raw</c> sur chaque worker, en continu, et fusionne les etats
+    /// bruts recus pour rafraichir <see cref="MasterCoordinator.LiveReport"/>.
+    /// <para>
+    /// Au niveau brut (histogrammes), jamais au niveau des centiles deja calcules — la fusion
+    /// reste exacte a chaque rafraichissement, meme si l'instant du sondage, lui, est
+    /// approximatif. Un worker temporairement injoignable est ignore pour ce cycle plutot que de
+    /// faire echouer tout le sondage : le tableau de bord doit rester vivant meme degrade.
+    /// </para>
+    /// </summary>
+    private async Task PollLiveReportsAsync(HttpClient client, IReadOnlyList<string> workers, DateTime startedAt, CancellationToken cancellationToken)
+    {
+        TimeSpan interval = TimeSpan.FromSeconds(masterOptions.LivePollIntervalSeconds);
+
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                WorkerReport?[] snapshots = await Task
+                    .WhenAll(workers.Select(worker => FetchRawReportAsync(client, worker, cancellationToken)))
+                    .ConfigureAwait(false);
+
+                List<WorkerReport> received = [.. snapshots.OfType<WorkerReport>()];
+                if (received.Count > 0)
+                {
+                    coordinator.LiveReport = ClusterReportAggregator.Merge(received, DateTime.UtcNow - startedAt);
+                }
+
+                await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Arret normal du sondage : les rapports finaux ont pris le relais.
+        }
+    }
+
+    private async Task<WorkerReport?> FetchRawReportAsync(HttpClient client, string workerUrl, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await client
+                .GetFromJsonAsync<WorkerReport>($"{workerUrl.TrimEnd('/')}/worker/report/raw", cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or NotSupportedException)
+        {
+            // Pas encore pret (503) ou injoignable un instant : ce cycle de sondage l'ignore,
+            // le suivant reessaiera — un tableau de bord vivant tolere un trou plutot que de
+            // s'arreter pour un worker en retard.
+            if (logger.IsEnabled(LogLevel.Debug))
+            {
+                logger.LogDebug(ex, "Sondage live de {WorkerUrl} sans reponse exploitable pour ce cycle.", workerUrl);
+            }
+
+            return null;
+        }
+    }
+
+    private static async Task StopLivePollingAsync(CancellationTokenSource livePollingCts, Task livePolling)
+    {
+        await livePollingCts.CancelAsync().ConfigureAwait(false);
+
+        try
+        {
+            await livePolling.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Arret attendu.
+        }
     }
 
     private WorkerPrepareRequest BuildPrepareRequest(int workerCount)

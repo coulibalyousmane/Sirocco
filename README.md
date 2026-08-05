@@ -442,10 +442,15 @@ exemple moyenner ou maximiser des p99 individuels) serait le piège classique du
 centiles" — statistiquement faux quelle que soit la formule choisie, et inacceptable pour un
 outil qui existe précisément pour corriger le *coordinated omission* ailleurs.
 
-**Agrégation uniquement en fin de tir** (portée choisie délibérément minimale) : le maître
-n'expose un rapport combiné qu'une fois tous les workers rentrés. Chaque worker garde son
-propre `/report`/`/report/live` individuel pendant le tir, pour un suivi au cas par cas —
-mais pas de tableau de bord combiné en temps réel dans cette version.
+**Deux rapports combinés, deux garanties différentes.** `/report` sur le maître reste le
+verdict **final et autoritatif** : construit une seule fois, à partir des rapports que chaque
+worker pousse (`POST /master/report`) à la fin de son tir local — jamais recalculé après coup.
+`/report/live` (nouveau) est rafraîchi en continu **pendant** le tir : le maître sonde
+`GET /worker/report/raw` sur chaque worker toutes les `LivePollIntervalSeconds` (2 s par
+défaut), fusionne les histogrammes bruts reçus — la même fusion exacte que pour le rapport
+final, pas une approximation — et republie le résultat. Le seul compromis est temporel :
+l'instant du sondage est approximatif, pas la fusion elle-même. Un worker temporairement
+injoignable est ignoré pour ce cycle, pas fatal au tableau de bord.
 
 **Un piège vérifié en pratique** : `/worker/prepare` et `/worker/start` sont deux appels
 distincts, pas un seul. Le maître prépare tous les workers d'abord (construction du moteur,
@@ -460,7 +465,12 @@ configuration spécifiques à un scénario (`WebSocketEcho`, `GrpcEcho`, `Dynami
 sont pas propagées aux workers, qui construisent leur scénario avec les réglages par défaut ;
 un scénario avec des options non standard reste, pour l'instant, à tirer en mode autonome.
 
-Vérifié par un vrai tir (1 maître, 2 workers, contre `Tempest.SampleTarget`) : les deux
+Vérifié par un vrai tir (1 maître, 2 workers, contre `Tempest.SampleTarget`) : `/report/live`
+interrogé à mi-parcours affichait déjà 188 itérations combinées et cohérentes ; le rapport
+final en comptait 274, **0 échec** sur toutes les étapes, seuils respectés — une progression
+continue, pas un saut brutal entre "rien" et "tout" à la fin.
+
+Autre vérification (1 maître, 2 workers, contre `Tempest.SampleTarget`) : les deux
 workers se sont enregistrés, préparés, démarrés, ont tiré et remonté leur rapport, fusionné
 en un total de 74 itérations, **0 échec** sur toutes les étapes, seuils respectés — le rapport
 combiné se lit comme s'il venait d'un seul processus.
@@ -526,6 +536,7 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 9** — `ExtractionRule` (Regex/XPath) + substitution `{{nom}}` dans `DeclarativeWorkflow` (roadmap P3, comble la limite de l'étape 6 : un jeton d'authentification peut désormais se propager d'une étape à l'autre)
 - [x] **Étape 10** — Mode distribué Master/Workers : auto-enregistrement dynamique, `ClusterReportAggregator` (fusion d'histogrammes bruts), agrégation en fin de tir (roadmap P2, scope minimal — pas de tableau de bord combiné en temps réel, pas de propagation des options de scénario avancées aux workers)
 - [x] **Étape 11** — Conteneurisation : `Dockerfile` pour `Tempest.Host` et `Tempest.SampleTarget`, `docker-compose.yml` démontrant le mode distribué en conteneurs réels, joints par le DNS Docker
+- [x] **Étape 12** — Tableau de bord distribué en temps réel : `GET /worker/report/raw` + sondage continu du maître (`MasterOrchestrationHostedService`) + `GET /report/live` combiné, comblant la limite de l'étape 10
 
 ## Roadmap
 
@@ -535,5 +546,5 @@ minimal documenté à sa section :
 | Priorité | Fonctionnalité |
 |---|---|
 | ~~P1~~ | ~~Protocoles avancés~~ : WebSockets et gRPC unaire faits — le streaming gRPC (client/serveur/bidirectionnel) resterait un chantier séparé s'il est un jour repris |
-| ~~P2~~ | ~~Mode distribué Master/Workers~~ fait (étape 10) — tableau de bord combiné en temps réel resterait un chantier séparé |
+| ~~P2~~ | ~~Mode distribué Master/Workers~~ fait (étape 10), tableau de bord combiné en temps réel fait (étape 12) |
 | ~~P3~~ | ~~Corrélation avancée : extraction par Regex / XPath~~ fait (étape 9) |

@@ -63,6 +63,14 @@ if (string.Equals(tempestOptions.Role, TempestHostOptions.ROLE_WORKER, StringCom
             ? Results.Ok(aggregator.Snapshot(StatisticsScope.Sliding))
             : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
 
+    // Etat brut cumule, pas des centiles deja calcules : c'est ce que le maitre sonde pour
+    // rafraichir son tableau de bord combine (voir MasterOrchestrationHostedService), puisque
+    // fusionner des centiles deja calcules serait le piege du "centile de centiles".
+    workerApp.MapGet("/worker/report/raw", (WorkerCoordinator coordinator, WorkerOptions options) =>
+        coordinator.Aggregator is { } aggregator
+            ? Results.Ok(aggregator.ExportRaw(options.SelfUrl))
+            : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
+
     workerApp.Run();
 }
 else if (string.Equals(tempestOptions.Role, TempestHostOptions.ROLE_MASTER, StringComparison.OrdinalIgnoreCase))
@@ -94,6 +102,15 @@ else if (string.Equals(tempestOptions.Role, TempestHostOptions.ROLE_MASTER, Stri
     masterApp.MapGet("/report", (MasterCoordinator coordinator) =>
         coordinator.FinalReport is { } report
             ? Results.Ok(report)
+            : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
+
+    // Rafraichi en continu pendant le tir par sondage des workers (voir
+    // MasterOrchestrationHostedService) — approximatif par nature (intervalle de sondage),
+    // contrairement a /report qui reste le verdict final, construit une seule fois a partir
+    // des rapports pousses par les workers a la fin de leur tir local.
+    masterApp.MapGet("/report/live", (MasterCoordinator coordinator) =>
+        coordinator.LiveReport is { } liveReport
+            ? Results.Ok(liveReport)
             : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
 
     masterApp.MapGet("/thresholds", (MasterCoordinator coordinator) =>
