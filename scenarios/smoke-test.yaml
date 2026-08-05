@@ -1,0 +1,36 @@
+# Scenario declaratif de reference, contre Tempest.SampleTarget.
+#
+# Demontre la corrélation dynamique (roadmap P3) : "login" extrait le jeton reellement emis
+# par la reponse (regex sur le corps JSON) et le rend disponible aux etapes suivantes via
+# {{token}} — ici, l'en-tete Authorization de "checkout". Sans cette fonctionnalite, seul un
+# jeton statique (donc jamais valide) etait possible, comme documente dans les versions
+# precedentes de ce fichier.
+#
+# Un scenario qui a besoin de branchement ou de boucle reste un IWorkflow ecrit a la main
+# (voir DynamicCheckoutWorkflow).
+
+name: smoke-test
+
+steps:
+  - name: login
+    method: POST
+    path: /api/auth/login
+    body: '{"username":"demo","password":"demo"}'
+    contentType: application/json
+    extract:
+      - variable: token
+        regex: '"token":"([^"]+)"'
+
+  - name: browse
+    method: GET
+    path: /api/catalog/products
+    expectedStatusCodes: [200]
+
+  - name: checkout
+    method: POST
+    path: /api/checkout
+    body: '{"items":[{"productId":1,"quantity":1}]}'
+    contentType: application/json
+    headers:
+      Authorization: "Bearer {{token}}"
+    expectedStatusCodes: [200]

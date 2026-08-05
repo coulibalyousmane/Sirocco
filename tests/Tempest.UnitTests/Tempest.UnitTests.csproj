@@ -1,0 +1,38 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Sdk par defaut, pas Sdk.Web : Kestrel/WebApplication doivent etre reclames
+         explicitement pour le serveur gRPC de test (GrpcEchoTestServer). -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Pas de codegen protobuf propre a ce projet : EchoServiceBase et les messages viennent
+         deja de Tempest.Scenarios (genere en GrpcServices="Both") — les regenerer ici entrerait
+         en conflit de type (CS0436) avec ceux references via ce projet. -->
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Grpc.AspNetCore" Version="2.83.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Tempest.Domain\Tempest.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Tempest.Application\Tempest.Application.csproj" />
+    <ProjectReference Include="..\..\src\Tempest.Infrastructure\Tempest.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Tempest.Scenarios\Tempest.Scenarios.csproj" />
+  </ItemGroup>
+
+</Project>

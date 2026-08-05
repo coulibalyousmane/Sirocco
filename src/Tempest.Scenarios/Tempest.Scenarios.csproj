@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tempest.Domain\Tempest.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Fichier unique partage avec Tempest.SampleTarget : un desaccord de contrat echoue a la
+         compilation, pas a l'execution. GrpcServices="Both" (pas seulement "Client") : le cote
+         serveur genere ici sert de base au faux service gRPC de Tempest.UnitTests — sans lui,
+         regenerer les memes messages depuis Tempest.UnitTests entrerait en conflit de type
+         (CS0436) avec ceux deja references via ce projet. -->
+    <Protobuf Include="..\..\protos\tempest_echo.proto" GrpcServices="Both" Link="Protos\tempest_echo.proto" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Bogus" Version="35.6.5" />
+    <PackageReference Include="Google.Protobuf" Version="3.35.1" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.83.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.83.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

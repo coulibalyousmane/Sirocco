@@ -1,0 +1,26 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <Deterministic>true</Deterministic>
+    <Product>Tempest</Product>
+    <Authors>Tempest</Authors>
+  </PropertyGroup>
+
+  <!--
+    Le chemin critique du moteur est "zero-allocation" : on veut que le JIT
+    puisse inliner et vectoriser agressivement, et que les structs passees par
+    'in' ne soient jamais copiees defensivement.
+  -->
+  <PropertyGroup>
+    <Optimize Condition="'$(Configuration)' == 'Release'">true</Optimize>
+    <TieredPGO>true</TieredPGO>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+</Project>

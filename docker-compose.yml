@@ -1,0 +1,74 @@
+# Demonstration du mode distribue (Master/Workers) en conteneurs : une cible, un maitre, deux
+# workers. Les process se joignent par nom de service Docker (DNS interne du reseau compose),
+# pas par adresse IP — c'est ce qui rend Worker__SelfUrl stable d'un demarrage a l'autre.
+#
+#   docker compose up --build --exit-code-from master
+#
+# Le maitre s'arrete seul une fois le tir termine (Tempest__ExitAfterRun=true) ; les workers
+# restent actifs (services long-vivants, comme en production) — "docker compose down" pour
+# tout arreter.
+
+services:
+  sampletarget:
+    build:
+      context: .
+      dockerfile: samples/Tempest.SampleTarget/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:5281
+      SampleTarget__GrpcPort: "5287"
+    ports:
+      - "5281:5281"
+
+  master:
+    build:
+      context: .
+      dockerfile: src/Tempest.Host/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:5299
+      Tempest__Role: master
+      Tempest__TargetBaseUrl: http://sampletarget:5281
+      Tempest__MaxVirtualUsers: "20"
+      Tempest__ExitAfterRun: "true"
+      Tempest__Profile__0__FromRps: "0"
+      Tempest__Profile__0__ToRps: "10"
+      Tempest__Profile__0__DurationSeconds: "10"
+      Tempest__Profile__1__FromRps: "10"
+      Tempest__Profile__1__ToRps: "10"
+      Tempest__Profile__1__DurationSeconds: "15"
+      Tempest__Profile__2__FromRps: "10"
+      Tempest__Profile__2__ToRps: "0"
+      Tempest__Profile__2__DurationSeconds: "5"
+      Master__ExpectedWorkers: "2"
+      Master__RegistrationTimeoutSeconds: "30"
+    ports:
+      - "5299:5299"
+    depends_on:
+      - sampletarget
+
+  worker1:
+    build:
+      context: .
+      dockerfile: src/Tempest.Host/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:5300
+      Tempest__Role: worker
+      Tempest__TargetBaseUrl: http://sampletarget:5281
+      Worker__MasterUrl: http://master:5299
+      Worker__SelfUrl: http://worker1:5300
+    depends_on:
+      - sampletarget
+      - master
+
+  worker2:
+    build:
+      context: .
+      dockerfile: src/Tempest.Host/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:5300
+      Tempest__Role: worker
+      Tempest__TargetBaseUrl: http://sampletarget:5281
+      Worker__MasterUrl: http://master:5299
+      Worker__SelfUrl: http://worker2:5300
+    depends_on:
+      - sampletarget
+      - master

@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+option csharp_namespace = "Tempest.Protos.Echo";
+
+package tempest.echo;
+
+// Contrat unaire de reference pour le protocole gRPC : un appel, un aller-retour.
+// Fichier unique reference par Tempest.Scenarios (client), Tempest.SampleTarget (serveur)
+// et Tempest.UnitTests (serveur, pour les tests) afin qu'un desaccord de contrat echoue a
+// la compilation plutot qu'a l'execution.
+service EchoService {
+  rpc Ping (PingRequest) returns (PingResponse);
+}
+
+message PingRequest {
+  string message = 1;
+}
+
+message PingResponse {
+  string message = 1;
+}
