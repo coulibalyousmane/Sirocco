@@ -40,15 +40,7 @@ public static class ScenarioDefinitionLoader
     /// <exception cref="FormatException">Le contenu ne peut pas etre interprete comme un scenario.</exception>
     public static ScenarioDefinition LoadFromFile(string path)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
-
-        if (!File.Exists(path))
-        {
-            throw new FileNotFoundException($"Fichier de scenario introuvable : '{path}'.", path);
-        }
-
-        ScenarioFormat format = FormatOf(path);
-        string content = File.ReadAllText(path);
+        (string content, ScenarioFormat format) = ReadRaw(path);
 
         try
         {
@@ -58,6 +50,29 @@ public static class ScenarioDefinitionLoader
         {
             throw new FormatException($"Scenario invalide dans '{path}' : {ex.Message}", ex);
         }
+    }
+
+    /// <summary>
+    /// Lit un fichier de scenario sans le parser, en deduisant son format de son extension.
+    /// <para>
+    /// Distinct de <see cref="LoadFromFile"/> : sert au mode distribue, ou le maitre lit le
+    /// fichier depuis son propre systeme de fichiers pour en transmettre le contenu brut aux
+    /// workers (voir <c>WorkerPrepareRequest</c>) — un worker distant n'a aucune raison de
+    /// partager le meme chemin que le maitre.
+    /// </para>
+    /// </summary>
+    /// <exception cref="FileNotFoundException">Le fichier n'existe pas.</exception>
+    /// <exception cref="NotSupportedException">L'extension n'est pas reconnue.</exception>
+    public static (string Content, ScenarioFormat Format) ReadRaw(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException($"Fichier de scenario introuvable : '{path}'.", path);
+        }
+
+        return (File.ReadAllText(path), FormatOf(path));
     }
 
     /// <summary>Interprete un contenu deja lu, dans le format indique.</summary>

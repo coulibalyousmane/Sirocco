@@ -44,7 +44,7 @@ public sealed class WorkerCoordinator(WorkerOptions options, IHttpClientFactory 
         }
 
         LoadProfile profile = LoadProfileFactory.FromStages(request.Profile);
-        IWorkflow workflow = CreateWorkflow(request.Workflow, request.ScenarioFile);
+        IWorkflow workflow = CreateWorkflow(request);
 
         // Meme reglage que le client HTTP du mode autonome (Tempest.Host/Program.cs) : un seul
         // client partage, pool de connexions dimensionne pour tenir un debit eleve.
@@ -134,28 +134,30 @@ public sealed class WorkerCoordinator(WorkerOptions options, IHttpClientFactory 
         }
     }
 
-    private static IWorkflow CreateWorkflow(string workflow, string? scenarioFile)
+    private static IWorkflow CreateWorkflow(WorkerPrepareRequest request)
     {
-        if (!string.IsNullOrWhiteSpace(scenarioFile))
+        if (request.ScenarioContent is not null)
         {
-            return new DeclarativeWorkflow(ScenarioDefinitionLoader.LoadFromFile(scenarioFile));
+            ScenarioFormat format = request.ScenarioFormat
+                ?? throw new InvalidOperationException("ScenarioFormat est requis des que ScenarioContent est renseigne.");
+            return new DeclarativeWorkflow(ScenarioDefinitionLoader.Parse(request.ScenarioContent, format));
         }
 
-        if (string.Equals(workflow, TempestHostOptions.WEBSOCKET_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(request.Workflow, TempestHostOptions.WEBSOCKET_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
         {
-            return new WebSocketEchoWorkflow();
+            return new WebSocketEchoWorkflow(request.WebSocketEchoOptions ?? new WebSocketEchoWorkflowOptions());
         }
 
-        if (string.Equals(workflow, TempestHostOptions.GRPC_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(request.Workflow, TempestHostOptions.GRPC_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
         {
-            return new GrpcEchoWorkflow();
+            return new GrpcEchoWorkflow(request.GrpcEchoOptions ?? new GrpcEchoWorkflowOptions());
         }
 
-        if (string.Equals(workflow, TempestHostOptions.GRPC_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(request.Workflow, TempestHostOptions.GRPC_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
         {
-            return new GrpcStreamEchoWorkflow();
+            return new GrpcStreamEchoWorkflow(request.GrpcEchoOptions ?? new GrpcEchoWorkflowOptions());
         }
 
-        return new DynamicCheckoutWorkflow();
+        return new DynamicCheckoutWorkflow(request.DynamicCheckoutOptions ?? new DynamicCheckoutWorkflowOptions());
     }
 }

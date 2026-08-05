@@ -499,10 +499,33 @@ requête HTTP, ce qui aurait cumulé un décalage d'un worker à l'autre.
 
 Le profil de charge et le plafond d'utilisateurs virtuels sont divisés par le nombre de
 workers effectivement enregistrés avant distribution — un tir à 1 000 RPS avec 4 workers
-devient 250 RPS par worker. **Limite volontaire de cette version** : les sections de
-configuration spécifiques à un scénario (`WebSocketEcho`, `GrpcEcho`, `DynamicCheckout`) ne
-sont pas propagées aux workers, qui construisent leur scénario avec les réglages par défaut ;
-un scénario avec des options non standard reste, pour l'instant, à tirer en mode autonome.
+devient 250 RPS par worker.
+
+**Propagation du scénario aux workers.** `/worker/prepare` transporte désormais tout ce qu'il
+faut pour qu'un worker reconstruise exactement le même scénario que le maître aurait joué
+seul : le **contenu** du fichier de scénario déclaratif (`ScenarioDefinitionLoader.ReadRaw`),
+pas son chemin — un worker distant (conteneur ou machine séparée) n'a aucune raison de
+partager le système de fichiers du maître — et les réglages de chaque scénario codé en dur
+(`WebSocketEcho`, `GrpcEcho`, `DynamicCheckout`), lus par le maître depuis sa propre
+configuration et transmis tels quels. Comble la limite documentée à l'étape 10 : les workers
+construisaient jusqu'ici leur scénario avec des réglages par défaut, quoi que le maître ait
+configuré.
+
+**Un bug latent trouvé par cette vérification, pas supposé** : avant cette propagation, un tir
+distribué en `grpc-echo` était cassé en pratique — chaque worker construisait
+`GrpcEchoWorkflow()` sans options, donc `TargetUri` restait `null` et l'appel retombait sur
+`HttpClient.BaseAddress` (le port HTTP classique de la cible), qui ne sait pas parler gRPC en
+clair sans le port dédié (limite Kestrel déjà documentée à l'étape 8). Aucun test ne l'avait
+révélé puisque personne n'avait encore tiré `grpc-echo` en mode distribué.
+
+Vérifié par deux vrais tirs (1 maître, 2 workers, contre `Tempest.SampleTarget`) :
+- Scénario déclaratif (`scenarios/smoke-test.yaml`, référencé uniquement par le maître) :
+  154 itérations fusionnées, `login`/`browse`/`checkout` à **0 % d'échec** — jeton
+  d'authentification extrait et propagé correctement d'une étape à l'autre sur les deux
+  workers.
+- `grpc-echo` avec `GrpcEcho:TargetUri` renseigné uniquement côté maître : 154 itérations
+  fusionnées, **0 % d'échec** — confirme que le port gRPC dédié est bien atteint par les
+  workers, là où le bug ci-dessus aurait échoué.
 
 Vérifié par un vrai tir (1 maître, 2 workers, contre `Tempest.SampleTarget`) : `/report/live`
 interrogé à mi-parcours affichait déjà 188 itérations combinées et cohérentes ; le rapport
@@ -577,6 +600,7 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 11** — Conteneurisation : `Dockerfile` pour `Tempest.Host` et `Tempest.SampleTarget`, `docker-compose.yml` démontrant le mode distribué en conteneurs réels, joints par le DNS Docker
 - [x] **Étape 12** — Tableau de bord distribué en temps réel : `GET /worker/report/raw` + sondage continu du maître (`MasterOrchestrationHostedService`) + `GET /report/live` combiné, comblant la limite de l'étape 10
 - [x] **Étape 13** — `GrpcStreamEchoWorkflow` (streaming serveur) : chaque message reçu mesuré comme sa propre étape, complétant le protocole gRPC de l'étape 8 (roadmap P1, scope minimal — streaming client et bidirectionnel restent hors périmètre)
+- [x] **Étape 14** — Propagation du scénario et des options aux workers : `ScenarioDefinitionLoader.ReadRaw` (contenu, pas chemin) + `WebSocketEcho`/`GrpcEcho`/`DynamicCheckout` transmis dans `WorkerPrepareRequest`, comblant la limite de l'étape 10 — a mis au jour un bug latent (`grpc-echo` en mode distribué joignait le mauvais port faute de propagation de `TargetUri`)
 
 ## Roadmap
 

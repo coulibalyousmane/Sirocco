@@ -123,6 +123,46 @@ public sealed class ScenarioDefinitionLoaderTests
         Assert.Throws<FileNotFoundException>(() => ScenarioDefinitionLoader.LoadFromFile("does-not-exist.yaml"));
 
     [Fact]
+    public void ReadRaw_returns_the_content_and_format_without_parsing_it()
+    {
+        string yamlPath = Path.GetTempFileName() + ".yaml";
+
+        try
+        {
+            File.WriteAllText(yamlPath, YAML_SCENARIO);
+
+            (string content, ScenarioFormat format) = ScenarioDefinitionLoader.ReadRaw(yamlPath);
+
+            Assert.Equal(YAML_SCENARIO, content);
+            Assert.Equal(ScenarioFormat.Yaml, format);
+        }
+        finally
+        {
+            File.Delete(yamlPath);
+        }
+    }
+
+    [Fact]
+    public void ReadRaw_reports_a_missing_file_clearly() =>
+        Assert.Throws<FileNotFoundException>(() => ScenarioDefinitionLoader.ReadRaw("does-not-exist.yaml"));
+
+    [Fact]
+    public void ReadRaw_rejects_an_unrecognized_extension()
+    {
+        string path = Path.GetTempFileName() + ".txt";
+        File.WriteAllText(path, YAML_SCENARIO);
+
+        try
+        {
+            Assert.Throws<NotSupportedException>(() => ScenarioDefinitionLoader.ReadRaw(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void Malformed_yaml_is_wrapped_in_a_format_exception() =>
         Assert.Throws<FormatException>(() => ScenarioDefinitionLoader.Parse("not: [valid: yaml: at all", ScenarioFormat.Yaml));
 

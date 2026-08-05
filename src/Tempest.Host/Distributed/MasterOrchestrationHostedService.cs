@@ -1,6 +1,8 @@
 ﻿using System.Net.Http.Json;
 using Tempest.Domain.Metrics;
 using Tempest.Host.Configuration;
+using Tempest.Scenarios;
+using Tempest.Scenarios.Declarative;
 
 namespace Tempest.Host.Distributed;
 
@@ -20,6 +22,7 @@ internal sealed class MasterOrchestrationHostedService(
     MasterCoordinator coordinator,
     MasterOptions masterOptions,
     TempestHostOptions tempestOptions,
+    IConfiguration configuration,
     IHttpClientFactory httpClientFactory,
     IHostApplicationLifetime lifetime,
     ILogger<MasterOrchestrationHostedService> logger) : BackgroundService
@@ -188,11 +191,27 @@ internal sealed class MasterOrchestrationHostedService(
 
         int maxVirtualUsersPerWorker = Math.Max(1, (int)Math.Ceiling(tempestOptions.MaxVirtualUsers / (double)workerCount));
 
+        // Priorite au fichier de scenario, exactement comme en mode autonome (Tempest.Host/Program.cs) :
+        // son contenu est lu ici, une seule fois, cote maitre — un worker distant n'a aucune
+        // raison de partager le meme systeme de fichiers que lui.
+        string? scenarioContent = null;
+        ScenarioFormat? scenarioFormat = null;
+        if (!string.IsNullOrWhiteSpace(tempestOptions.ScenarioFile))
+        {
+            (string content, ScenarioFormat format) = ScenarioDefinitionLoader.ReadRaw(tempestOptions.ScenarioFile);
+            scenarioContent = content;
+            scenarioFormat = format;
+        }
+
         return new WorkerPrepareRequest
         {
             Profile = scaledProfile,
             Workflow = tempestOptions.Workflow,
-            ScenarioFile = tempestOptions.ScenarioFile,
+            ScenarioContent = scenarioContent,
+            ScenarioFormat = scenarioFormat,
+            WebSocketEchoOptions = configuration.GetSection("WebSocketEcho").Get<WebSocketEchoWorkflowOptions>(),
+            GrpcEchoOptions = configuration.GetSection("GrpcEcho").Get<GrpcEchoWorkflowOptions>(),
+            DynamicCheckoutOptions = configuration.GetSection("DynamicCheckout").Get<DynamicCheckoutWorkflowOptions>(),
             TargetBaseUrl = tempestOptions.TargetBaseUrl,
             MaxVirtualUsers = maxVirtualUsersPerWorker,
         };
