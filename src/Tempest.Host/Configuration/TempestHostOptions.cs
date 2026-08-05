@@ -20,6 +20,9 @@ public sealed class TempestHostOptions
     /// <summary>Valeur de <see cref="Workflow"/> selectionnant <c>GrpcEchoWorkflow</c>.</summary>
     public const string GRPC_ECHO_WORKFLOW = "grpc-echo";
 
+    /// <summary>Valeur de <see cref="Workflow"/> selectionnant <c>GrpcStreamEchoWorkflow</c>.</summary>
+    public const string GRPC_STREAM_ECHO_WORKFLOW = "grpc-stream-echo";
+
     /// <summary>Valeur de <see cref="Role"/> : l'hote tire seul, comportement inchange.</summary>
     public const string ROLE_STANDALONE = "standalone";
 
@@ -65,8 +68,8 @@ public sealed class TempestHostOptions
 
     /// <summary>
     /// Scenario code en dur a utiliser quand <see cref="ScenarioFile"/> n'est pas renseigne :
-    /// <see cref="DYNAMIC_CHECKOUT_WORKFLOW"/> (par defaut), <see cref="WEBSOCKET_ECHO_WORKFLOW"/>
-    /// ou <see cref="GRPC_ECHO_WORKFLOW"/>.
+    /// <see cref="DYNAMIC_CHECKOUT_WORKFLOW"/> (par defaut), <see cref="WEBSOCKET_ECHO_WORKFLOW"/>,
+    /// <see cref="GRPC_ECHO_WORKFLOW"/> ou <see cref="GRPC_STREAM_ECHO_WORKFLOW"/>.
     /// Sans effet des que <see cref="ScenarioFile"/> est present, qui garde la priorite.
     /// </summary>
     public string Workflow { get; init; } = DYNAMIC_CHECKOUT_WORKFLOW;

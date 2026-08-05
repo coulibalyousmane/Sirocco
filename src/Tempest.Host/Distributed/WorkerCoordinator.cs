@@ -151,6 +151,11 @@ public sealed class WorkerCoordinator(WorkerOptions options, IHttpClientFactory 
             return new GrpcEchoWorkflow();
         }
 
+        if (string.Equals(workflow, TempestHostOptions.GRPC_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
+        {
+            return new GrpcStreamEchoWorkflow();
+        }
+
         return new DynamicCheckoutWorkflow();
     }
 }

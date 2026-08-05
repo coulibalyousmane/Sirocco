@@ -4,12 +4,14 @@ option csharp_namespace = "Tempest.Protos.Echo";
 
 package tempest.echo;
 
-// Contrat unaire de reference pour le protocole gRPC : un appel, un aller-retour.
+// Contrats de reference pour le protocole gRPC : un appel unaire (Ping), un streaming serveur
+// (StreamEcho) — client-streaming et bidirectionnel restent hors perimetre de cette version.
 // Fichier unique reference par Tempest.Scenarios (client), Tempest.SampleTarget (serveur)
 // et Tempest.UnitTests (serveur, pour les tests) afin qu'un desaccord de contrat echoue a
 // la compilation plutot qu'a l'execution.
 service EchoService {
   rpc Ping (PingRequest) returns (PingResponse);
+  rpc StreamEcho (StreamEchoRequest) returns (stream StreamEchoMessage);
 }
 
 message PingRequest {
@@ -18,4 +20,16 @@ message PingRequest {
 
 message PingResponse {
   string message = 1;
+}
+
+message StreamEchoRequest {
+  string message = 1;
+}
+
+// Le nombre de messages envoyes est decide par le serveur, pas par le client — un client
+// realiste ne dicte pas le comportement d'un flux auquel il s'abonne, il lit jusqu'a ce que
+// le serveur cesse d'emettre.
+message StreamEchoMessage {
+  string message = 1;
+  int32 sequence = 2;
 }

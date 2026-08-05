@@ -41,6 +41,13 @@ internal sealed class SampleTargetOptions
     public const int DEFAULT_GRPC_PORT = 5287;
 
     /// <summary>
+    /// Nombre de messages envoyes par defaut par <c>StreamEcho</c>. Decide par le serveur, pas
+    /// par le client : un client realiste ne dicte pas le comportement d'un flux auquel il
+    /// s'abonne.
+    /// </summary>
+    public const int DEFAULT_STREAM_MESSAGE_COUNT = 5;
+
+    /// <summary>
     /// Commandes simultanees admises avant mise en attente. Au-dela, la requete patiente
     /// <see cref="QueueWaitMilliseconds"/> puis echoue en 503 : c'est ce plafond qui rend
     /// la cible capable de saturer sous une charge suffisante.
@@ -76,4 +83,7 @@ internal sealed class SampleTargetOptions
 
     /// <summary>Port du point d'ecoute gRPC dedie (HTTP/2 pur, en clair).</summary>
     public int GrpcPort { get; init; } = DEFAULT_GRPC_PORT;
+
+    /// <summary>Nombre de messages envoyes par <c>StreamEcho</c> avant fermeture du flux.</summary>
+    public int StreamMessageCount { get; init; } = DEFAULT_STREAM_MESSAGE_COUNT;
 }

@@ -368,12 +368,9 @@ Vérifié par un vrai tir (20 utilisateurs virtuels, rampe 0→10→0 RPS sur 10
 `Tempest.SampleTarget`) : 75 itérations, **0 échec, 0 abandon**, `ws-connect` et `ws-echo`
 tous deux à 0 % d'échec, seuils respectés.
 
-## Protocole gRPC (unaire)
+## Protocole gRPC — unaire
 
-Portée délibérément minimale (choix explicite) : un appel unaire, un aller-retour. Le
-streaming (client, serveur, bidirectionnel) reste un problème de mesure différent — la
-définition même de "succès d'une étape" change pour un flux ouvert — et reste hors périmètre,
-comme un item de roadmap séparé.
+Portée délibérément minimale (choix explicite) : un appel unaire, un aller-retour.
 
 ```csharp
 EchoService.EchoServiceClient client = new(channel);
@@ -412,6 +409,48 @@ révéler la vraie cause.
 Vérifié par un vrai tir (20 utilisateurs virtuels, rampe 0→10→0 RPS sur 10 s, contre
 `Tempest.SampleTarget`) : 75 itérations, **0 échec, 0 abandon**, `grpc-ping` à 0 % d'échec,
 seuils respectés.
+
+## Protocole gRPC — streaming serveur
+
+Sur les trois modes de streaming gRPC, un seul est couvert par cette version : le **streaming
+serveur** (un appel, un flux de messages reçus). Streaming client et bidirectionnel restent un
+chantier séparé — chacun redéfinit différemment ce que "succès d'une étape" veut dire pour un
+flux ouvert, et méritent une conception à part plutôt qu'une extension mécanique de celle-ci.
+
+```csharp
+AsyncServerStreamingCall<StreamEchoMessage> call = client.StreamEcho(new StreamEchoRequest { Message = "ping" }, cancellationToken: cancellationToken);
+while (await call.ResponseStream.MoveNext(cancellationToken))
+{
+    StreamEchoMessage current = call.ResponseStream.Current;
+}
+```
+
+**Chaque message reçu est mesuré comme sa propre étape** (`grpc-stream-message`), pas l'appel
+entier : `GrpcStreamEchoWorkflow` ouvre un `StepScope` frais juste avant chaque
+`MoveNext`, donc la latence rapportée est celle de l'attente entre deux messages — la mesure
+naturelle pour une API de flux, distincte du temps total de l'appel. Aucune étape "connexion"
+séparée, même raisonnement que pour l'appel unaire : l'établissement HTTP/2 reste transparent.
+
+Le nombre de messages envoyés est décidé par le **serveur**
+(`SampleTargetOptions.StreamMessageCount`, 5 par défaut), jamais par le client : un client
+réaliste ne dicte pas le comportement d'un flux auquel il s'abonne, il lit jusqu'à ce que le
+serveur cesse d'émettre (`MoveNext` renvoie `false`) — ce dernier appel n'est pas mesuré comme
+un message, puisqu'il n'en est pas un.
+
+`GrpcStreamEchoWorkflow` (scénario de référence) s'active via :
+
+```json
+"Tempest": { "Workflow": "grpc-stream-echo" },
+"GrpcEcho": { "TargetUri": "http://localhost:5287" }
+```
+
+Réutilise la même section `GrpcEcho` (donc la même `TargetUri`) que le scénario unaire : même
+besoin, mêmes réglages, pas de raison d'en dupliquer une deuxième.
+
+Vérifié par un vrai tir (20 utilisateurs virtuels, rampe 0→10→0 RPS sur 10 s, contre
+`Tempest.SampleTarget`) : 75 itérations × 5 messages = 375 mesures sur `grpc-stream-message`,
+**0 échec** — un nombre qui correspond exactement à la configuration serveur, confirmant que
+chaque message du flux est bien compté une fois, ni plus ni moins.
 
 ## Mode distribué (Master/Workers)
 
@@ -537,6 +576,7 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 10** — Mode distribué Master/Workers : auto-enregistrement dynamique, `ClusterReportAggregator` (fusion d'histogrammes bruts), agrégation en fin de tir (roadmap P2, scope minimal — pas de tableau de bord combiné en temps réel, pas de propagation des options de scénario avancées aux workers)
 - [x] **Étape 11** — Conteneurisation : `Dockerfile` pour `Tempest.Host` et `Tempest.SampleTarget`, `docker-compose.yml` démontrant le mode distribué en conteneurs réels, joints par le DNS Docker
 - [x] **Étape 12** — Tableau de bord distribué en temps réel : `GET /worker/report/raw` + sondage continu du maître (`MasterOrchestrationHostedService`) + `GET /report/live` combiné, comblant la limite de l'étape 10
+- [x] **Étape 13** — `GrpcStreamEchoWorkflow` (streaming serveur) : chaque message reçu mesuré comme sa propre étape, complétant le protocole gRPC de l'étape 8 (roadmap P1, scope minimal — streaming client et bidirectionnel restent hors périmètre)
 
 ## Roadmap
 
@@ -545,6 +585,6 @@ minimal documenté à sa section :
 
 | Priorité | Fonctionnalité |
 |---|---|
-| ~~P1~~ | ~~Protocoles avancés~~ : WebSockets et gRPC unaire faits — le streaming gRPC (client/serveur/bidirectionnel) resterait un chantier séparé s'il est un jour repris |
+| ~~P1~~ | ~~Protocoles avancés~~ : WebSockets, gRPC unaire et gRPC streaming serveur faits — streaming client et bidirectionnel resteraient un chantier séparé s'ils sont un jour repris |
 | ~~P2~~ | ~~Mode distribué Master/Workers~~ fait (étape 10), tableau de bord combiné en temps réel fait (étape 12) |
 | ~~P3~~ | ~~Corrélation avancée : extraction par Regex / XPath~~ fait (étape 9) |

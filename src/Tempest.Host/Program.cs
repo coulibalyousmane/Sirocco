@@ -146,6 +146,15 @@ else
 
         workflow = new GrpcEchoWorkflow(grpcOptions);
     }
+    else if (string.Equals(tempestOptions.Workflow, TempestHostOptions.GRPC_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
+    {
+        // Meme section de configuration que GrpcEchoWorkflow (TargetUri) : meme besoin, memes
+        // reglages, pas de raison d'en dupliquer une deuxieme.
+        GrpcEchoWorkflowOptions grpcStreamOptions = builder.Configuration.GetSection("GrpcEcho")
+            .Get<GrpcEchoWorkflowOptions>() ?? new GrpcEchoWorkflowOptions();
+
+        workflow = new GrpcStreamEchoWorkflow(grpcStreamOptions);
+    }
     else
     {
         DynamicCheckoutWorkflowOptions checkoutOptions = builder.Configuration.GetSection("DynamicCheckout")
