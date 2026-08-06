@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cloner le depot
+        uses: actions/checkout@v4
+
+      - name: Installer .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restaurer
+        run: dotnet restore Tempest.sln
+
+      - name: Compiler (Release)
+        run: dotnet build Tempest.sln --configuration Release --no-restore
+
+      - name: Tests unitaires
+        run: dotnet test tests/Tempest.UnitTests --configuration Release --no-build
+
+      - name: Verifier le formatage
+        run: dotnet format Tempest.sln --verify-no-changes --severity info
+
+  smoke-e2e:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    # Un vrai tir, pas seulement des tests unitaires : c'est ce qui a deja revele des bugs
+    # reels dans ce projet (limite Kestrel HTTP/1.1+2, UriFormatException sur "+", propagation
+    # de TargetUri en mode distribue) qu'aucun test isole n'aurait trouves. Seuils volontairement
+    # larges (P95 < 1000ms) : ce job verifie que la chaine seuils -> code de sortie fonctionne en
+    # CI, pas la performance elle-meme, qui varie trop d'un runner partage a l'autre pour un seuil serre.
+    steps:
+      - name: Cloner le depot
+        uses: actions/checkout@v4
+
+      - name: Installer .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Compiler la cible de demonstration et l'hote (Release)
+        run: |
+          dotnet build samples/Tempest.SampleTarget --configuration Release
+          dotnet build src/Tempest.Host --configuration Release
+
+      - name: Demarrer Tempest.SampleTarget en arriere-plan
+        run: |
+          nohup dotnet samples/Tempest.SampleTarget/bin/Release/net10.0/Tempest.SampleTarget.dll > sampletarget.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:5281/api/catalog/products > /dev/null && exit 0
+            sleep 1
+          done
+          echo "Tempest.SampleTarget n'a jamais repondu :"
+          cat sampletarget.log
+          exit 1
+        env:
+          ASPNETCORE_URLS: http://localhost:5281
+          SampleTarget__GrpcPort: "5287"
+
+      - name: Tir de fumee avec seuils CI (echoue si la chaine seuils/code de sortie casse)
+        run: dotnet src/Tempest.Host/bin/Release/net10.0/Tempest.Host.dll
+        env:
+          ASPNETCORE_URLS: http://localhost:5299
+          Tempest__TargetBaseUrl: http://localhost:5281
+          Tempest__MaxVirtualUsers: "20"
+          Tempest__ExitAfterRun: "true"
+          Tempest__Profile__0__FromRps: "0"
+          Tempest__Profile__0__ToRps: "10"
+          Tempest__Profile__0__DurationSeconds: "5"
+          Tempest__Profile__1__FromRps: "10"
+          Tempest__Profile__1__ToRps: "10"
+          Tempest__Profile__1__DurationSeconds: "10"
+          Tempest__Profile__2__FromRps: "10"
+          Tempest__Profile__2__ToRps: "0"
+          Tempest__Profile__2__DurationSeconds: "3"
+          Tempest__Thresholds__0__StepName: "__iteration"
+          Tempest__Thresholds__0__Metric: "ResponseP95Milliseconds"
+          Tempest__Thresholds__0__Comparison: "LessThan"
+          Tempest__Thresholds__0__Limit: "1000"
+          Tempest__Thresholds__1__StepName: "__iteration"
+          Tempest__Thresholds__1__Metric: "ErrorRate"
+          Tempest__Thresholds__1__Comparison: "LessThanOrEqual"
+          Tempest__Thresholds__1__Limit: "0.01"

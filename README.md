@@ -1,5 +1,7 @@
 # Tempest
 
+[![CI](https://github.com/coulibalyousmane/Tempest/actions/workflows/ci.yml/badge.svg)](https://github.com/coulibalyousmane/Tempest/actions/workflows/ci.yml)
+
 > Une tempête de trafic, à la demande.
 
 Moteur de test de charge haute performance, asynchrone et *cloud-native*, écrit en C# / .NET 10.
@@ -288,6 +290,27 @@ Vérifié par deux vrais tirs contre des cibles de latence différente (5–15 m
 la comparaison détecte correctement une régression de p95 de +205,6 % sur `__iteration`,
 `--max-regression-percent 10` échoue (code de sortie 1), `--max-regression-percent 1000`
 passe (code de sortie 0) — et le rapport HTML colore chaque étape régressée en rouge.
+
+## Pipeline CI
+
+Tout l'outillage orienté CI (seuils, `ExitAfterRun`, `Tempest.Compare`) restait, jusqu'ici,
+jamais exercé automatiquement. `.github/workflows/ci.yml` ferme cette boucle sur chaque push et
+pull request vers `main`, en deux temps :
+
+- **`build-and-test`** — restauration, compilation en `Release`, suite de tests complète,
+  `dotnet format --verify-no-changes`.
+- **`smoke-e2e`** — un **vrai tir**, pas seulement des tests unitaires : démarre
+  `Tempest.SampleTarget`, attend qu'il réponde, puis lance `Tempest.Host` en mode autonome
+  avec des seuils configurés et `ExitAfterRun=true` contre lui. C'est ce genre de vérification
+  qui a déjà révélé des bugs réels dans ce projet (limite Kestrel HTTP/1.1+2, `UriFormatException`
+  sur l'hôte `+`, `TargetUri` jamais propagé aux workers) — aucun test isolé ne les aurait
+  trouvés. Seuils volontairement larges (P95 < 1 000 ms) : ce job vérifie que la chaîne
+  seuils → code de sortie fonctionne en CI, pas la performance elle-même, qui varie trop d'un
+  runner partagé à l'autre pour un seuil serré.
+
+Vérifié en local, commande par commande, avant de pousser le workflow (pas d'accès direct aux
+runs GitHub Actions depuis cet environnement — `gh` n'est pas installé, cf. plus haut) : restore,
+build, 299 tests, format, puis un tir de fumée réel avec les mêmes seuils — code de sortie 0.
 
 ## Configuration déclarative
 
@@ -792,6 +815,7 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 18** — Prometheus en mode distribué : `TempestMeter` découplé de `MetricsAggregator` (source de rapport quelconque), workers exposant leurs métriques locales, maître exposant la vue agrégée du cluster via `MasterCoordinator.Snapshot`
 - [x] **Étape 19** — Rapport HTML autonome (`LoadTestReport.ToHtml`, endpoint `/report.html`) : mêmes chiffres que `/report`, verdict des seuils inclus, noms d'étape échappés
 - [x] **Étape 20** — Comparaison entre tirs (`LoadTestReportComparison`, outil `tools/Tempest.Compare`) : table console, rapport HTML comparatif, gate CI par pourcentage de régression — clôt le volet rapports/observabilité
+- [x] **Étape 21** — Pipeline CI (`.github/workflows/ci.yml`) : build/tests/format sur chaque push et pull request, plus un job de tir de fumée réel (seuils + `ExitAfterRun`) contre `Tempest.SampleTarget`
 
 ## Roadmap
 
