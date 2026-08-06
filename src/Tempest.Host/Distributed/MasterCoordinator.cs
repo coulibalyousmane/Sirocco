@@ -124,4 +124,28 @@ public sealed class MasterCoordinator
             return [.. _reports];
         }
     }
+
+    /// <summary>
+    /// Rapport le plus recent disponible pour ce maitre : <see cref="FinalReport"/> une fois le
+    /// tir termine (autoritatif), <see cref="LiveReport"/> pendant qu'il tourne (rafraichi par
+    /// sondage), ou un rapport vide avant le premier sondage.
+    /// <para>
+    /// Meme signature que <see cref="Tempest.Application.Metrics.MetricsAggregator.Snapshot(StatisticsScope)"/> :
+    /// le maitre n'a pas de fenetre glissante propre (il ne fait que fusionner des rapports
+    /// deja construits par les workers), donc <paramref name="scope"/> n'a d'effet que sur le
+    /// champ <see cref="LoadTestReport.Scope"/> du rapport vide — utilise pour que
+    /// <see cref="Infrastructure.Metrics.TempestMeter"/> reste utilisable telle quelle, sans
+    /// distinguer maitre et agregateur local.
+    /// </para>
+    /// </summary>
+    public LoadTestReport Snapshot(StatisticsScope scope) => FinalReport ?? LiveReport ?? EmptyReport(scope);
+
+    private static LoadTestReport EmptyReport(StatisticsScope scope) => new()
+    {
+        Scope = scope,
+        Duration = TimeSpan.Zero,
+        Steps = [],
+        Iteration = StepStatistics.Empty(StepId.None, WellKnownSteps.ITERATION),
+        MetricsDropped = 0L,
+    };
 }

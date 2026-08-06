@@ -69,10 +69,13 @@ internal sealed class ExtractionRuleDto
 
     public string? XPath { get; set; }
 
+    public string? JsonPath { get; set; }
+
     public ExtractionRule ToDefinition() => new()
     {
         Variable = Variable,
         Regex = Regex,
         XPath = XPath,
+        JsonPath = JsonPath,
     };
 }

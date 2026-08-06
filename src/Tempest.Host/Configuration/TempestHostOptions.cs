@@ -23,6 +23,12 @@ public sealed class TempestHostOptions
     /// <summary>Valeur de <see cref="Workflow"/> selectionnant <c>GrpcStreamEchoWorkflow</c>.</summary>
     public const string GRPC_STREAM_ECHO_WORKFLOW = "grpc-stream-echo";
 
+    /// <summary>Valeur de <see cref="Workflow"/> selectionnant <c>GrpcClientStreamEchoWorkflow</c>.</summary>
+    public const string GRPC_CLIENT_STREAM_ECHO_WORKFLOW = "grpc-client-stream-echo";
+
+    /// <summary>Valeur de <see cref="Workflow"/> selectionnant <c>GrpcBidiStreamEchoWorkflow</c>.</summary>
+    public const string GRPC_BIDI_STREAM_ECHO_WORKFLOW = "grpc-bidi-stream-echo";
+
     /// <summary>Valeur de <see cref="Role"/> : l'hote tire seul, comportement inchange.</summary>
     public const string ROLE_STANDALONE = "standalone";
 
@@ -90,4 +96,17 @@ public sealed class TempestHostOptions
     /// </para>
     /// </summary>
     public bool ExitAfterRun { get; init; }
+
+    /// <summary>
+    /// Secret partage authentifiant le control plane distribue (<c>/master/register</c>,
+    /// <c>/master/report</c>, <c>/worker/prepare</c>, <c>/worker/start</c>), exige en
+    /// <c>Authorization: Bearer &lt;secret&gt;</c>.
+    /// <para>
+    /// <see langword="null"/> par defaut : ces endpoints restent ouverts tant que l'operateur ne
+    /// configure pas explicitement ce secret — comme la REST API locale de k6, jamais
+    /// authentifiee (la securite y repose sur le perimetre reseau). Sans effet en mode
+    /// autonome, qui n'expose aucun de ces endpoints.
+    /// </para>
+    /// </summary>
+    public string? ClusterSharedSecret { get; init; }
 }

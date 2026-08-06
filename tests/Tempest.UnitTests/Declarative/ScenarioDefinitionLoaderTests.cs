@@ -180,4 +180,43 @@ public sealed class ScenarioDefinitionLoaderTests
         Assert.Throws<ArgumentException>(() => ScenarioDefinitionLoader.Parse("", ScenarioFormat.Yaml));
         Assert.Throws<ArgumentException>(() => ScenarioDefinitionLoader.Parse("   ", ScenarioFormat.Json));
     }
+
+    [Fact]
+    public void A_jsonPath_extraction_rule_survives_the_yaml_and_json_dto_round_trip()
+    {
+        const string yaml = """
+            name: jsonpath-scenario
+            steps:
+              - name: login
+                method: POST
+                path: /api/auth/login
+                extract:
+                  - variable: token
+                    jsonPath: $.token
+            """;
+
+        const string json = """
+            {
+              "name": "jsonpath-scenario",
+              "steps": [
+                {
+                  "name": "login",
+                  "method": "POST",
+                  "path": "/api/auth/login",
+                  "extract": [
+                    { "variable": "token", "jsonPath": "$.token" }
+                  ]
+                }
+              ]
+            }
+            """;
+
+        foreach ((string content, ScenarioFormat format) in new[] { (yaml, ScenarioFormat.Yaml), (json, ScenarioFormat.Json) })
+        {
+            ExtractionRule extraction = Assert.Single(ScenarioDefinitionLoader.Parse(content, format).Steps[0].Extract);
+            Assert.Equal("$.token", extraction.JsonPath);
+            Assert.Null(extraction.Regex);
+            Assert.Null(extraction.XPath);
+        }
+    }
 }

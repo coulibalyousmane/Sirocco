@@ -22,10 +22,15 @@ namespace Tempest.Host.Distributed;
 /// main, une fois la preparation recue.
 /// </para>
 /// </summary>
-public sealed class WorkerCoordinator(WorkerOptions options, IHttpClientFactory httpClientFactory, ILogger<WorkerCoordinator> logger)
+public sealed class WorkerCoordinator(
+    WorkerOptions options,
+    TempestHostOptions tempestOptions,
+    IHttpClientFactory httpClientFactory,
+    ILogger<WorkerCoordinator> logger)
 {
     private TargetRpsLoadEngine? _engine;
     private MetricsProcessor? _metricsProcessor;
+    private TempestMeter? _meter;
     private bool _running;
 
     /// <summary>Agregateur du tir local, disponible des que <see cref="Prepare"/> a ete appele.</summary>
@@ -69,6 +74,14 @@ public sealed class WorkerCoordinator(WorkerOptions options, IHttpClientFactory 
         MetricsAggregator aggregator = new(steps);
         _metricsProcessor = new MetricsProcessor(sink, aggregator);
         Aggregator = aggregator;
+
+        // Construit a la main, comme le reste de ce graphe : au demarrage du process, ce
+        // worker n'a pas encore d'agregateur (voir le commentaire de classe), donc rien ne
+        // permettait a l'injection de dependances de construire ce TempestMeter plus tot. Une
+        // fois construit, son Meter reste decouvrable par tout MeterListener (OpenTelemetry,
+        // Prometheus) deja demarre au niveau du process — cablé une seule fois dans Program.cs,
+        // avant que ce Prepare ne soit jamais appele.
+        _meter = new TempestMeter(aggregator);
     }
 
     /// <summary>
@@ -123,6 +136,7 @@ public sealed class WorkerCoordinator(WorkerOptions options, IHttpClientFactory 
         try
         {
             HttpClient masterClient = httpClientFactory.CreateClient();
+            masterClient.DefaultRequestHeaders.Authorization = ClusterAuthentication.BuildHeader(tempestOptions.ClusterSharedSecret);
             using HttpResponseMessage response = await masterClient
                 .PostAsJsonAsync($"{options.MasterUrl.TrimEnd('/')}/master/report", report)
                 .ConfigureAwait(false);
@@ -156,6 +170,16 @@ public sealed class WorkerCoordinator(WorkerOptions options, IHttpClientFactory 
         if (string.Equals(request.Workflow, TempestHostOptions.GRPC_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
         {
             return new GrpcStreamEchoWorkflow(request.GrpcEchoOptions ?? new GrpcEchoWorkflowOptions());
+        }
+
+        if (string.Equals(request.Workflow, TempestHostOptions.GRPC_CLIENT_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
+        {
+            return new GrpcClientStreamEchoWorkflow(request.GrpcEchoOptions ?? new GrpcEchoWorkflowOptions());
+        }
+
+        if (string.Equals(request.Workflow, TempestHostOptions.GRPC_BIDI_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
+        {
+            return new GrpcBidiStreamEchoWorkflow(request.GrpcEchoOptions ?? new GrpcEchoWorkflowOptions());
         }
 
         return new DynamicCheckoutWorkflow(request.DynamicCheckoutOptions ?? new DynamicCheckoutWorkflowOptions());

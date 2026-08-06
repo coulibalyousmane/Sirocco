@@ -9,6 +9,7 @@ namespace Tempest.Host.Distributed;
 /// </summary>
 internal sealed class WorkerRegistrationHostedService(
     WorkerOptions options,
+    TempestHostOptions tempestOptions,
     IHttpClientFactory httpClientFactory,
     ILogger<WorkerRegistrationHostedService> logger) : BackgroundService
 {
@@ -18,6 +19,7 @@ internal sealed class WorkerRegistrationHostedService(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         HttpClient client = httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = ClusterAuthentication.BuildHeader(tempestOptions.ClusterSharedSecret);
         string registerUrl = $"{options.MasterUrl.TrimEnd('/')}/master/register";
         WorkerRegistration registration = new(options.SelfUrl);
 

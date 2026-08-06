@@ -2,9 +2,12 @@
 
 namespace Tempest.Scenarios;
 
-/// <summary>Reglages de <see cref="GrpcEchoWorkflow"/>.</summary>
+/// <summary>Reglages de <see cref="GrpcEchoWorkflow"/> et des autres scenarios gRPC de reference.</summary>
 public sealed class GrpcEchoWorkflowOptions
 {
+    /// <summary>Nombre de messages envoyes par defaut par un flux pilote par le client (upload, bidirectionnel).</summary>
+    public const int DEFAULT_CLIENT_MESSAGE_COUNT = 5;
+
     /// <summary>
     /// Adresse du service gRPC. Si omise (<see langword="null"/> par defaut), derivee de
     /// <see cref="IVirtualUserContext.HttpClient"/>.BaseAddress — suffisant des que la cible
@@ -13,4 +16,12 @@ public sealed class GrpcEchoWorkflowOptions
     /// comme celui de <c>Tempest.SampleTarget</c>, doit alors etre renseigne explicitement ici.
     /// </summary>
     public Uri? TargetUri { get; init; }
+
+    /// <summary>
+    /// Nombre de messages envoyes par <see cref="GrpcClientStreamEchoWorkflow"/> et
+    /// <see cref="GrpcBidiStreamEchoWorkflow"/> avant fermeture du flux montant. A l'inverse du
+    /// streaming serveur (<see cref="GrpcStreamEchoWorkflow"/>, ou c'est la cible qui decide),
+    /// c'est ici le client qui pilote la longueur du flux.
+    /// </summary>
+    public int MessageCount { get; init; } = DEFAULT_CLIENT_MESSAGE_COUNT;
 }

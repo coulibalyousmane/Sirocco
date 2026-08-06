@@ -4,14 +4,15 @@ option csharp_namespace = "Tempest.Protos.Echo";
 
 package tempest.echo;
 
-// Contrats de reference pour le protocole gRPC : un appel unaire (Ping), un streaming serveur
-// (StreamEcho) — client-streaming et bidirectionnel restent hors perimetre de cette version.
-// Fichier unique reference par Tempest.Scenarios (client), Tempest.SampleTarget (serveur)
-// et Tempest.UnitTests (serveur, pour les tests) afin qu'un desaccord de contrat echoue a
-// la compilation plutot qu'a l'execution.
+// Contrats de reference pour le protocole gRPC : un appel unaire (Ping), les trois formes de
+// streaming (serveur, client, bidirectionnel). Fichier unique reference par Tempest.Scenarios
+// (client), Tempest.SampleTarget (serveur) et Tempest.UnitTests (serveur, pour les tests) afin
+// qu'un desaccord de contrat echoue a la compilation plutot qu'a l'execution.
 service EchoService {
   rpc Ping (PingRequest) returns (PingResponse);
   rpc StreamEcho (StreamEchoRequest) returns (stream StreamEchoMessage);
+  rpc ClientStreamEcho (stream ClientStreamMessage) returns (ClientStreamSummary);
+  rpc BidiStreamEcho (stream BidiStreamMessage) returns (stream BidiStreamMessage);
 }
 
 message PingRequest {
@@ -30,6 +31,25 @@ message StreamEchoRequest {
 // realiste ne dicte pas le comportement d'un flux auquel il s'abonne, il lit jusqu'a ce que
 // le serveur cesse d'emettre.
 message StreamEchoMessage {
+  string message = 1;
+  int32 sequence = 2;
+}
+
+// Ici a l'inverse, c'est le client qui decide du nombre de messages envoyes (upload) : le
+// serveur se contente d'accumuler jusqu'a la fermeture du flux.
+message ClientStreamMessage {
+  string message = 1;
+  int32 sequence = 2;
+}
+
+message ClientStreamSummary {
+  int32 messageCount = 1;
+  int32 totalBytes = 2;
+}
+
+// Reutilise pour les deux sens du flux bidirectionnel : le serveur echo chaque message recu,
+// dans l'ordre, sur son propre flux de sortie.
+message BidiStreamMessage {
   string message = 1;
   int32 sequence = 2;
 }

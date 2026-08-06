@@ -117,14 +117,20 @@ public sealed class TempestMeterTests
     [Fact]
     public void Lost_measurements_are_exposed_so_a_dashboard_can_alert_on_them()
     {
+        // Sentinelle deliberement improbable : DROPPED_INSTRUMENT ne porte aucun tag qui
+        // distinguerait cette mesure de celle d'un autre test publiant sur le meme nom de
+        // Meter en parallele (meme convention que TempestMetricsServiceCollectionExtensionsTests).
+        const long SENTINEL_DROPPED_COUNT = 837_465_918L;
+
         (MetricsAggregator aggregator, _) = CreateAggregator();
-        aggregator.MetricsDropped = 42L;
+        aggregator.MetricsDropped = SENTINEL_DROPPED_COUNT;
 
         using TempestMeter meter = new(aggregator);
 
-        Observation dropped = Collect(meter).Single(o => o.Instrument == DROPPED_INSTRUMENT);
+        Observation dropped = Collect(meter)
+            .Single(o => o.Instrument == DROPPED_INSTRUMENT && o.Value == SENTINEL_DROPPED_COUNT);
 
-        Assert.Equal(42d, dropped.Value);
+        Assert.Equal(SENTINEL_DROPPED_COUNT, dropped.Value);
     }
 
     [Fact]

@@ -29,6 +29,7 @@ services:
       Tempest__TargetBaseUrl: http://sampletarget:5281
       Tempest__MaxVirtualUsers: "20"
       Tempest__ExitAfterRun: "true"
+      Tempest__ClusterSharedSecret: "demo-cluster-secret"
       Tempest__Profile__0__FromRps: "0"
       Tempest__Profile__0__ToRps: "10"
       Tempest__Profile__0__DurationSeconds: "10"
@@ -53,6 +54,7 @@ services:
       ASPNETCORE_URLS: http://+:5300
       Tempest__Role: worker
       Tempest__TargetBaseUrl: http://sampletarget:5281
+      Tempest__ClusterSharedSecret: "demo-cluster-secret"
       Worker__MasterUrl: http://master:5299
       Worker__SelfUrl: http://worker1:5300
     depends_on:
@@ -67,6 +69,7 @@ services:
       ASPNETCORE_URLS: http://+:5300
       Tempest__Role: worker
       Tempest__TargetBaseUrl: http://sampletarget:5281
+      Tempest__ClusterSharedSecret: "demo-cluster-secret"
       Worker__MasterUrl: http://master:5299
       Worker__SelfUrl: http://worker2:5300
     depends_on:

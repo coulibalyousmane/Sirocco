@@ -52,17 +52,30 @@ public sealed class TempestMeter : IDisposable
         ("1.0", static snapshot => snapshot.MaxMilliseconds),
     ];
 
-    private readonly MetricsAggregator _aggregator;
+    private readonly Func<StatisticsScope, LoadTestReport> _snapshotProvider;
     private readonly Meter _meter;
 
     /// <summary>Cree les instruments et les rattache a l'agregateur.</summary>
     /// <param name="aggregator">Source des statistiques.</param>
     /// <param name="meterFactory">Fabrique de <see cref="Meter"/> ; une instance autonome si omise.</param>
     public TempestMeter(MetricsAggregator aggregator, IMeterFactory? meterFactory = null)
+        : this(aggregator is not null ? aggregator.Snapshot : throw new ArgumentNullException(nameof(aggregator)), meterFactory)
     {
-        ArgumentNullException.ThrowIfNull(aggregator);
+    }
 
-        _aggregator = aggregator;
+    /// <summary>
+    /// Cree les instruments a partir de n'importe quelle source de rapport, pas seulement d'un
+    /// <see cref="MetricsAggregator"/> local : le maitre du mode distribue n'en a pas (il ne
+    /// fait que fusionner des rapports deja construits par les workers), mais expose la meme
+    /// forme de rapport via <c>MasterCoordinator.Snapshot</c>.
+    /// </summary>
+    /// <param name="snapshotProvider">Fournit le rapport courant pour un perimetre donne.</param>
+    /// <param name="meterFactory">Fabrique de <see cref="Meter"/> ; une instance autonome si omise.</param>
+    public TempestMeter(Func<StatisticsScope, LoadTestReport> snapshotProvider, IMeterFactory? meterFactory = null)
+    {
+        ArgumentNullException.ThrowIfNull(snapshotProvider);
+
+        _snapshotProvider = snapshotProvider;
         _meter = meterFactory?.Create(METER_NAME) ?? new Meter(METER_NAME);
 
         _meter.CreateObservableGauge(
@@ -101,7 +114,7 @@ public sealed class TempestMeter : IDisposable
 
     private IEnumerable<Measurement<double>> ObserveLatency()
     {
-        LoadTestReport report = _aggregator.Snapshot(StatisticsScope.Sliding);
+        LoadTestReport report = _snapshotProvider(StatisticsScope.Sliding);
         List<Measurement<double>> measurements = new(report.Steps.Count * _quantiles.Length * 2);
 
         foreach (StepStatistics step in report.Steps)
@@ -136,7 +149,7 @@ public sealed class TempestMeter : IDisposable
 
     private IEnumerable<Measurement<long>> ObserveRequests()
     {
-        LoadTestReport report = _aggregator.Snapshot(StatisticsScope.Cumulative);
+        LoadTestReport report = _snapshotProvider(StatisticsScope.Cumulative);
         List<Measurement<long>> measurements = [];
 
         foreach (StepStatistics step in report.Steps)
@@ -161,7 +174,7 @@ public sealed class TempestMeter : IDisposable
 
     private IEnumerable<Measurement<long>> ObserveBytesReceived()
     {
-        LoadTestReport report = _aggregator.Snapshot(StatisticsScope.Cumulative);
+        LoadTestReport report = _snapshotProvider(StatisticsScope.Cumulative);
 
         return [.. report.Steps
             .Where(static step => step.BytesReceived > 0L)
@@ -172,7 +185,7 @@ public sealed class TempestMeter : IDisposable
 
     private IEnumerable<Measurement<double>> ObserveSchedulingDelay()
     {
-        LoadTestReport report = _aggregator.Snapshot(StatisticsScope.Cumulative);
+        LoadTestReport report = _snapshotProvider(StatisticsScope.Cumulative);
 
         return [.. report.Steps
             .Where(static step => step.Count > 0L)
@@ -182,5 +195,5 @@ public sealed class TempestMeter : IDisposable
     }
 
     private IEnumerable<Measurement<long>> ObserveDroppedMetrics() =>
-        [new Measurement<long>(_aggregator.MetricsDropped)];
+        [new Measurement<long>(_snapshotProvider(StatisticsScope.Cumulative).MetricsDropped)];
 }

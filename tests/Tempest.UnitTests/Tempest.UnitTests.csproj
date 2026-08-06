@@ -33,6 +33,10 @@
     <ProjectReference Include="..\..\src\Tempest.Application\Tempest.Application.csproj" />
     <ProjectReference Include="..\..\src\Tempest.Infrastructure\Tempest.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Tempest.Scenarios\Tempest.Scenarios.csproj" />
+    <!-- Seule ClusterAuthentication (logique pure, sans dependance ASP.NET) est testee d'ici :
+         le reste du cablage distribue (WorkerCoordinator, MasterOrchestrationHostedService)
+         reste verifie par de vrais tirs, comme le reste du mode distribue. -->
+    <ProjectReference Include="..\..\src\Tempest.Host\Tempest.Host.csproj" />
   </ItemGroup>
 
 </Project>

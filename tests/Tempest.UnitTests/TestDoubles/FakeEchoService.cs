@@ -22,4 +22,31 @@ internal sealed class FakeEchoService : EchoService.EchoServiceBase
             await responseStream.WriteAsync(new StreamEchoMessage { Message = request.Message, Sequence = sequence });
         }
     }
+
+    public override async Task<ClientStreamSummary> ClientStreamEcho(
+        IAsyncStreamReader<ClientStreamMessage> requestStream,
+        ServerCallContext context)
+    {
+        int messageCount = 0;
+        int totalBytes = 0;
+
+        while (await requestStream.MoveNext())
+        {
+            messageCount++;
+            totalBytes += requestStream.Current.CalculateSize();
+        }
+
+        return new ClientStreamSummary { MessageCount = messageCount, TotalBytes = totalBytes };
+    }
+
+    public override async Task BidiStreamEcho(
+        IAsyncStreamReader<BidiStreamMessage> requestStream,
+        IServerStreamWriter<BidiStreamMessage> responseStream,
+        ServerCallContext context)
+    {
+        while (await requestStream.MoveNext())
+        {
+            await responseStream.WriteAsync(requestStream.Current);
+        }
+    }
 }

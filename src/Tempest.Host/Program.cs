@@ -11,6 +11,7 @@ using Tempest.Host;
 using Tempest.Host.Configuration;
 using Tempest.Host.Distributed;
 using Tempest.Infrastructure.DependencyInjection;
+using Tempest.Infrastructure.Metrics;
 using Tempest.Scenarios;
 using Tempest.Scenarios.Declarative;
 
@@ -32,10 +33,19 @@ if (string.Equals(tempestOptions.Role, TempestHostOptions.ROLE_WORKER, StringCom
 
     builder.Services.AddHttpClient();
     builder.Services.AddSingleton(workerOptions);
+    builder.Services.AddSingleton(tempestOptions);
     builder.Services.AddSingleton<WorkerCoordinator>();
     builder.Services.AddHostedService<WorkerRegistrationHostedService>();
 
+    // Cable des le demarrage, avant meme qu'un tir n'existe : WorkerCoordinator.Prepare()
+    // construit son propre TempestMeter a la main une fois le tir connu (voir son commentaire),
+    // et n'importe quel Meter nomme "Tempest" cree plus tard est decouvert par ce MeterListener
+    // des qu'il apparait — rien a reconfigurer entre le demarrage du process et /worker/prepare.
+    builder.Services.AddTempestOpenTelemetry(otel => otel.AddPrometheusExporter());
+
     WebApplication workerApp = builder.Build();
+
+    workerApp.MapPrometheusScrapingEndpoint();
 
     // Deux appels distincts (prepare, start) plutot qu'un seul : le maitre prepare tous les
     // workers d'abord, puis les demarre tous — c'est ce qui rapproche leurs departs reels,
@@ -45,13 +55,13 @@ if (string.Equals(tempestOptions.Role, TempestHostOptions.ROLE_WORKER, StringCom
     {
         coordinator.Prepare(request);
         return Results.Ok();
-    });
+    }).AddEndpointFilter<ClusterAuthenticationFilter>();
 
     workerApp.MapPost("/worker/start", (WorkerCoordinator coordinator) =>
     {
         coordinator.Start();
         return Results.Accepted();
-    });
+    }).AddEndpointFilter<ClusterAuthenticationFilter>();
 
     workerApp.MapGet("/report", (WorkerCoordinator coordinator) =>
         coordinator.Aggregator is { } aggregator
@@ -85,19 +95,31 @@ else if (string.Equals(tempestOptions.Role, TempestHostOptions.ROLE_MASTER, Stri
     builder.Services.AddSingleton<MasterCoordinator>();
     builder.Services.AddHostedService<MasterOrchestrationHostedService>();
 
+    // Le maitre n'a pas de MetricsAggregator local (il ne fait que fusionner des rapports deja
+    // construits par les workers) : TempestMeter est donc cable a la main a partir de
+    // MasterCoordinator.Snapshot, pas via AddTempestMetrics. MeterActivationHostedService force
+    // sa construction au demarrage, exactement comme en mode autonome — sans elle, ce singleton
+    // ne serait jamais resolu, donc jamais construit, et /metrics resterait vide en silence.
+    builder.Services.AddSingleton(provider =>
+        new TempestMeter(provider.GetRequiredService<MasterCoordinator>().Snapshot));
+    builder.Services.AddHostedService<MeterActivationHostedService>();
+    builder.Services.AddTempestOpenTelemetry(otel => otel.AddPrometheusExporter());
+
     WebApplication masterApp = builder.Build();
+
+    masterApp.MapPrometheusScrapingEndpoint();
 
     masterApp.MapPost("/master/register", (WorkerRegistration registration, MasterCoordinator coordinator) =>
     {
         coordinator.Register(registration.WorkerUrl);
         return Results.Ok();
-    });
+    }).AddEndpointFilter<ClusterAuthenticationFilter>();
 
     masterApp.MapPost("/master/report", (WorkerReport report, MasterCoordinator coordinator) =>
     {
         coordinator.SubmitReport(report);
         return Results.Ok();
-    });
+    }).AddEndpointFilter<ClusterAuthenticationFilter>();
 
     masterApp.MapGet("/report", (MasterCoordinator coordinator) =>
         coordinator.FinalReport is { } report
@@ -116,6 +138,11 @@ else if (string.Equals(tempestOptions.Role, TempestHostOptions.ROLE_MASTER, Stri
     masterApp.MapGet("/thresholds", (MasterCoordinator coordinator) =>
         coordinator.FinalThresholds is { } thresholds
             ? Results.Ok(thresholds)
+            : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
+
+    masterApp.MapGet("/report.html", (MasterCoordinator coordinator) =>
+        coordinator.FinalReport is { } report
+            ? Results.Content(report.ToHtml(coordinator.FinalThresholds), "text/html")
             : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
 
     masterApp.Run();
@@ -154,6 +181,20 @@ else
             .Get<GrpcEchoWorkflowOptions>() ?? new GrpcEchoWorkflowOptions();
 
         workflow = new GrpcStreamEchoWorkflow(grpcStreamOptions);
+    }
+    else if (string.Equals(tempestOptions.Workflow, TempestHostOptions.GRPC_CLIENT_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
+    {
+        GrpcEchoWorkflowOptions grpcClientStreamOptions = builder.Configuration.GetSection("GrpcEcho")
+            .Get<GrpcEchoWorkflowOptions>() ?? new GrpcEchoWorkflowOptions();
+
+        workflow = new GrpcClientStreamEchoWorkflow(grpcClientStreamOptions);
+    }
+    else if (string.Equals(tempestOptions.Workflow, TempestHostOptions.GRPC_BIDI_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
+    {
+        GrpcEchoWorkflowOptions grpcBidiStreamOptions = builder.Configuration.GetSection("GrpcEcho")
+            .Get<GrpcEchoWorkflowOptions>() ?? new GrpcEchoWorkflowOptions();
+
+        workflow = new GrpcBidiStreamEchoWorkflow(grpcBidiStreamOptions);
     }
     else
     {
@@ -198,6 +239,13 @@ else
 
     app.MapGet("/thresholds", (MetricsAggregator aggregator, TempestHostOptions options) =>
         Results.Ok(ThresholdReport.Evaluate(options.Thresholds, aggregator.Snapshot(StatisticsScope.Cumulative))));
+
+    app.MapGet("/report.html", (MetricsAggregator aggregator, TempestHostOptions options) =>
+    {
+        LoadTestReport report = aggregator.Snapshot(StatisticsScope.Cumulative);
+        ThresholdReport thresholds = ThresholdReport.Evaluate(options.Thresholds, report);
+        return Results.Content(report.ToHtml(thresholds), "text/html");
+    });
 
     app.Run();
 }

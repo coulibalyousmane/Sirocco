@@ -164,7 +164,21 @@ dotnet run --project src/Tempest.Host -c Release                # tire, écoute 
 ```
 
 Pendant et après le tir : `http://localhost:5280/report/live` (fenêtre glissante),
-`.../report` (cumulé), `.../metrics` (Prometheus).
+`.../report` (cumulé), `.../report.html` (le même rapport cumulé, en page HTML autonome —
+lisible directement dans un navigateur, sans serveur ni JSON à interpréter), `.../metrics`
+(Prometheus).
+
+`/report.html` (`LoadTestReport.ToHtml`) reprend les mêmes chiffres que `/report`, plus le
+verdict des seuils configurés s'il y en a (même contenu que `/thresholds`, en couleur) — CSS et
+contenu entièrement inline, aucune ressource externe. Les noms d'étape, qui viennent en
+définitive d'un fichier de scénario potentiellement écrit par quelqu'un d'autre que l'opérateur
+qui ouvre ce rapport, sont échappés avant insertion (`WebUtility.HtmlEncode`) : une étape
+nommée `<script>...</script>` s'affiche comme texte, jamais comme code. Même endpoint côté
+maître en mode distribué, construit à partir du rapport final fusionné.
+
+Vérifié par un vrai tir : le tableau du rapport HTML reflète exactement les chiffres du rapport
+JSON (245 itérations, p95 89,60 ms) et affiche correctement le verdict d'un seuil respecté
+(`[OK] __iteration: ResponseP95Milliseconds < 500`).
 
 ## Scénario de référence
 
@@ -245,6 +259,36 @@ Vérifié par un vrai tir : seuil trop strict → code de sortie 1, seuil desser
 0, `ExitAfterRun` absent → l'hôte reste actif comme à l'étape précédente. `/thresholds` expose
 le même verdict en JSON, à tout moment du tir.
 
+## Comparaison entre tirs
+
+Un `ThresholdRule` gate sur une limite **absolue**, à redéfinir manuellement à chaque évolution
+légitime de la cible. `tools/Tempest.Compare` répond à une question différente — "a-t-on
+régressé *depuis le dernier tir de référence*, indépendamment de la limite absolue ?" — à
+partir de deux rapports `/report` exportés en JSON, sans qu'aucun autre seuil n'ait besoin
+d'être redéfini :
+
+```bash
+dotnet run --project tools/Tempest.Compare -- reference.json actuel.json \
+  --html comparaison.html --max-regression-percent 20
+```
+
+Trois usages du même calcul (`LoadTestReportComparison.Compare`), pas trois outils : une table
+console (usage manuel ou log CI), `--html` pour un rapport comparatif ouvrable dans un
+navigateur (régressions en rouge, améliorations en vert), `--max-regression-percent` pour un
+code de sortie 1 si une étape régresse au-delà de ce pourcentage de p95 par rapport à la
+référence. Les étapes sont appariées par nom : une étape apparue ou disparue entre les deux
+tirs est signalée comme telle, jamais ignorée en silence.
+
+`Tempest.Compare` ne déserialise pas directement vers `LoadTestReport` : comme
+`ScenarioDefinitionDto` côté scénarios déclaratifs, `System.Text.Json` ne sait pas construire un
+`IReadOnlyList<T>` par réflexion — un DTO à types concrets fait la frontière avant de mapper
+vers le type Domain réel.
+
+Vérifié par deux vrais tirs contre des cibles de latence différente (5–15 ms puis 40–80 ms) :
+la comparaison détecte correctement une régression de p95 de +205,6 % sur `__iteration`,
+`--max-regression-percent 10` échoue (code de sortie 1), `--max-regression-percent 1000`
+passe (code de sortie 0) — et le rapport HTML colore chaque étape régressée en rouge.
+
 ## Configuration déclarative
 
 Un scénario HTTP peut se décrire en YAML ou JSON plutôt qu'en C#, sans recompiler :
@@ -281,7 +325,7 @@ silencieusement.
 > le supposant. `ScenarioDefinitionDto` (types concrets, mutables) isole ce compromis à la
 > frontière de désérialisation ; `ScenarioDefinition` (Domain) reste un objet-valeur immuable.
 
-### Corrélation dynamique (Regex/XPath)
+### Corrélation dynamique (Regex/XPath/JsonPath)
 
 Une étape peut extraire une valeur de sa réponse et la rendre disponible aux étapes
 suivantes via `{{nom}}` — c'est ce qui comblait la limite décrite plus haut dans les
@@ -305,11 +349,24 @@ steps:
     expectedStatusCodes: [200]
 ```
 
-Exactement une expression par règle : `regex` (universelle, sur texte brut) ou `xpath` (pour
-un corps XML) — pas de JSONPath, hors périmètre choisi ; une extraction Regex suffit sur un
-corps JSON tant qu'aucune expression dédiée n'est nécessaire. Les deux syntaxes sont validées
-au chargement du scénario, pas au premier appel : un motif Regex ou une expression XPath
-mal formés échouent immédiatement, avant le premier tir.
+Exactement une expression par règle : `regex` (universelle, sur texte brut), `xpath` (pour un
+corps XML) ou `jsonPath` (pour un corps JSON) :
+
+```yaml
+extract:
+  - variable: token
+    jsonPath: $.token
+```
+
+`jsonPath` ne couvre volontairement qu'un sous-ensemble pratique — accès par propriété
+(`.nom`) et par index (`[n]`), par ex. `$.data.items[0].id` — sans caractères génériques,
+filtres, descente récursive (`..`) ni tranches : une extraction Regex suffisait jusqu'ici sur
+un corps JSON, ce sous-ensemble couvre le reste des cas usuels sans réimplémenter la
+spécification JSONPath entière. Implémenté avec `System.Text.Json.Nodes` (BCL) uniquement —
+`Tempest.Domain` n'a aucune dépendance NuGet externe, pas de bibliothèque JSONPath dédiée.
+
+Les trois syntaxes sont validées au chargement du scénario, pas au premier appel : une
+expression mal formée échoue immédiatement, avant le premier tir.
 
 Portée volontairement limitée à ce seul vocabulaire — pas de branchement, pas de boucle. Les
 variables extraites sont **locales à une itération** : une étape qui référence `{{nom}}` sans
@@ -324,6 +381,11 @@ extrait le jeton effectivement émis par `Tempest.SampleTarget`, `checkout` le r
 son en-tête `Authorization` — vérifié par un vrai tir, `checkout` passe désormais à 0 %
 d'échec (il retournait systématiquement 401 dans les versions précédentes de ce fichier,
 faute de pouvoir propager un jeton réel).
+
+Vérifié à nouveau après l'ajout de JsonPath, avec ce même scénario ré-écrit pour extraire le
+jeton via `$.token` plutôt qu'un motif Regex : 125 itérations, **0 échec** sur
+`login`/`browse`/`checkout` — `checkout` reste à 0 % d'échec, confirmant que le jeton extrait
+par JsonPath se propage correctement à l'en-tête `Authorization`, exactement comme avec Regex.
 
 ## Protocole WebSocket
 
@@ -412,10 +474,8 @@ seuils respectés.
 
 ## Protocole gRPC — streaming serveur
 
-Sur les trois modes de streaming gRPC, un seul est couvert par cette version : le **streaming
-serveur** (un appel, un flux de messages reçus). Streaming client et bidirectionnel restent un
-chantier séparé — chacun redéfinit différemment ce que "succès d'une étape" veut dire pour un
-flux ouvert, et méritent une conception à part plutôt qu'une extension mécanique de celle-ci.
+Le premier des trois modes de streaming gRPC : un appel, un flux de messages reçus, dont le
+nombre est décidé par le serveur.
 
 ```csharp
 AsyncServerStreamingCall<StreamEchoMessage> call = client.StreamEcho(new StreamEchoRequest { Message = "ping" }, cancellationToken: cancellationToken);
@@ -451,6 +511,79 @@ Vérifié par un vrai tir (20 utilisateurs virtuels, rampe 0→10→0 RPS sur 10
 `Tempest.SampleTarget`) : 75 itérations × 5 messages = 375 mesures sur `grpc-stream-message`,
 **0 échec** — un nombre qui correspond exactement à la configuration serveur, confirmant que
 chaque message du flux est bien compté une fois, ni plus ni moins.
+
+## Protocole gRPC — streaming client
+
+Le second mode, inverse du premier : c'est le **client** qui décide du nombre de messages
+envoyés (`GrpcEchoWorkflowOptions.MessageCount`), le serveur se contente d'accumuler jusqu'à
+la fermeture du flux montant puis répond une seule fois avec un récapitulatif.
+
+```csharp
+AsyncClientStreamingCall<ClientStreamMessage, ClientStreamSummary> call = client.ClientStreamEcho(cancellationToken: cancellationToken);
+await call.RequestStream.WriteAsync(new ClientStreamMessage { Message = "ping", Sequence = 0 });
+await call.RequestStream.CompleteAsync();
+ClientStreamSummary summary = await call.ResponseAsync;
+```
+
+**Une seule étape mesure l'appel entier** (`grpc-client-stream-upload`), contrairement au
+streaming serveur qui en mesure une par message reçu : un `WriteAsync` sur le flux montant ne
+retourne qu'une fois le message mis en tampon, sans attendre de reconnaissance individuelle — il
+n'existe donc aucune latence par message à mesurer avant la réponse récapitulative finale, seul
+évènement réellement observable de ce côté.
+
+`GrpcClientStreamEchoWorkflow` (scénario de référence) s'active via :
+
+```json
+"Tempest": { "Workflow": "grpc-client-stream-echo" },
+"GrpcEcho": { "TargetUri": "http://localhost:5287", "MessageCount": 5 }
+```
+
+Réutilise la même section `GrpcEcho` que les deux scénarios précédents (`TargetUri`), avec un
+réglage supplémentaire (`MessageCount`) propre aux flux pilotés par le client.
+
+Vérifié par un vrai tir (20 utilisateurs virtuels, rampe 0→10→0 RPS sur 6+8+3 s, contre
+`Tempest.SampleTarget`) : 125 itérations, **0 échec** sur `grpc-client-stream-upload` — le
+récapitulatif renvoyé par le serveur (nombre de messages, octets totaux) correspond à chaque
+fois exactement à ce qui a été envoyé.
+
+## Protocole gRPC — streaming bidirectionnel
+
+Le troisième et dernier mode : un flux ouvert une seule fois pour toute l'itération, sur lequel
+client et serveur échangent en **ping-pong** — écrire un message, attendre son écho, mesurer,
+recommencer — plutôt qu'en pipeline (écrire plusieurs messages d'avance sans attendre leurs
+échos).
+
+**Ce n'est pas une simplification arbitraire.** `IVirtualUserContext` et `StepScope` sont
+documentés comme n'étant touchés que par leur propre travailleur, sans aucune synchronisation —
+c'est ce qui permet au chemin de mesure de n'allouer et ne verrouiller rien, pour tous les
+scénarios. Un pipeline exigerait une tâche d'écriture et une tâche de lecture tournant en
+parallèle au sein d'une même itération, toutes deux ouvrant/clôturant des `StepScope` sur le
+même contexte — cela violerait cette invariante et forcerait une synchronisation qui coûterait
+à tous les scénarios, pas seulement celui-ci. Le ping-pong reste du vrai bidirectionnel au
+niveau du protocole (un seul flux, deux sens, réutilisé pour toute l'itération) : c'est
+seulement l'usage qu'en fait ce scénario qui reste séquentiel.
+
+```csharp
+AsyncDuplexStreamingCall<BidiStreamMessage, BidiStreamMessage> call = client.BidiStreamEcho(cancellationToken: cancellationToken);
+await call.RequestStream.WriteAsync(new BidiStreamMessage { Message = "ping", Sequence = 0 });
+await call.ResponseStream.MoveNext(cancellationToken);
+BidiStreamMessage echo = call.ResponseStream.Current;
+```
+
+Comme le streaming serveur, **chaque message mesure sa propre étape**
+(`grpc-bidi-stream-message`) : la latence rapportée est celle entre l'écriture d'un message et
+la réception de son écho, message par message.
+
+`GrpcBidiStreamEchoWorkflow` (scénario de référence) s'active via :
+
+```json
+"Tempest": { "Workflow": "grpc-bidi-stream-echo" },
+"GrpcEcho": { "TargetUri": "http://localhost:5287", "MessageCount": 5 }
+```
+
+Vérifié par un vrai tir (20 utilisateurs virtuels, rampe 0→10→0 RPS sur 6+8+3 s, contre
+`Tempest.SampleTarget`) : 125 itérations × 5 messages = 625 mesures sur
+`grpc-bidi-stream-message`, **0 échec**.
 
 ## Mode distribué (Master/Workers)
 
@@ -537,6 +670,58 @@ workers se sont enregistrés, préparés, démarrés, ont tiré et remonté leur
 en un total de 74 itérations, **0 échec** sur toutes les étapes, seuils respectés — le rapport
 combiné se lit comme s'il venait d'un seul processus.
 
+**Authentification du control plane.** `/master/register`, `/master/report`, `/worker/prepare`
+et `/worker/start` — les quatre appels qui peuvent détourner un tir distribué (enregistrer un
+faux worker, imposer un scénario, falsifier un rapport) — acceptent un secret partagé optionnel :
+
+```json
+"Tempest": { "ClusterSharedSecret": "un-secret-partage" }
+```
+
+Exigé en `Authorization: Bearer <secret>` dès qu'il est configuré, comparé en temps constant
+(`CryptographicOperations.FixedTimeEquals`) pour ne rien révéler par le temps de réponse.
+`null` par défaut : ces endpoints restent ouverts tant que l'opérateur ne configure rien —
+**délibérément inspiré, puis durci, par rapport à k6** : sa REST API locale (`localhost:6565`)
+n'est jamais authentifiée, la documentation officielle recommandant de ne compter que sur le
+périmètre réseau (ne pas la lier à `0.0.0.0`) ; son mode distribué via `k6-operator` ne porte
+pas non plus de jeton entre l'opérateur et les pods, la sécurité y reposant sur l'isolation
+Kubernetes. Le seul jeton de l'écosystème k6 est celui de l'API k6 Cloud (SaaS Grafana) — un
+client s'authentifiant vers le service cloud, pas un mécanisme entre les composants d'un tir.
+Tempest applique cette même idée de jeton Bearer directement entre maître et workers, ce que
+k6 lui-même ne fait pas.
+
+Vérifié par un vrai tir (1 maître, 2 workers, secret partagé configuré des deux côtés) :
+154 itérations fusionnées, **0 échec**, code de sortie 0 — l'en-tête est bien envoyé et
+accepté sur les quatre appels. Vérifié aussi dans l'autre sens : une requête directe sans
+en-tête `Authorization` est rejetée en 401 en moins de 3 ms, sans jamais atteindre la logique
+de préparation du worker.
+
+**Prometheus en mode distribué.** L'export existait déjà en mode autonome ; il couvre
+maintenant aussi maître et workers, chacun sur son `/metrics` habituel — pas de nouveau port,
+pas de nouvelle configuration à activer.
+
+- Chaque **worker** expose ses propres métriques locales, exactement comme le mode autonome :
+  `TempestMeter` est construit à la main dans `WorkerCoordinator.Prepare()`, une fois le
+  `MetricsAggregator` du tir connu (il n'existe pas avant, voir plus haut) — jusque-là,
+  `/metrics` répond, mais sans aucune série `tempest_*`.
+- Le **maître** expose une vue **agrégée** de tout le cluster, pas un simple proxy vers un
+  worker : `TempestMeter` y est câblé sur `MasterCoordinator.Snapshot`, qui renvoie
+  `FinalReport` une fois le tir terminé, `LiveReport` pendant qu'il tourne (le même rapport que
+  `/report/live`), ou un rapport vide avant le premier sondage. Simplification assumée : le
+  maître n'a pas de fenêtre glissante propre (il ne fait que fusionner des rapports déjà
+  construits par les workers), donc `tempest_latency_milliseconds` y reflète le même rapport
+  fusionné que les compteurs cumulés, sans distinction glissant/cumulé.
+- `TempestMeter` a été découplé de `MetricsAggregator` pour rendre ça possible : son
+  constructeur accepte maintenant n'importe quelle source de rapport
+  (`Func<StatisticsScope, LoadTestReport>`), avec une surcharge pratique pour le cas courant
+  (un agrégateur local). Le mode autonome n'a rien à changer, `MetricsAggregator.Snapshot` s'y
+  passe telle quelle.
+
+Vérifié par un vrai tir (1 maître, 2 workers) : `/metrics` sur un worker affiche ses propres
+compteurs locaux (`tempest_requests_total`, etc.) ; `/metrics` sur le maître, interrogé en
+plein tir, affiche les centiles et compteurs **fusionnés** des deux workers (176 itérations
+combinées à l'instant du sondage) — la même donnée que `/report/live`, sous forme Prometheus.
+
 ## Conteneurisation
 
 Une seule image sert les trois rôles (autonome/maître/worker) — c'est `Tempest:Role`, pas
@@ -601,6 +786,12 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 12** — Tableau de bord distribué en temps réel : `GET /worker/report/raw` + sondage continu du maître (`MasterOrchestrationHostedService`) + `GET /report/live` combiné, comblant la limite de l'étape 10
 - [x] **Étape 13** — `GrpcStreamEchoWorkflow` (streaming serveur) : chaque message reçu mesuré comme sa propre étape, complétant le protocole gRPC de l'étape 8 (roadmap P1, scope minimal — streaming client et bidirectionnel restent hors périmètre)
 - [x] **Étape 14** — Propagation du scénario et des options aux workers : `ScenarioDefinitionLoader.ReadRaw` (contenu, pas chemin) + `WebSocketEcho`/`GrpcEcho`/`DynamicCheckout` transmis dans `WorkerPrepareRequest`, comblant la limite de l'étape 10 — a mis au jour un bug latent (`grpc-echo` en mode distribué joignait le mauvais port faute de propagation de `TargetUri`)
+- [x] **Étape 15** — Authentification du control plane distribué (`ClusterAuthentication`, secret partagé optionnel en `Authorization: Bearer`, comparaison en temps constant) sur `/master/register`, `/master/report`, `/worker/prepare`, `/worker/start` — conception inspirée de k6, puis durcie (k6 n'authentifie ni sa REST API locale ni son mode distribué via `k6-operator`)
+- [x] **Étape 16** — `GrpcClientStreamEchoWorkflow` (streaming client) et `GrpcBidiStreamEchoWorkflow` (streaming bidirectionnel, ping-pong séquentiel), complétant les quatre modes gRPC (unaire, streaming serveur/client/bidirectionnel) et fermant la dernière limite de l'étape 13
+- [x] **Étape 17** — Extraction JsonPath (`ExtractionRule.JsonPath`, sous-ensemble propriété/index sur `System.Text.Json.Nodes`) aux côtés de Regex/XPath, fermant la limite documentée depuis l'étape 9
+- [x] **Étape 18** — Prometheus en mode distribué : `TempestMeter` découplé de `MetricsAggregator` (source de rapport quelconque), workers exposant leurs métriques locales, maître exposant la vue agrégée du cluster via `MasterCoordinator.Snapshot`
+- [x] **Étape 19** — Rapport HTML autonome (`LoadTestReport.ToHtml`, endpoint `/report.html`) : mêmes chiffres que `/report`, verdict des seuils inclus, noms d'étape échappés
+- [x] **Étape 20** — Comparaison entre tirs (`LoadTestReportComparison`, outil `tools/Tempest.Compare`) : table console, rapport HTML comparatif, gate CI par pourcentage de régression — clôt le volet rapports/observabilité
 
 ## Roadmap
 
@@ -609,6 +800,11 @@ minimal documenté à sa section :
 
 | Priorité | Fonctionnalité |
 |---|---|
-| ~~P1~~ | ~~Protocoles avancés~~ : WebSockets, gRPC unaire et gRPC streaming serveur faits — streaming client et bidirectionnel resteraient un chantier séparé s'ils sont un jour repris |
+| ~~P1~~ | ~~Protocoles avancés~~ : WebSockets et les quatre modes gRPC (unaire, streaming serveur/client/bidirectionnel) faits |
 | ~~P2~~ | ~~Mode distribué Master/Workers~~ fait (étape 10), tableau de bord combiné en temps réel fait (étape 12) |
-| ~~P3~~ | ~~Corrélation avancée : extraction par Regex / XPath~~ fait (étape 9) |
+| ~~P3~~ | ~~Corrélation avancée : extraction par Regex / XPath / JsonPath~~ fait (étapes 9, 17) |
+
+Trois chantiers de suivi, identifiés une fois les trois priorités closes, sont également faits :
+sécurisation du control plane distribué (étape 15), propagation du scénario et des options aux
+workers (étape 14), et rapports/observabilité — Prometheus distribué, rapport HTML, comparaison
+entre tirs (étapes 18 à 20).
