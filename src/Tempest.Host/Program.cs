@@ -1,19 +1,11 @@
-﻿using System.Net;
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using OpenTelemetry.Metrics;
-using Tempest.Application.DependencyInjection;
-using Tempest.Application.Execution;
-using Tempest.Application.Metrics;
-using Tempest.Domain.Execution;
-using Tempest.Domain.Load;
 using Tempest.Domain.Metrics;
 using Tempest.Host;
 using Tempest.Host.Configuration;
 using Tempest.Host.Distributed;
 using Tempest.Infrastructure.DependencyInjection;
 using Tempest.Infrastructure.Metrics;
-using Tempest.Scenarios;
-using Tempest.Scenarios.Declarative;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -149,103 +141,5 @@ else if (string.Equals(tempestOptions.Role, TempestHostOptions.ROLE_MASTER, Stri
 }
 else
 {
-    LoadProfile profile = LoadProfileFactory.FromOptions(tempestOptions);
-
-    // Le scenario code en dur reste le comportement par defaut : un fichier de scenario
-    // n'entre en jeu que si l'operateur le renseigne explicitement, et garde la priorite sur
-    // le choix fait via Workflow.
-    IWorkflow workflow;
-    if (!string.IsNullOrWhiteSpace(tempestOptions.ScenarioFile))
-    {
-        workflow = new DeclarativeWorkflow(ScenarioDefinitionLoader.LoadFromFile(tempestOptions.ScenarioFile));
-    }
-    else if (string.Equals(tempestOptions.Workflow, TempestHostOptions.WEBSOCKET_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
-    {
-        WebSocketEchoWorkflowOptions webSocketOptions = builder.Configuration.GetSection("WebSocketEcho")
-            .Get<WebSocketEchoWorkflowOptions>() ?? new WebSocketEchoWorkflowOptions();
-
-        workflow = new WebSocketEchoWorkflow(webSocketOptions);
-    }
-    else if (string.Equals(tempestOptions.Workflow, TempestHostOptions.GRPC_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
-    {
-        GrpcEchoWorkflowOptions grpcOptions = builder.Configuration.GetSection("GrpcEcho")
-            .Get<GrpcEchoWorkflowOptions>() ?? new GrpcEchoWorkflowOptions();
-
-        workflow = new GrpcEchoWorkflow(grpcOptions);
-    }
-    else if (string.Equals(tempestOptions.Workflow, TempestHostOptions.GRPC_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
-    {
-        // Meme section de configuration que GrpcEchoWorkflow (TargetUri) : meme besoin, memes
-        // reglages, pas de raison d'en dupliquer une deuxieme.
-        GrpcEchoWorkflowOptions grpcStreamOptions = builder.Configuration.GetSection("GrpcEcho")
-            .Get<GrpcEchoWorkflowOptions>() ?? new GrpcEchoWorkflowOptions();
-
-        workflow = new GrpcStreamEchoWorkflow(grpcStreamOptions);
-    }
-    else if (string.Equals(tempestOptions.Workflow, TempestHostOptions.GRPC_CLIENT_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
-    {
-        GrpcEchoWorkflowOptions grpcClientStreamOptions = builder.Configuration.GetSection("GrpcEcho")
-            .Get<GrpcEchoWorkflowOptions>() ?? new GrpcEchoWorkflowOptions();
-
-        workflow = new GrpcClientStreamEchoWorkflow(grpcClientStreamOptions);
-    }
-    else if (string.Equals(tempestOptions.Workflow, TempestHostOptions.GRPC_BIDI_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
-    {
-        GrpcEchoWorkflowOptions grpcBidiStreamOptions = builder.Configuration.GetSection("GrpcEcho")
-            .Get<GrpcEchoWorkflowOptions>() ?? new GrpcEchoWorkflowOptions();
-
-        workflow = new GrpcBidiStreamEchoWorkflow(grpcBidiStreamOptions);
-    }
-    else
-    {
-        DynamicCheckoutWorkflowOptions checkoutOptions = builder.Configuration.GetSection("DynamicCheckout")
-            .Get<DynamicCheckoutWorkflowOptions>() ?? new DynamicCheckoutWorkflowOptions();
-
-        workflow = new DynamicCheckoutWorkflow(checkoutOptions);
-    }
-
-    // Client HTTP unique, partage par tous les utilisateurs virtuels : c'est ce partage — pas
-    // un client par requete — qui permet au pool de connexions du SocketsHttpHandler de tenir
-    // des dizaines de milliers de RPS sans epuiser les ports ephemeres.
-    builder.Services.AddSingleton(_ => new HttpClient(new SocketsHttpHandler
-    {
-        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
-        MaxConnectionsPerServer = 4_096,
-        AutomaticDecompression = DecompressionMethods.None,
-    })
-    {
-        BaseAddress = new Uri(tempestOptions.TargetBaseUrl),
-        Timeout = TimeSpan.FromSeconds(30),
-    });
-
-    builder.Services.AddSingleton(tempestOptions);
-    builder.Services.AddSingleton(workflow);
-
-    builder.Services.AddTempestEngine(profile, new LoadTestOptions { MaxVirtualUsers = tempestOptions.MaxVirtualUsers });
-    builder.Services.AddTempestMetrics();
-    builder.Services.AddTempestOpenTelemetry(otel => otel.AddPrometheusExporter());
-
-    builder.Services.AddHostedService<LoadTestHostedService>();
-
-    WebApplication app = builder.Build();
-
-    app.MapPrometheusScrapingEndpoint();
-
-    app.MapGet("/report", (MetricsAggregator aggregator) =>
-        Results.Ok(aggregator.Snapshot(StatisticsScope.Cumulative)));
-
-    app.MapGet("/report/live", (MetricsAggregator aggregator) =>
-        Results.Ok(aggregator.Snapshot(StatisticsScope.Sliding)));
-
-    app.MapGet("/thresholds", (MetricsAggregator aggregator, TempestHostOptions options) =>
-        Results.Ok(ThresholdReport.Evaluate(options.Thresholds, aggregator.Snapshot(StatisticsScope.Cumulative))));
-
-    app.MapGet("/report.html", (MetricsAggregator aggregator, TempestHostOptions options) =>
-    {
-        LoadTestReport report = aggregator.Snapshot(StatisticsScope.Cumulative);
-        ThresholdReport thresholds = ThresholdReport.Evaluate(options.Thresholds, report);
-        return Results.Content(report.ToHtml(thresholds), "text/html");
-    });
-
-    app.Run();
+    StandaloneHost.Run(builder, tempestOptions);
 }

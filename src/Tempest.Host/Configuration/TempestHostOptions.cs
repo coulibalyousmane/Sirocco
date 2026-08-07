@@ -109,4 +109,19 @@ public sealed class TempestHostOptions
     /// </para>
     /// </summary>
     public string? ClusterSharedSecret { get; init; }
+
+    /// <summary>
+    /// Si renseigne, le rapport final est ecrit en HTML a ce chemin a la fin du tir, en plus de
+    /// tout endpoint expose. <see langword="null"/> par defaut. C'est <c>Tempest.Cli</c> qui en a
+    /// besoin : contrairement a l'hote, il ne reste pas actif apres le tir pour servir
+    /// <c>/report.html</c>.
+    /// </summary>
+    public string? ReportHtmlPath { get; init; }
+
+    /// <summary>
+    /// Si renseigne, le rapport final est ecrit en JSON a ce chemin a la fin du tir, dans le
+    /// meme format que <c>/report</c> — de quoi l'archiver comme reference pour
+    /// <c>Tempest.Compare</c> sans dependre d'un endpoint HTTP encore actif.
+    /// </summary>
+    public string? ReportJsonPath { get; init; }
 }

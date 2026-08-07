@@ -67,9 +67,10 @@ Tant qu'il faut cloner un dépôt privé et compiler une solution pour lancer un
 d'utilisateurs possibles, quelle que soit la qualité du moteur. C'est le seul point de cette liste
 qui bloque littéralement tout le reste, et c'est aussi le moins cher à traiter.
 
-- **Une vraie CLI** — `tempest run scenario.yaml --vus 50 --duration 30s`, avec les options qui
-  priment sur la configuration. Aujourd'hui tout passe par des variables d'environnement, ce
-  qu'aucun concurrent n'impose.
+- ~~**Une vraie CLI**~~ — fait (`Tempest.Cli`, voir [Interface de ligne de
+  commande](README.md#interface-de-ligne-de-commande)) : `tempest run scenario.yaml --rps 50
+  --duration 30s`, options qui priment sur la configuration. Le modèle fermé (`--vus`) suit la
+  phase 3 ; en attendant, le profil se pilote en débit (`--rps` ou `--from-rps`/`--to-rps`).
 - **Packaging `dotnet tool`** — `dotnet tool install -g Tempest.Cli`, le geste attendu par un
   développeur .NET.
 - **Binaires autonomes** (Linux, macOS, Windows) publiés en release GitHub, compilation Native AOT

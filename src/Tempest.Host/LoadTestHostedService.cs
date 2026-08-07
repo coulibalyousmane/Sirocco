@@ -1,4 +1,6 @@
-﻿using Tempest.Application.Execution;
+﻿using System.Text.Json;
+using System.Text.Json.Serialization;
+using Tempest.Application.Execution;
 using Tempest.Domain.Metrics;
 using Tempest.Host.Configuration;
 using Tempest.Infrastructure.Metrics;
@@ -24,6 +26,10 @@ internal sealed class LoadTestHostedService(
 {
     private const int EXIT_CODE_SUCCESS = 0;
     private const int EXIT_CODE_THRESHOLD_FAILURE = 1;
+
+    // Meme convention que ConfigureHttpJsonOptions dans Program.cs (voir son commentaire) : ce
+    // fichier est aussi lu par un humain ou par Tempest.Compare, jamais uniquement par du code.
+    private static readonly JsonSerializerOptions _reportJsonOptions = CreateReportJsonOptions();
 
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -68,10 +74,38 @@ internal sealed class LoadTestHostedService(
             logger.LogInformation("{Thresholds}", thresholds.ToTable());
         }
 
+        if (options.ReportHtmlPath is { } htmlPath)
+        {
+            // CancellationToken.None, deliberement : le tir vient de se terminer normalement,
+            // l'annulation de l'hote ne doit pas pouvoir tronquer l'ecriture du rapport final.
+            await File.WriteAllTextAsync(htmlPath, report.ToHtml(thresholds), CancellationToken.None).ConfigureAwait(false);
+            if (logger.IsEnabled(LogLevel.Information))
+            {
+                logger.LogInformation("Rapport HTML ecrit : {Path}", htmlPath);
+            }
+        }
+
+        if (options.ReportJsonPath is { } jsonPath)
+        {
+            string json = JsonSerializer.Serialize(report, _reportJsonOptions);
+            await File.WriteAllTextAsync(jsonPath, json, CancellationToken.None).ConfigureAwait(false);
+            if (logger.IsEnabled(LogLevel.Information))
+            {
+                logger.LogInformation("Rapport JSON ecrit : {Path}", jsonPath);
+            }
+        }
+
         if (options.ExitAfterRun)
         {
             Environment.ExitCode = thresholds.Passed ? EXIT_CODE_SUCCESS : EXIT_CODE_THRESHOLD_FAILURE;
             lifetime.StopApplication();
         }
+    }
+
+    private static JsonSerializerOptions CreateReportJsonOptions()
+    {
+        JsonSerializerOptions jsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        jsonOptions.Converters.Add(new JsonStringEnumConverter());
+        return jsonOptions;
     }
 }

@@ -37,6 +37,9 @@
          le reste du cablage distribue (WorkerCoordinator, MasterOrchestrationHostedService)
          reste verifie par de vrais tirs, comme le reste du mode distribue. -->
     <ProjectReference Include="..\..\src\Tempest.Host\Tempest.Host.csproj" />
+    <!-- Idem pour le parseur d'arguments de Tempest.Cli (CliOptions, CliDuration) : logique pure,
+         sans dependance ASP.NET, testable directement sans lancer de processus. -->
+    <ProjectReference Include="..\..\src\Tempest.Cli\Tempest.Cli.csproj" />
   </ItemGroup>
 
 </Project>

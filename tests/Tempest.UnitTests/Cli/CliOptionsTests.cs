@@ -1,0 +1,115 @@
+﻿using Tempest.Cli;
+using Tempest.Domain.Metrics;
+
+namespace Tempest.UnitTests.Cli;
+
+public sealed class CliOptionsTests
+{
+    [Fact]
+    public void A_scenario_path_and_flags_are_all_captured()
+    {
+        CliOptions options = CliOptions.Parse([
+            "scenario.yaml",
+            "--target-url", "http://localhost:5299",
+            "--rps", "50",
+            "--duration", "30s",
+            "--max-vus", "100",
+            "--report-html", "report.html",
+            "--report-json", "report.json",
+        ]);
+
+        Assert.Equal("scenario.yaml", options.ScenarioPath);
+        Assert.Equal("http://localhost:5299", options.TargetUrl);
+        Assert.Equal(50, options.Rps);
+        Assert.Equal(TimeSpan.FromSeconds(30), options.Duration);
+        Assert.Equal(100, options.MaxVirtualUsers);
+        Assert.Equal("report.html", options.ReportHtmlPath);
+        Assert.Equal("report.json", options.ReportJsonPath);
+    }
+
+    [Fact]
+    public void A_workflow_name_replaces_the_positional_scenario_path()
+    {
+        CliOptions options = CliOptions.Parse(["--workflow", "websocket-echo"]);
+
+        Assert.Null(options.ScenarioPath);
+        Assert.Equal("websocket-echo", options.Workflow);
+    }
+
+    [Fact]
+    public void A_ramp_captures_both_endpoints()
+    {
+        CliOptions options = CliOptions.Parse(["--from-rps", "0", "--to-rps", "100", "--duration", "10s"]);
+
+        Assert.Equal(0, options.FromRps);
+        Assert.Equal(100, options.ToRps);
+    }
+
+    [Fact]
+    public void From_rps_without_to_rps_is_rejected() =>
+        Assert.Throws<FormatException>(() => CliOptions.Parse(["--from-rps", "0"]));
+
+    [Fact]
+    public void Rps_and_ramp_together_are_mutually_exclusive() =>
+        Assert.Throws<FormatException>(() => CliOptions.Parse(["--rps", "50", "--from-rps", "0", "--to-rps", "100"]));
+
+    [Fact]
+    public void A_second_positional_argument_is_rejected() =>
+        Assert.Throws<FormatException>(() => CliOptions.Parse(["scenario.yaml", "other.yaml"]));
+
+    [Fact]
+    public void An_unrecognized_option_is_rejected() =>
+        Assert.Throws<FormatException>(() => CliOptions.Parse(["--not-a-real-option"]));
+
+    [Fact]
+    public void A_flag_missing_its_value_is_rejected() =>
+        Assert.Throws<FormatException>(() => CliOptions.Parse(["--target-url"]));
+
+    [Fact]
+    public void A_non_numeric_rps_is_rejected() =>
+        Assert.Throws<FormatException>(() => CliOptions.Parse(["--rps", "fast"]));
+
+    [Fact]
+    public void A_full_threshold_rule_is_parsed()
+    {
+        CliOptions options = CliOptions.Parse([
+            "--threshold", "__iteration:ResponseP95Milliseconds:LessThan:200:p95 sous 200ms",
+        ]);
+
+        ThresholdRule rule = Assert.Single(options.Thresholds);
+        Assert.Equal("__iteration", rule.StepName);
+        Assert.Equal(ThresholdMetric.ResponseP95Milliseconds, rule.Metric);
+        Assert.Equal(ThresholdComparison.LessThan, rule.Comparison);
+        Assert.Equal(200, rule.Limit);
+        Assert.Equal("p95 sous 200ms", rule.Name);
+    }
+
+    [Fact]
+    public void A_threshold_rule_without_a_name_is_parsed()
+    {
+        CliOptions options = CliOptions.Parse(["--threshold", "__iteration:ErrorRate:LessThanOrEqual:0.01"]);
+
+        ThresholdRule rule = Assert.Single(options.Thresholds);
+        Assert.Null(rule.Name);
+        Assert.Equal(ThresholdMetric.ErrorRate, rule.Metric);
+    }
+
+    [Fact]
+    public void Multiple_thresholds_are_all_captured()
+    {
+        CliOptions options = CliOptions.Parse([
+            "--threshold", "__iteration:ResponseP95Milliseconds:LessThan:200",
+            "--threshold", "__iteration:ErrorRate:LessThanOrEqual:0.01",
+        ]);
+
+        Assert.Equal(2, options.Thresholds.Count);
+    }
+
+    [Theory]
+    [InlineData("too:few:parts")]
+    [InlineData("__iteration:NotAMetric:LessThan:200")]
+    [InlineData("__iteration:ResponseP95Milliseconds:NotAComparison:200")]
+    [InlineData("__iteration:ResponseP95Milliseconds:LessThan:not-a-number")]
+    public void A_malformed_threshold_is_rejected(string malformed) =>
+        Assert.Throws<FormatException>(() => CliOptions.Parse(["--threshold", malformed]));
+}
