@@ -1,4 +1,5 @@
-﻿using Tempest.Domain.Declarative;
+﻿using Tempest.Domain.Data;
+using Tempest.Domain.Declarative;
 
 namespace Tempest.Scenarios.Declarative;
 
@@ -21,10 +22,34 @@ internal sealed class ScenarioDefinitionDto
 
     public List<HttpStepDefinitionDto> Steps { get; set; } = [];
 
+    public List<DataSetDefinitionDto> Datasets { get; set; } = [];
+
     public ScenarioDefinition ToDefinition() => new()
     {
         Name = Name,
         Steps = Steps.ConvertAll(static step => step.ToDefinition()),
+        Datasets = Datasets.ConvertAll(static dataset => dataset.ToDefinition()),
+    };
+}
+
+/// <inheritdoc cref="ScenarioDefinitionDto" />
+internal sealed class DataSetDefinitionDto
+{
+    public string Name { get; set; } = string.Empty;
+
+    public string Path { get; set; } = string.Empty;
+
+    public string Strategy { get; set; } = nameof(DataSetIterationStrategy.Circular);
+
+    public DataSetDefinition ToDefinition() => new()
+    {
+        Name = Name,
+        Path = Path,
+        Strategy = Enum.TryParse(Strategy, ignoreCase: true, out DataSetIterationStrategy strategy)
+            ? strategy
+            : throw new FormatException(
+                $"Strategie de jeu de donnees inconnue : '{Strategy}'. Valeurs possibles : " +
+                $"{string.Join(", ", Enum.GetNames<DataSetIterationStrategy>())}."),
     };
 }
 

@@ -1,4 +1,5 @@
-﻿using Tempest.Domain.Declarative;
+﻿using Tempest.Domain.Data;
+using Tempest.Domain.Declarative;
 
 namespace Tempest.UnitTests.Declarative;
 
@@ -9,6 +10,12 @@ public sealed class ScenarioDefinitionTests
         Name = name,
         Method = "GET",
         Path = "/api/ping",
+    };
+
+    private static DataSetDefinition CreateDataSet(string name = "users") => new()
+    {
+        Name = name,
+        Path = "users.csv",
     };
 
     [Fact]
@@ -58,6 +65,66 @@ public sealed class ScenarioDefinitionTests
 
         Assert.Throws<ArgumentException>(scenario.Validate);
     }
+
+    [Fact]
+    public void No_dataset_by_default()
+    {
+        Assert.Empty(new ScenarioDefinition { Name = "smoke", Steps = [CreateStep()] }.Datasets);
+    }
+
+    [Fact]
+    public void A_scenario_with_a_valid_dataset_is_valid()
+    {
+        ScenarioDefinition scenario = new() { Name = "smoke", Steps = [CreateStep()], Datasets = [CreateDataSet()] };
+
+        scenario.Validate();
+    }
+
+    [Fact]
+    public void Duplicate_dataset_names_are_rejected()
+    {
+        ScenarioDefinition scenario = new()
+        {
+            Name = "smoke",
+            Steps = [CreateStep()],
+            Datasets = [CreateDataSet("users"), CreateDataSet("users")],
+        };
+
+        Assert.Throws<ArgumentException>(scenario.Validate);
+    }
+
+    [Fact]
+    public void An_invalid_dataset_makes_the_whole_scenario_invalid()
+    {
+        ScenarioDefinition scenario = new()
+        {
+            Name = "smoke",
+            Steps = [CreateStep()],
+            Datasets = [CreateDataSet() with { Path = "" }],
+        };
+
+        Assert.Throws<ArgumentException>(scenario.Validate);
+    }
+}
+
+public sealed class DataSetDefinitionTests
+{
+    private static DataSetDefinition CreateDataSet() => new() { Name = "users", Path = "users.csv" };
+
+    [Fact]
+    public void A_dataset_with_a_name_and_a_path_is_valid() => CreateDataSet().Validate();
+
+    [Fact]
+    public void A_blank_name_is_rejected() =>
+        Assert.Throws<ArgumentException>(() => (CreateDataSet() with { Name = " " }).Validate());
+
+    [Fact]
+    public void A_blank_path_is_rejected() =>
+        Assert.Throws<ArgumentException>(() => (CreateDataSet() with { Path = "" }).Validate());
+
+    [Fact]
+    public void Circular_is_the_default_strategy() =>
+        Assert.Equal(DataSetIterationStrategy.Circular, CreateDataSet().Strategy);
 }
 
 public sealed class HttpStepDefinitionTests

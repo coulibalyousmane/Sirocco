@@ -28,11 +28,14 @@ public static class ScriptedWorkflowLoader
     private static readonly string[] _defaultImports =
     [
         "System",
+        "System.Collections.Generic",
         "System.Net.Http",
         "System.Threading",
         "System.Threading.Tasks",
+        "Tempest.Domain.Data",
         "Tempest.Domain.Execution",
         "Tempest.Domain.Metrics",
+        "Tempest.Scenarios.Data",
     ];
 
     private static readonly ScriptOptions _scriptOptions = BuildScriptOptions();

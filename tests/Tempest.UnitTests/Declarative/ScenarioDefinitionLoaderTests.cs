@@ -1,4 +1,5 @@
-﻿using Tempest.Domain.Declarative;
+﻿using Tempest.Domain.Data;
+using Tempest.Domain.Declarative;
 using Tempest.Scenarios.Declarative;
 
 namespace Tempest.UnitTests.Declarative;
@@ -218,5 +219,73 @@ public sealed class ScenarioDefinitionLoaderTests
             Assert.Null(extraction.Regex);
             Assert.Null(extraction.XPath);
         }
+    }
+
+    [Fact]
+    public void A_dataset_section_survives_the_yaml_and_json_dto_round_trip()
+    {
+        const string yaml = """
+            name: dataset-scenario
+            steps:
+              - name: ping
+                method: GET
+                path: /api/ping
+            datasets:
+              - name: users
+                path: users.csv
+                strategy: uniquePerVirtualUser
+            """;
+
+        const string json = """
+            {
+              "name": "dataset-scenario",
+              "steps": [{ "name": "ping", "method": "GET", "path": "/api/ping" }],
+              "datasets": [{ "name": "users", "path": "users.csv", "strategy": "uniquePerVirtualUser" }]
+            }
+            """;
+
+        foreach ((string content, ScenarioFormat format) in new[] { (yaml, ScenarioFormat.Yaml), (json, ScenarioFormat.Json) })
+        {
+            DataSetDefinition dataset = Assert.Single(ScenarioDefinitionLoader.Parse(content, format).Datasets);
+            Assert.Equal("users", dataset.Name);
+            Assert.Equal("users.csv", dataset.Path);
+            Assert.Equal(DataSetIterationStrategy.UniquePerVirtualUser, dataset.Strategy);
+        }
+    }
+
+    [Fact]
+    public void A_dataset_without_a_strategy_defaults_to_circular()
+    {
+        const string yaml = """
+            name: dataset-scenario
+            steps:
+              - name: ping
+                method: GET
+                path: /api/ping
+            datasets:
+              - name: users
+                path: users.csv
+            """;
+
+        DataSetDefinition dataset = Assert.Single(ScenarioDefinitionLoader.Parse(yaml, ScenarioFormat.Yaml).Datasets);
+        Assert.Equal(DataSetIterationStrategy.Circular, dataset.Strategy);
+    }
+
+    [Fact]
+    public void An_unknown_dataset_strategy_is_wrapped_in_a_format_exception()
+    {
+        const string yaml = """
+            name: dataset-scenario
+            steps:
+              - name: ping
+                method: GET
+                path: /api/ping
+            datasets:
+              - name: users
+                path: users.csv
+                strategy: not-a-real-strategy
+            """;
+
+        Assert.Throws<FormatException>(() => ScenarioDefinitionLoader.Parse(yaml, ScenarioFormat.Yaml));
     }
 }

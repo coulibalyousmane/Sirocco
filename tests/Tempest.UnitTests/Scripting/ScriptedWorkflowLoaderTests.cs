@@ -110,4 +110,75 @@ public sealed class ScriptedWorkflowLoaderTests
     [Fact]
     public void LoadFromFile_throws_when_the_file_does_not_exist() =>
         Assert.Throws<FileNotFoundException>(() => ScriptedWorkflowLoader.LoadFromFile("does-not-exist.csx"));
+
+    /// <summary>
+    /// Un script qui charge un jeu de donnees (roadmap phase 2) recoit forcement une ligne sous
+    /// <c>IReadOnlyDictionary&lt;string,string&gt;</c> : sans <c>System.Collections.Generic</c> dans
+    /// les imports par defaut, cette forme la plus commune d'un scenario scripte avec jeu de
+    /// donnees ne compile pas — un vrai tir contre scenarios/scripted-checkout.csv l'a revele.
+    /// </summary>
+    [Fact]
+    public async Task A_script_can_declare_a_generic_collection_without_an_explicit_using()
+    {
+        const string script = """
+            public sealed class GenericCollectionWorkflow : IWorkflow
+            {
+                public string Name => "generic-collection";
+
+                public void RegisterSteps(StepRegistry registry) { }
+
+                public ValueTask ExecuteAsync(IVirtualUserContext context, CancellationToken cancellationToken)
+                {
+                    IReadOnlyDictionary<string, string> row = new Dictionary<string, string> { ["k"] = "v" };
+                    return ValueTask.CompletedTask;
+                }
+            }
+
+            new GenericCollectionWorkflow()
+            """;
+
+        IWorkflow workflow = await ScriptedWorkflowLoader.LoadFromSourceAsync(script);
+
+        Assert.Equal("generic-collection", workflow.Name);
+    }
+
+    /// <summary>
+    /// Bout en bout : un script charge un vrai fichier CSV via <c>DataSetLoader</c> (imports
+    /// <c>Tempest.Domain.Data</c>/<c>Tempest.Scenarios.Data</c>), sans aucun <c>using</c>
+    /// explicite — le chemin qu'un scenario scripte avec jeu de donnees emprunte reellement
+    /// (voir scenarios/scripted-checkout.csx).
+    /// </summary>
+    [Fact]
+    public async Task A_script_can_load_a_real_dataset_file_without_an_explicit_using()
+    {
+        string path = Path.GetTempFileName() + ".csv";
+        File.WriteAllText(path, "value\na\nb\n");
+        try
+        {
+            const string scriptTemplate = """
+                public sealed class DatasetWorkflow : IWorkflow
+                {
+                    private readonly DataSet _rows = DataSetLoader.LoadFromFile(@"__PATH__", DataSetIterationStrategy.Circular);
+
+                    public string Name => "dataset-count-" + _rows.Count;
+
+                    public void RegisterSteps(StepRegistry registry) { }
+
+                    public ValueTask ExecuteAsync(IVirtualUserContext context, CancellationToken cancellationToken) =>
+                        ValueTask.CompletedTask;
+                }
+
+                new DatasetWorkflow()
+                """;
+            string script = scriptTemplate.Replace("__PATH__", path, StringComparison.Ordinal);
+
+            IWorkflow workflow = await ScriptedWorkflowLoader.LoadFromSourceAsync(script);
+
+            Assert.Equal("dataset-count-2", workflow.Name);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

@@ -1,8 +1,10 @@
 ﻿using System.Text;
 using System.Text.RegularExpressions;
+using Tempest.Domain.Data;
 using Tempest.Domain.Declarative;
 using Tempest.Domain.Execution;
 using Tempest.Domain.Metrics;
+using Tempest.Scenarios.Data;
 
 namespace Tempest.Scenarios;
 
@@ -13,7 +15,10 @@ namespace Tempest.Scenarios;
 /// Une etape peut extraire une valeur de sa reponse (<see cref="HttpStepDefinition.Extract"/>)
 /// et une etape suivante la reutiliser via <c>{{nom}}</c> — corrélation limitee au
 /// <b>vocabulaire</b> Regex/XPath, sans branchement ni boucle. Les variables extraites sont
-/// locales a une iteration : elles ne survivent pas a la suivante.
+/// locales a une iteration : elles ne survivent pas a la suivante. Les jeux de donnees
+/// (<see cref="ScenarioDefinition.Datasets"/>) suivent la meme voie de substitution, sous
+/// <c>{{nom.colonne}}</c> : une ligne est choisie une fois par iteration et vaut pour toutes
+/// les etapes de cette iteration.
 /// </para>
 /// </summary>
 public sealed partial class DeclarativeWorkflow : IWorkflow
@@ -22,6 +27,7 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
 
     private readonly ScenarioDefinition _definition;
     private readonly StepId[] _stepIds;
+    private readonly Dictionary<string, DataSet> _dataSets = new(StringComparer.Ordinal);
 
     /// <summary>Cree le scenario a partir d'une description deja validee.</summary>
     /// <param name="definition">Description du scenario.</param>
@@ -46,6 +52,17 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
         }
     }
 
+    /// <summary>Charge les jeux de donnees du scenario, une seule fois avant le premier tir.</summary>
+    public ValueTask SetUpAsync(CancellationToken cancellationToken)
+    {
+        foreach (DataSetDefinition dataset in _definition.Datasets)
+        {
+            _dataSets[dataset.Name] = DataSetLoader.LoadFromFile(dataset.Path, dataset.Strategy);
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
     /// <inheritdoc />
     public async ValueTask ExecuteAsync(IVirtualUserContext context, CancellationToken cancellationToken)
     {
@@ -54,6 +71,14 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
         Dictionary<string, string> variables = (Dictionary<string, string>)(context.State ??=
             new Dictionary<string, string>(StringComparer.Ordinal));
         variables.Clear();
+
+        foreach ((string name, DataSet dataSet) in _dataSets)
+        {
+            foreach ((string column, string value) in dataSet.Pick(context))
+            {
+                variables[$"{name}.{column}"] = value;
+            }
+        }
 
         for (int i = 0; i < _definition.Steps.Count; i++)
         {
@@ -164,9 +189,9 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
     }
 
     /// <summary>
-    /// Remplace chaque <c>{{nom}}</c> par la variable correspondante. Renvoie
-    /// <see langword="false"/> si au moins un nom reference n'a pas ete extrait — le gabarit
-    /// est alors laisse tel quel dans <paramref name="result"/>, sans etre envoye.
+    /// Remplace chaque <c>{{nom}}</c> ou <c>{{jeu.colonne}}</c> par la variable correspondante.
+    /// Renvoie <see langword="false"/> si au moins un nom reference n'a pas ete extrait — le
+    /// gabarit est alors laisse tel quel dans <paramref name="result"/>, sans etre envoye.
     /// </summary>
     private static bool TrySubstitute(string template, IReadOnlyDictionary<string, string> variables, out string result)
     {
@@ -191,6 +216,6 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
         return allResolved;
     }
 
-    [GeneratedRegex(@"\{\{(\w+)\}\}")]
+    [GeneratedRegex(@"\{\{([\w.]+)\}\}")]
     private static partial Regex PlaceholderPattern();
 }

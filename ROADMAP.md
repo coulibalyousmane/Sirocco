@@ -26,7 +26,7 @@ Légende : ● solide · ◐ partiel · ○ absent
 | Modèle fermé (utilisateurs concurrents) | ○ | ● | ● `injectClosed` | ● |
 | Dette d'ordonnancement mesurée et publiée | ● `Response` + `Service` | ○ | ○ | ○ |
 | Scénarios programmables (branchement, boucle) | ◐ C# recompilé, ou YAML linéaire | ● JavaScript/TS | ● DSL Scala/Java/Kotlin | ● C#/F# |
-| Jeux de données (CSV, JSON, SQL) | ○ | ● `SharedArray` | ● *feeders* | ● *data feed* |
+| Jeux de données (CSV, JSON, SQL) | ◐ CSV/JSON, pas SQL | ● `SharedArray` | ● *feeders* | ● *data feed* |
 | Checks, groupes, étiquettes, métriques custom | ○ | ● | ● | ◐ |
 | Rapport avec séries temporelles | ◐ tableau HTML ; temporel via Prometheus | ● Grafana natif | ● référence du marché | ● HTML + temps réel |
 | Mode distribué | ● fusion d'histogrammes exacte | ● `k6-operator` | ◐ Enterprise | ● Studio / K8s |
@@ -104,10 +104,13 @@ ne ressemble à ça : il faut des données variables, des branchements, des asse
 n'interrompent pas le tir, et des dimensions pour découper les résultats. C'est le plus gros trou
 fonctionnel.
 
-- **Jeux de données** — alimenter un scénario depuis CSV/JSON/SQL avec des stratégies d'itération
-  (circulaire, aléatoire, unique par utilisateur virtuel). Sans ça, tous les utilisateurs virtuels
-  envoient les mêmes identifiants. Le pool généré par Bogus dans `DynamicCheckoutWorkflow` ne
-  couvre pas ce besoin : il est codé en dur dans un scénario précis.
+- ~~**Jeux de données**~~ — fait, voir [Jeux de données](README.md#jeux-de-données) : `DataSet`
+  (`Tempest.Domain.Data`) + `DataSetLoader` CSV/JSON (`Tempest.Scenarios.Data`), trois stratégies
+  (circulaire, aléatoire, unique par utilisateur virtuel), accessible depuis le format déclaratif
+  (`{{jeu.colonne}}`) et depuis un scénario scripté. Réduit à CSV/JSON pour ce premier tour — SQL
+  écarté : une source de données arbitraire (requête, pool de connexions, ré-exécution par tir)
+  dépasse le scope d'un chargement de fichier unique et mériterait son propre chantier plutôt
+  qu'un troisième format ajouté en hâte à `DataSetLoader`. Vérifié par de vrais tirs.
 - **Checks** — assertions qui enregistrent un échec logique sans faire échouer la requête,
   distinctes des erreurs de transport.
 - **Groupes et étiquettes** — hiérarchie d'étapes et découpage par dimension (`endpoint`, `région`,
@@ -260,12 +263,12 @@ quiconque d'autre que son auteur.
 **La décision de la phase 2 est tranchée et le moteur de script existe** : Roslyn (C# scripté),
 voir [Scénarios scriptés](README.md#scénarios-scriptés-roslyn). C'était le seul choix de cette
 roadmap difficile à défaire une fois pris ; il conditionne les phases 5 et 6, toujours valables
-telles que décrites dans la note de la phase 2. Reste à construire le contenu de la phase 2 —
-jeux de données, checks, groupes/étiquettes, métriques personnalisées, temps de réflexion —, déjà
-partiellement accessible en C# pur sans attendre une API dédiée (une boucle de nouvelle tentative
-ou une donnée par utilisateur virtuel s'écrivent directement dans un script, voir
-`scenarios/scripted-checkout.csx`), mais sans encore l'ergonomie d'une API `Check`/métrique
-personnalisée de premier ordre.
+telles que décrites dans la note de la phase 2. Les jeux de données sont faits, voir [Jeux de
+données](README.md#jeux-de-données). Reste à construire le reste du contenu de la phase 2 —
+checks, groupes/étiquettes, métriques personnalisées, temps de réflexion —, déjà partiellement
+accessible en C# pur sans attendre une API dédiée (une boucle de nouvelle tentative s'écrit
+directement dans un script, voir `scenarios/scripted-checkout.csx`), mais sans encore l'ergonomie
+d'une API `Check`/métrique personnalisée de premier ordre.
 
 Le reste peut attendre des retours d'utilisateurs réels. Construire les phases 4 à 8 sans eux,
 c'est deviner.

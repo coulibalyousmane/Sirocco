@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using Tempest.Application.Execution;
+using Tempest.Domain.Data;
 using Tempest.Domain.Declarative;
 using Tempest.Domain.Metrics;
 using Tempest.Scenarios;
@@ -377,6 +378,86 @@ public sealed class DeclarativeWorkflowTests
         Assert.Equal(2, sink.For(checkoutStep).Count());
         Assert.All(sink.For(checkoutStep), m => Assert.Equal(RequestOutcome.AssertionFailed, m.Outcome));
         Assert.DoesNotContain(handler.Requests, r => r.Path == "/api/checkout");
+    }
+
+    [Fact]
+    public async Task A_dataset_row_is_available_to_every_step_of_the_iteration_via_placeholder()
+    {
+        string path = Path.GetTempFileName() + ".csv";
+        File.WriteAllText(path, "username,password\nalice,pw-alice\n");
+        try
+        {
+            ScenarioDefinition definition = new()
+            {
+                Name = "smoke",
+                Datasets = [new DataSetDefinition { Name = "user", Path = path, Strategy = DataSetIterationStrategy.Circular }],
+                Steps =
+                [
+                    Step(
+                        "login",
+                        method: "POST",
+                        path: "/api/auth/login",
+                        body: """{"username":"{{user.username}}"}"""),
+                    Step(
+                        "checkout",
+                        method: "POST",
+                        path: "/api/checkout",
+                        headers: new Dictionary<string, string> { ["X-User"] = "{{user.username}}" }),
+                ],
+            };
+
+            (DeclarativeWorkflow workflow, VirtualUserContext context, _, StubHttpMessageHandler handler, _) = CreateHarness(definition);
+            handler
+                .On(HttpMethod.Post, "/api/auth/login", HttpStatusCode.OK)
+                .On(HttpMethod.Post, "/api/checkout", HttpStatusCode.OK);
+
+            await workflow.SetUpAsync(CancellationToken.None);
+            await RunIterationAsync(workflow, context);
+
+            Assert.Equal("""{"username":"alice"}""", handler.Requests[0].Body);
+            Assert.Equal("alice", handler.Requests[1].Header("X-User"));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task A_circular_dataset_advances_once_per_iteration_not_once_per_step()
+    {
+        string path = Path.GetTempFileName() + ".csv";
+        File.WriteAllText(path, "value\na\nb\n");
+        try
+        {
+            ScenarioDefinition definition = new()
+            {
+                Name = "smoke",
+                Datasets = [new DataSetDefinition { Name = "row", Path = path, Strategy = DataSetIterationStrategy.Circular }],
+                Steps =
+                [
+                    Step("first", headers: new Dictionary<string, string> { ["X-Value"] = "{{row.value}}" }),
+                    Step("second", path: "/api/second", headers: new Dictionary<string, string> { ["X-Value"] = "{{row.value}}" }),
+                ],
+            };
+
+            (DeclarativeWorkflow workflow, VirtualUserContext context, _, StubHttpMessageHandler handler, _) = CreateHarness(definition);
+            handler
+                .On(HttpMethod.Get, "/api/ping", HttpStatusCode.OK)
+                .On(HttpMethod.Get, "/api/second", HttpStatusCode.OK);
+
+            await workflow.SetUpAsync(CancellationToken.None);
+            await RunIterationAsync(workflow, context);
+
+            // Meme valeur sur les deux etapes de cette iteration : la ligne n'avance qu'une
+            // fois par iteration, pas a chaque etape qui la reference.
+            Assert.Equal("a", handler.Requests[0].Header("X-Value"));
+            Assert.Equal("a", handler.Requests[1].Header("X-Value"));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [Fact]

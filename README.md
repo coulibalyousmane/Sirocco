@@ -572,6 +572,55 @@ jeton via `$.token` plutôt qu'un motif Regex : 125 itérations, **0 échec** su
 `login`/`browse`/`checkout` — `checkout` reste à 0 % d'échec, confirmant que le jeton extrait
 par JsonPath se propage correctement à l'en-tête `Authorization`, exactement comme avec Regex.
 
+### Jeux de données
+
+Premier bullet de la [roadmap phase 2](ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) :
+sans jeu de données, tous les utilisateurs virtuels envoient les mêmes identifiants — le pool
+généré par Bogus dans `DynamicCheckoutWorkflow` ne couvrait ce besoin que pour ce seul scénario,
+codé en dur. Un scénario déclaratif peut désormais charger un fichier CSV ou JSON et piocher une
+ligne à chaque itération, exposée à n'importe quelle étape via `{{jeu.colonne}}` — même mécanisme
+de substitution que les variables extraites, juste préfixé par le nom du jeu :
+
+```yaml
+name: dataset-example
+datasets:
+  - name: user
+    path: scenarios/users.csv
+    strategy: uniquePerVirtualUser   # circular (défaut) | random | uniquePerVirtualUser
+steps:
+  - name: login
+    method: POST
+    path: /api/auth/login
+    body: '{"username":"{{user.username}}","password":"{{user.password}}"}'
+```
+
+```csv
+username,password
+alice,alice-pw
+bob,bob-pw
+```
+
+Trois stratégies de choix d'une ligne, portées par `DataSet` (`Tempest.Domain.Data`) :
+
+- **`circular`** (défaut) — parcourt les lignes dans l'ordre, en boucle, un curseur **partagé**
+  par tous les utilisateurs virtuels (`Interlocked.Increment`, sans verrou).
+- **`random`** — une ligne tirée uniformément au hasard à chaque lecture.
+- **`uniquePerVirtualUser`** — une ligne fixe par utilisateur virtuel
+  (`VirtualUserId % nombre de lignes`), la même à chaque itération de cet utilisateur —
+  exactement le principe déjà à l'œuvre dans `DynamicCheckoutWorkflow.ExecuteAsync`, généralisé
+  à n'importe quelle source de données.
+
+Une ligne est choisie **une fois par itération**, pas une fois par étape : toutes les étapes
+d'une même itération voient la même ligne, comme les variables extraites. Le fichier est chargé
+une seule fois dans `IWorkflow.SetUpAsync`, jamais sur le chemin critique — un jeu de données
+volumineux ne coûte rien pendant le tir.
+
+Vérifié par de vrais tirs contre `Tempest.SampleTarget` : un scénario déclaratif dont `checkout`
+substitue `productId`/`quantity` depuis un CSV avec `uniquePerVirtualUser` passe à 0 % d'échec
+sur 3 utilisateurs virtuels, chacun recevant sa propre ligne à chaque itération (confirmé par
+instrumentation temporaire) ; `scenarios/scripted-checkout.csx` (voir plus bas) recevant de même
+un identifiant distinct par utilisateur virtuel depuis `scenarios/users.csv`.
+
 ## Scénarios scriptés (Roslyn)
 
 Le format déclaratif ci-dessus ne sait pas exprimer de branchement ni de boucle — la limite
@@ -606,17 +655,19 @@ new PingWorkflow()
 tempest run scenario.csx --target-url http://localhost:5299 --rps 50 --duration 30s
 ```
 
-`System`, `System.Net.Http`, `System.Threading(.Tasks)`, `Tempest.Domain.Execution` et
-`Tempest.Domain.Metrics` sont importés par défaut ; un script ajoute ses propres `using` pour le
+`System`, `System.Collections.Generic`, `System.Net.Http`, `System.Threading(.Tasks)`,
+`Tempest.Domain.Data`, `Tempest.Domain.Execution`, `Tempest.Domain.Metrics` et
+`Tempest.Scenarios.Data` sont importés par défaut ; un script ajoute ses propres `using` pour le
 reste (`System.Text.Json.Nodes`, `System.Net.Http.Json`...). Toutes les assemblies déjà chargées
 dans le processus hôte sont visibles du script sans configuration : `Tempest.Scenarios` pour
-réutiliser `DynamicCheckoutWorkflow` comme base, par exemple.
+réutiliser `DynamicCheckoutWorkflow` comme base, ou charger un [jeu de données](#jeux-de-données)
+via `DataSetLoader.LoadFromFile(...)` dans `SetUpAsync`, par exemple.
 
-[`scenarios/scripted-checkout.csx`](scenarios/scripted-checkout.csx) démontre exactement ce que
-le déclaratif ne peut pas exprimer : le même parcours login/browse/checkout que
-`smoke-test.yaml`, avec une boucle de nouvelle tentative bornée sur `checkout` (arrêt anticipé
-dès qu'il ne s'agit plus d'une 503 temporaire) — impossible à écrire sans une syntaxe de
-branchement dédiée dans un format purement déclaratif.
+[`scenarios/scripted-checkout.csx`](scenarios/scripted-checkout.csx) démontre deux choses que le
+déclaratif ne peut pas exprimer aussi simplement : une boucle de nouvelle tentative bornée sur
+`checkout` (arrêt anticipé dès qu'il ne s'agit plus d'une 503 temporaire) ; et un jeu de données
+([`scenarios/users.csv`](scenarios/users.csv)) chargé dans `SetUpAsync`, un identifiant réel par
+utilisateur virtuel plutôt que `demo`/`demo` en dur pour tout le monde.
 
 **Un script s'exécute avec la confiance totale du processus** : rien n'est sandboxé, comme un
 script k6 (JavaScript) ou NBomber (C# aussi) — propriété inhérente à la décision, pas un oubli.
@@ -625,7 +676,12 @@ Vérifié par de vrais tirs : `scripted-checkout.csx` exécuté via `tempest run
 par utilisateur virtuel (`context.State`) — 400 itérations avec `--max-vus 20`, seulement 20
 appels réels à `login`, les 380 autres réutilisant le jeton mis en cache, exactement comme
 `DynamicCheckoutWorkflow` ; une erreur de compilation et un script sans expression finale
-produisent tous deux un message d'erreur clair plutôt qu'une exception Roslyn brute.
+produisent tous deux un message d'erreur clair plutôt qu'une exception Roslyn brute. Ré-exécuté
+après l'ajout du jeu de données : chacun des 4 utilisateurs virtuels reçoit un nom d'utilisateur
+distinct de `users.csv` (confirmé par instrumentation temporaire), toujours 0 % d'échec sur
+`login`/`browse`/`checkout` — ce tir a aussi révélé qu'un script consommant un jeu de données a
+besoin de `System.Collections.Generic` dans les imports par défaut (`IReadOnlyDictionary<,>`),
+corrigé ici plutôt que découvert plus tard par un utilisateur externe.
 
 **Limites** :
 
@@ -1056,6 +1112,7 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 26** — [Paquets NuGet](#paquets-nuget) : `Tempest.Domain`, `Tempest.Application`, `Tempest.Infrastructure`, `Tempest.Scenarios` — élargi du texte initial de ROADMAP.md (Domain + Scenarios) pour permettre de lancer un tir depuis un projet externe, pas seulement d'écrire un scénario, en vraie parité avec NBomber. Ferme la phase 1 : il ne reste plus qu'un geste manuel (visibilité du dépôt). Vérifié par un vrai tir depuis un projet xUnit sans aucune référence à ce dépôt, uniquement via les paquets NuGet locaux
 - [x] **Étape 27** — [Scénarios scriptés (Roslyn)](#scénarios-scriptés-roslyn) : `ScriptedWorkflowLoader`/`WorkflowFileLoader` (`Tempest.Scenarios`), décision structurante de la roadmap phase 2 mise en œuvre — un fichier `.csx`/`.cs` devient un `IWorkflow` compilé à la volée. Vérifié par un vrai tir (`scenarios/scripted-checkout.csx`, boucle de nouvelle tentative sur `checkout`, jeton mis en cache confirmé sur 400 itérations/20 utilisateurs virtuels). Limite documentée : mode distribué non pris en charge pour ce format
 - [x] **Étape 28** — Deux corrections trouvées en vérifiant réellement la CI plutôt qu'en la supposant verte : `<RuntimeIdentifiers>` (étape 24) faisait échouer `dotnet pack --no-build` sur une arborescence propre — retiré, `dotnet publish -r <rid>` fonctionne tout aussi bien sans lui. `Assembly.Location` dans `ScriptedWorkflowLoader` (étape 27) faisait échouer la publication *fichier unique* (`IL3000`) — supprimé explicitement, avec un garde qui rejette maintenant un scénario scripté depuis ce genre de binaire par un message clair (`NotSupportedException`) plutôt qu'un crash. Les deux ont été reproduits sur une arborescence entièrement nettoyée avant d'être corrigés, pas devinés
+- [x] **Étape 29** — [Jeux de données](#jeux-de-données) : `DataSet`/`DataSetIterationStrategy` (`Tempest.Domain.Data`), `DataSetLoader` CSV/JSON (`Tempest.Scenarios.Data`), section `datasets` du format déclaratif (`{{jeu.colonne}}`, même mécanisme de substitution que les variables extraites) et accès direct depuis un scénario scripté (imports par défaut élargis). Premier bullet de la roadmap phase 2. Vérifié par de vrais tirs : un scénario déclaratif substituant `productId`/`quantity` depuis un CSV avec `uniquePerVirtualUser` (0 % d'échec, une ligne distincte et stable par utilisateur virtuel confirmée par instrumentation temporaire) et `scenarios/scripted-checkout.csx` mis à jour pour utiliser `scenarios/users.csv` — a aussi révélé qu'un script consommant un jeu de données a besoin de `System.Collections.Generic` dans les imports par défaut, corrigé dans le même chantier
 
 ## Roadmap initiale — close
 
