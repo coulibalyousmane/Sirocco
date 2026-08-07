@@ -627,9 +627,21 @@ appels réels à `login`, les 380 autres réutilisant le jeton mis en cache, exa
 `DynamicCheckoutWorkflow` ; une erreur de compilation et un script sans expression finale
 produisent tous deux un message d'erreur clair plutôt qu'une exception Roslyn brute.
 
-**Limite** : mode distribué (Master/Workers) non pris en charge pour les scénarios scriptés —
-`WorkerCoordinator` reste câblé uniquement sur le format déclaratif ; un `.csx` en mode distribué
-échoue avec l'erreur `NotSupportedException` existante (« Utilisez .yaml, .yml ou .json »).
+**Limites** :
+
+- Mode distribué (Master/Workers) non pris en charge pour les scénarios scriptés —
+  `WorkerCoordinator` reste câblé uniquement sur le format déclaratif ; un `.csx` en mode
+  distribué échoue avec l'erreur `NotSupportedException` existante (« Utilisez .yaml, .yml ou
+  .json »).
+- **Binaires autonomes fichier unique non pris en charge** (`--rps`/`--from-rps`/etc. et
+  scénarios déclaratifs/intégrés continuent de fonctionner normalement depuis ces binaires,
+  seuls les `.csx`/`.cs` sont concernés) : résoudre les références d'un script a besoin du
+  chemin sur disque des assemblies déjà chargées (`Assembly.Location`), qui est toujours vide
+  pour un publish `PublishSingleFile` — les assemblies vivent dans le bundle, jamais sur disque.
+  Détecté explicitement (`NotSupportedException` avec message clair) plutôt que de laisser
+  Roslyn échouer avec une liste de références vide. A d'abord cassé la publication elle-même
+  (`IL3000`, promu en erreur par `TreatWarningsAsErrors`) avant d'être trouvé et corrigé.
+  Utilisez `dotnet tool install`/`dotnet run` (dépendant du framework) pour un scénario scripté.
 
 ## Protocole WebSocket
 
@@ -1043,6 +1055,7 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 25** — Licence ([Apache License 2.0](LICENSE)), démarrage rapide en trois commandes en tête de ce README. La visibilité du dépôt (privé → public) reste un geste manuel réservé au propriétaire du dépôt — jamais automatisé depuis une session d'assistant
 - [x] **Étape 26** — [Paquets NuGet](#paquets-nuget) : `Tempest.Domain`, `Tempest.Application`, `Tempest.Infrastructure`, `Tempest.Scenarios` — élargi du texte initial de ROADMAP.md (Domain + Scenarios) pour permettre de lancer un tir depuis un projet externe, pas seulement d'écrire un scénario, en vraie parité avec NBomber. Ferme la phase 1 : il ne reste plus qu'un geste manuel (visibilité du dépôt). Vérifié par un vrai tir depuis un projet xUnit sans aucune référence à ce dépôt, uniquement via les paquets NuGet locaux
 - [x] **Étape 27** — [Scénarios scriptés (Roslyn)](#scénarios-scriptés-roslyn) : `ScriptedWorkflowLoader`/`WorkflowFileLoader` (`Tempest.Scenarios`), décision structurante de la roadmap phase 2 mise en œuvre — un fichier `.csx`/`.cs` devient un `IWorkflow` compilé à la volée. Vérifié par un vrai tir (`scenarios/scripted-checkout.csx`, boucle de nouvelle tentative sur `checkout`, jeton mis en cache confirmé sur 400 itérations/20 utilisateurs virtuels). Limite documentée : mode distribué non pris en charge pour ce format
+- [x] **Étape 28** — Deux corrections trouvées en vérifiant réellement la CI plutôt qu'en la supposant verte : `<RuntimeIdentifiers>` (étape 24) faisait échouer `dotnet pack --no-build` sur une arborescence propre — retiré, `dotnet publish -r <rid>` fonctionne tout aussi bien sans lui. `Assembly.Location` dans `ScriptedWorkflowLoader` (étape 27) faisait échouer la publication *fichier unique* (`IL3000`) — supprimé explicitement, avec un garde qui rejette maintenant un scénario scripté depuis ce genre de binaire par un message clair (`NotSupportedException`) plutôt qu'un crash. Les deux ont été reproduits sur une arborescence entièrement nettoyée avant d'être corrigés, pas devinés
 
 ## Roadmap initiale — close
 

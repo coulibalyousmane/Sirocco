@@ -109,7 +109,19 @@ TempestHostOptions tempestOptions = new()
     ReportJsonPath = options.ReportJsonPath,
 };
 
-StandaloneHost.Run(builder, tempestOptions);
+try
+{
+    StandaloneHost.Run(builder, tempestOptions);
+}
+catch (Exception ex) when (ex is FileNotFoundException or NotSupportedException or FormatException)
+{
+    // Recouvre les erreurs de chargement du scenario (fichier introuvable, extension non
+    // reconnue, script scripte incompatible avec un publish self-contained fichier unique...) :
+    // un message clair plutot que la trace d'une exception non geree.
+    Console.Error.WriteLine(ex.Message);
+    return 1;
+}
+
 return Environment.ExitCode;
 
 static IReadOnlyList<LoadStageOptions> BuildProfile(CliOptions options, IConfiguration configuration)

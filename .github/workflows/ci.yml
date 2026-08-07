@@ -110,4 +110,13 @@ jobs:
           ./publish/linux-x64/tempest run --target-url http://localhost:5281 --rps 10 --duration 5s
 
       - name: Tir de fumee d'un scenario scripte (verifie le moteur Roslyn de la phase 2)
-        run: ./publish/linux-x64/tempest run scenarios/scripted-checkout.csx --target-url http://localhost:5281 --rps 15 --duration 5s --max-vus 10
+        # Depend du framework, pas le binaire self-contained fichier unique publie ci-dessus :
+        # un scenario scripte a besoin du chemin sur disque des assemblies chargees pour
+        # resoudre ses references (Assembly.Location), qui n'existe pas dans un bundle fichier
+        # unique — ScriptedWorkflowLoader le rejette explicitement (NotSupportedException) plutot
+        # que d'echouer silencieusement. C'est un IL3000/echec de publication qui a casse ce job
+        # une premiere fois avant d'etre trouve et corrige ici.
+        run: |
+          dotnet build src/Tempest.Cli --configuration Release -o build/framework-dependent
+          dotnet build/framework-dependent/tempest.dll run scenarios/scripted-checkout.csx \
+            --target-url http://localhost:5281 --rps 15 --duration 5s --max-vus 10
