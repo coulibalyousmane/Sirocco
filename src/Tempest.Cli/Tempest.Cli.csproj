@@ -11,6 +11,22 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Tempest.Cli</RootNamespace>
     <AssemblyName>tempest</AssemblyName>
+    <!-- Une CLI n'est jamais hebergee sous IIS : web.config (bootstrap IIS/ANCM) n'a aucun sens
+         a cote de tempest.exe. -->
+    <IsWebConfigTransformDisabled>true</IsWebConfigTransformDisabled>
+  </PropertyGroup>
+
+  <!--
+    Binaires autonomes (roadmap phase 1, troisieme bullet) : ces RID permettent un
+    "dotnet publish" auto-suffisant (option self-contained, fichier unique) pour Windows, Linux
+    et macOS (x64 et arm64), sans que la machine cible ait besoin du SDK ni du runtime .NET
+    installes. Pas de PublishAot ici : YamlDotNet (DeserializerBuilder par defaut) et la
+    deserialisation JSON par reflexion de ScenarioDefinitionLoader echouent a la compilation AOT
+    (IL3050/IL2026) sans reecrire ce pipeline en code source-genere : chantier separe, plus
+    risque, non traite ici.
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>$(TempestStandaloneRuntimeIdentifiers)</RuntimeIdentifiers>
   </PropertyGroup>
 
   <!--
@@ -37,5 +53,28 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
+
+  <!--
+    Tempest.Host referme Tempest.Cli, et son appsettings*.json/web.config/staticwebassets sont
+    marques CopyToOutputDirectory : sans ce nettoyage, un tempest.exe autonome se retrouverait
+    avec l'appsettings.json de demonstration de l'hote a cote de lui, dans lequel Tempest:*
+    contient de vraies valeurs (TargetBaseUrl inclus) : un "tempest run" lance sans preciser
+    l'adresse de la cible y trouverait silencieusement une valeur qui n'est pas la bonne, plutot
+    que l'erreur attendue. La CLI ne shippe deliberement aucun appsettings.json des siens : elle
+    ne lit que celui, facultatif, du repertoire d'ou elle est lancee (voir Program.cs).
+  -->
+  <Target Name="RemoveInheritedWebHostFiles" AfterTargets="Build;Publish">
+    <ItemGroup>
+      <_TempestUnwantedOutputFiles Include="$(OutDir)appsettings.json" />
+      <_TempestUnwantedOutputFiles Include="$(OutDir)appsettings.*.json" />
+      <_TempestUnwantedOutputFiles Include="$(OutDir)web.config" />
+      <_TempestUnwantedOutputFiles Include="$(OutDir)*.staticwebassets.endpoints.json" />
+      <_TempestUnwantedOutputFiles Include="$(PublishDir)appsettings.json" Condition="'$(PublishDir)' != ''" />
+      <_TempestUnwantedOutputFiles Include="$(PublishDir)appsettings.*.json" Condition="'$(PublishDir)' != ''" />
+      <_TempestUnwantedOutputFiles Include="$(PublishDir)web.config" Condition="'$(PublishDir)' != ''" />
+      <_TempestUnwantedOutputFiles Include="$(PublishDir)*.staticwebassets.endpoints.json" Condition="'$(PublishDir)' != ''" />
+    </ItemGroup>
+    <Delete Files="@(_TempestUnwantedOutputFiles)" />
+  </Target>
 
 </Project>

@@ -248,8 +248,38 @@ Vérifié par un vrai `dotnet tool install --global`, `tempest` réellement sur 
 tir depuis un répertoire sans rapport avec le dépôt (`/tmp`), contre `Tempest.SampleTarget`, avec
 `--report-json` écrit sur disque.
 
-**Limite restante** : ni binaires autonomes publiés, ni dépôt public — les deux derniers bullets
-de la [phase 1 de ROADMAP.md](ROADMAP.md#phase-1--rendre-tempest-installable).
+### Binaires autonomes
+
+`Tempest.Cli` se publie aussi en binaire autonome (*self-contained*, fichier unique) pour Windows,
+Linux et macOS (x64 et arm64) — aucun SDK ni runtime .NET requis sur la machine qui l'exécute :
+
+```bash
+dotnet publish src/Tempest.Cli -c Release -r win-x64 \
+  -p:SelfContained=true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+# -> src/Tempest.Cli/bin/Release/net10.0/win-x64/publish/tempest.exe (linux-x64/osx-x64/osx-arm64 : "tempest")
+```
+
+**Pas de compilation Native AOT.** Essayé réellement (`-p:PublishAot=true`) : la publication
+échoue avec `IL3050`/`IL2026` sur `ScenarioDefinitionLoader` — `YamlDotNet.DeserializerBuilder`
+(constructeur par défaut) et une désérialisation JSON par réflexion utilisent toutes les deux du
+code dynamique incompatible avec l'AOT. Les corriger demanderait de réécrire ce pipeline avec le
+générateur statique de YamlDotNet et un `JsonSerializerContext` — un chantier séparé, plus risqué,
+non traité ici. Le binaire reste *self-contained* (runtime .NET embarqué) mais pas nativement
+compilé : plus volumineux (~105 Mo par plateforme) qu'un binaire AOT ne l'aurait été.
+
+Un job GitHub Actions dédié (`.github/workflows/release.yml`) publie les quatre archives en
+release GitHub à chaque tag `vX.Y.Z` poussé — pas encore déclenché, aucune release n'a encore été
+coupée.
+
+Vérifié par de vrais tirs : le `tempest.exe` win-x64 publié, exécuté directement (sans `dotnet
+run`), contre `Tempest.SampleTarget`, rapport JSON écrit sur disque, code de sortie 0 — et les
+trois autres RID compilés sans erreur (non exécutables depuis cette machine Windows). Le nettoyage
+des fichiers hérités de `Tempest.Host` (`appsettings*.json`, `web.config`) a été vérifié : sans
+lui, un `tempest run` sans `--target-url` aurait silencieusement trouvé la cible de démonstration
+de l'hôte au lieu d'échouer avec le message d'erreur attendu.
+
+**Limite restante** : dépôt encore privé — dernier bullet de la
+[phase 1 de ROADMAP.md](ROADMAP.md#phase-1--rendre-tempest-installable).
 
 ## Scénario de référence
 
@@ -887,6 +917,7 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 21** — Pipeline CI (`.github/workflows/ci.yml`) : build/tests/format sur chaque push et pull request, plus un job de tir de fumée réel (seuils + `ExitAfterRun`) contre `Tempest.SampleTarget`
 - [x] **Étape 22** — `Tempest.Cli` (`tempest run [scenario] [options]`) : `--target-url`, `--rps` ou `--from-rps`/`--to-rps` + `--duration`, `--max-vus`, `--workflow`, `--threshold` (répétable), `--report-html`/`--report-json` ; extraction de `StandaloneHost.Run` hors de `Tempest.Host/Program.cs` pour être partagée sans dupliquer le câblage (roadmap phase 1, scope minimal — un seul bullet des cinq : pas de packaging `dotnet tool`, pas de binaires autonomes, pas de mode distribué depuis la CLI)
 - [x] **Étape 23** — Packaging `dotnet tool` de `Tempest.Cli` (`PackAsTool`, commande `tempest`), comblant la limite de l'étape 22 — vérifié par une installation globale réelle et un tir depuis un répertoire hors du dépôt ; job CI dédié (`dotnet pack`). Reste hors périmètre : publication sur nuget.org (dépôt encore privé)
+- [x] **Étape 24** — Binaires autonomes (Windows/Linux/macOS x64+arm64, self-contained, fichier unique) : `RuntimeIdentifiers` partagés (`Directory.Build.props`), nettoyage des fichiers hérités de `Tempest.Host` (`appsettings*.json`, `web.config`), workflow `release.yml` (publication en release GitHub sur tag `vX.Y.Z`, jamais encore déclenché) — vérifié par un vrai tir du `tempest.exe` win-x64 publié. Native AOT essayé et abandonné : `YamlDotNet.DeserializerBuilder` et une désérialisation JSON par réflexion dans `ScenarioDefinitionLoader` échouent la compilation AOT (`IL3050`/`IL2026`), migration hors périmètre
 
 ## Roadmap initiale — close
 

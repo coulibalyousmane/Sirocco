@@ -75,8 +75,12 @@ qui bloque littéralement tout le reste, et c'est aussi le moins cher à traiter
   [Installation](README.md#installation)) : `dotnet tool install -g Tempest.Cli` fonctionne
   aujourd'hui depuis une source locale ou un flux privé, faute de publication sur nuget.org (le
   dépôt reste privé — bullet suivant).
-- **Binaires autonomes** (Linux, macOS, Windows) publiés en release GitHub, compilation Native AOT
-  si le graphe de dépendances le permet — pour ceux qui n'ont pas le SDK .NET.
+- ~~**Binaires autonomes**~~ — fait pour Windows, Linux et macOS (x64 et arm64), voir [Binaires
+  autonomes](README.md#binaires-autonomes) : self-contained, fichier unique, workflow de release
+  GitHub prêt (`vX.Y.Z` poussé), pas encore déclenché. Native AOT essayé réellement et
+  abandonné : `YamlDotNet.DeserializerBuilder` et une désérialisation JSON par réflexion dans
+  `ScenarioDefinitionLoader` échouent la compilation AOT (`IL3050`/`IL2026`) — le graphe de
+  dépendances actuel ne le permet pas sans réécrire ce pipeline.
 - **Paquets NuGet bibliothèque** — `Tempest.Domain` et `Tempest.Scenarios`, pour écrire des
   scénarios en C# depuis un projet xUnit, comme le permet NBomber.
 - **Rendre le dépôt public**, avec une licence, un README d'accueil et un démarrage rapide qui

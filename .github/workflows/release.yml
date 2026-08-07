@@ -1,0 +1,50 @@
+name: Release
+
+# Binaires autonomes (roadmap phase 1, troisieme bullet) : chaque tag "vX.Y.Z" pousse publie
+# quatre archives (Windows, Linux, macOS x64/arm64) en release GitHub, chacune un tempest.exe/
+# tempest self-contained + fichier unique - aucun SDK ni runtime .NET requis sur la machine qui
+# telecharge. Se declenche uniquement sur un tag : couper une release reste un geste explicite,
+# jamais une consequence d'un simple push sur main.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  binaries:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cloner le depot
+        uses: actions/checkout@v4
+
+      - name: Installer .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publier les binaires autonomes (un fichier par plateforme)
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for rid in win-x64 linux-x64 osx-x64 osx-arm64; do
+            out="publish/$rid"
+            dotnet publish src/Tempest.Cli --configuration Release --runtime "$rid" \
+              --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
+              -o "$out"
+            rm -f "$out"/*.pdb "$out"/Tempest.Host.runtimeconfig.json
+            if [ "$rid" = "win-x64" ]; then
+              (cd "$out" && zip -q "../../dist/tempest-$rid.zip" tempest.exe)
+            else
+              chmod +x "$out/tempest"
+              tar czf "dist/tempest-$rid.tar.gz" -C "$out" tempest
+            fi
+          done
+          ls -la dist
+
+      - name: Publier la release GitHub
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${{ github.ref_name }}" dist/* --title "Tempest ${{ github.ref_name }}" --generate-notes

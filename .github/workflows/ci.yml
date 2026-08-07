@@ -93,3 +93,11 @@ jobs:
           Tempest__Thresholds__1__Metric: "ErrorRate"
           Tempest__Thresholds__1__Comparison: "LessThanOrEqual"
           Tempest__Thresholds__1__Limit: "0.01"
+
+      - name: Tir de fumee avec le binaire autonome linux-x64 (verifie la publication self-contained)
+        run: |
+          dotnet publish src/Tempest.Cli --configuration Release --runtime linux-x64 \
+            --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
+            -o publish/linux-x64
+          chmod +x publish/linux-x64/tempest
+          ./publish/linux-x64/tempest run --target-url http://localhost:5281 --rps 10 --duration 5s
