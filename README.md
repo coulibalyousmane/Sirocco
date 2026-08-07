@@ -226,10 +226,30 @@ en l'absence de `--rps`/`--target-url`.
 
 **Limites de cette première version**, documentées dans `tempest run --help` : un seul processus
 autonome — pas de mode distribué (Master/Workers) depuis la CLI, qui reste l'affaire de
-`Tempest.Host`. Ni packaging `dotnet tool`, ni binaires autonomes publiés : `tempest` se lance
-aujourd'hui via `dotnet run --project src/Tempest.Cli` ou le binaire compilé dans
-`src/Tempest.Cli/bin/<Configuration>/net10.0/`. Les deux restent les bullets suivants de la
-[phase 1 de ROADMAP.md](ROADMAP.md#phase-1--rendre-tempest-installable).
+`Tempest.Host`.
+
+### Installation
+
+`Tempest.Cli` s'empaquette comme un [outil global
+dotnet](https://learn.microsoft.com/dotnet/core/tools/global-tools) (`PackAsTool`, commande
+`tempest`, distincte du nom de paquet `Tempest.Cli`) :
+
+```bash
+dotnet pack src/Tempest.Cli -c Release
+dotnet tool install --global --add-source src/Tempest.Cli/bin/Release Tempest.Cli
+tempest run --target-url http://localhost:5299 --rps 50 --duration 30s
+```
+
+Pas encore publié sur nuget.org — le dépôt reste privé (bullet suivant de la phase 1) — donc
+l'installation se fait aujourd'hui depuis une source locale (`--add-source`) ou un flux privé.
+Sans empaquetage, `tempest` reste utilisable via `dotnet run --project src/Tempest.Cli --`.
+
+Vérifié par un vrai `dotnet tool install --global`, `tempest` réellement sur le `PATH`, puis un
+tir depuis un répertoire sans rapport avec le dépôt (`/tmp`), contre `Tempest.SampleTarget`, avec
+`--report-json` écrit sur disque.
+
+**Limite restante** : ni binaires autonomes publiés, ni dépôt public — les deux derniers bullets
+de la [phase 1 de ROADMAP.md](ROADMAP.md#phase-1--rendre-tempest-installable).
 
 ## Scénario de référence
 
@@ -866,6 +886,7 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 20** — Comparaison entre tirs (`LoadTestReportComparison`, outil `tools/Tempest.Compare`) : table console, rapport HTML comparatif, gate CI par pourcentage de régression — clôt le volet rapports/observabilité
 - [x] **Étape 21** — Pipeline CI (`.github/workflows/ci.yml`) : build/tests/format sur chaque push et pull request, plus un job de tir de fumée réel (seuils + `ExitAfterRun`) contre `Tempest.SampleTarget`
 - [x] **Étape 22** — `Tempest.Cli` (`tempest run [scenario] [options]`) : `--target-url`, `--rps` ou `--from-rps`/`--to-rps` + `--duration`, `--max-vus`, `--workflow`, `--threshold` (répétable), `--report-html`/`--report-json` ; extraction de `StandaloneHost.Run` hors de `Tempest.Host/Program.cs` pour être partagée sans dupliquer le câblage (roadmap phase 1, scope minimal — un seul bullet des cinq : pas de packaging `dotnet tool`, pas de binaires autonomes, pas de mode distribué depuis la CLI)
+- [x] **Étape 23** — Packaging `dotnet tool` de `Tempest.Cli` (`PackAsTool`, commande `tempest`), comblant la limite de l'étape 22 — vérifié par une installation globale réelle et un tir depuis un répertoire hors du dépôt ; job CI dédié (`dotnet pack`). Reste hors périmètre : publication sur nuget.org (dépôt encore privé)
 
 ## Roadmap initiale — close
 

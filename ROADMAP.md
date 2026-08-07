@@ -71,8 +71,10 @@ qui bloque littéralement tout le reste, et c'est aussi le moins cher à traiter
   commande](README.md#interface-de-ligne-de-commande)) : `tempest run scenario.yaml --rps 50
   --duration 30s`, options qui priment sur la configuration. Le modèle fermé (`--vus`) suit la
   phase 3 ; en attendant, le profil se pilote en débit (`--rps` ou `--from-rps`/`--to-rps`).
-- **Packaging `dotnet tool`** — `dotnet tool install -g Tempest.Cli`, le geste attendu par un
-  développeur .NET.
+- ~~**Packaging `dotnet tool`**~~ — fait (`PackAsTool`, commande `tempest`, voir
+  [Installation](README.md#installation)) : `dotnet tool install -g Tempest.Cli` fonctionne
+  aujourd'hui depuis une source locale ou un flux privé, faute de publication sur nuget.org (le
+  dépôt reste privé — bullet suivant).
 - **Binaires autonomes** (Linux, macOS, Windows) publiés en release GitHub, compilation Native AOT
   si le graphe de dépendances le permet — pour ceux qui n'ont pas le SDK .NET.
 - **Paquets NuGet bibliothèque** — `Tempest.Domain` et `Tempest.Scenarios`, pour écrire des

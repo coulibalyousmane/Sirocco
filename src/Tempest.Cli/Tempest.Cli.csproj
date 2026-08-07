@@ -13,4 +13,29 @@
     <AssemblyName>tempest</AssemblyName>
   </PropertyGroup>
 
+  <!--
+    Packaging dotnet tool (roadmap phase 1, deuxieme bullet) : dotnet pack produit un .nupkg
+    installable en outil global (dotnet tool install, options globale et add source, vers
+    Tempest.Cli), avec le nom de commande "tempest" plutot que le nom du paquet. Pas encore
+    publie sur nuget.org : le depot reste prive (bullet suivant de la meme phase) ; ce paquet
+    s'installe aujourd'hui depuis une source locale ou un flux prive.
+  -->
+  <PropertyGroup>
+    <!-- Microsoft.NET.Sdk.Web desactive IsPackable par defaut (un site web ne se publie pas
+         comme paquet NuGet) ; un outil dotnet, si. -->
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>tempest</ToolCommandName>
+    <PackageId>Tempest.Cli</PackageId>
+    <Version>0.1.0</Version>
+    <Description>CLI de Tempest, moteur de test de charge async cloud-native. "tempest run [scenario] [options]" lance un tir et se termine a la fin.</Description>
+    <PackageTags>load-testing;performance;cli</PackageTags>
+    <RepositoryUrl>https://github.com/coulibalyousmane/Tempest</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
 </Project>

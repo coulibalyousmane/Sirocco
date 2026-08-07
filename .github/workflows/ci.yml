@@ -27,6 +27,9 @@ jobs:
       - name: Tests unitaires
         run: dotnet test tests/Tempest.UnitTests --configuration Release --no-build
 
+      - name: Empaqueter Tempest.Cli (outil dotnet)
+        run: dotnet pack src/Tempest.Cli --configuration Release --no-build
+
       - name: Verifier le formatage
         run: dotnet format Tempest.sln --verify-no-changes --severity info
 
