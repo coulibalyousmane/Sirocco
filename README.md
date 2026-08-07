@@ -817,9 +817,9 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 20** — Comparaison entre tirs (`LoadTestReportComparison`, outil `tools/Tempest.Compare`) : table console, rapport HTML comparatif, gate CI par pourcentage de régression — clôt le volet rapports/observabilité
 - [x] **Étape 21** — Pipeline CI (`.github/workflows/ci.yml`) : build/tests/format sur chaque push et pull request, plus un job de tir de fumée réel (seuils + `ExitAfterRun`) contre `Tempest.SampleTarget`
 
-## Roadmap
+## Roadmap initiale — close
 
-Les trois priorités identifiées sont désormais faites, chacune dans un scope volontairement
+Les trois priorités identifiées au départ sont faites, chacune dans un scope volontairement
 minimal documenté à sa section :
 
 | Priorité | Fonctionnalité |
@@ -832,3 +832,14 @@ Trois chantiers de suivi, identifiés une fois les trois priorités closes, sont
 sécurisation du control plane distribué (étape 15), propagation du scénario et des options aux
 workers (étape 14), et rapports/observabilité — Prometheus distribué, rapport HTML, comparaison
 entre tirs (étapes 18 à 20).
+
+## Et ensuite
+
+Cette roadmap initiale est close : elle traitait de ce que le moteur devait savoir faire. La
+suite est un problème différent — Tempest n'est encore installable par personne, et ses scénarios
+restent trop pauvres pour un test de charge réel.
+
+**[ROADMAP.md](ROADMAP.md)** couvre ce qui manque pour exister face à k6, Gatling et NBomber :
+matrice concurrentielle honnête, huit phases ordonnées par dépendance, et une correction
+importante — l'argument « Tempest corrige le *coordinated omission*, contrairement aux autres »
+est **faux** (les trois proposent un modèle ouvert) ; le différenciateur réel est ailleurs.
