@@ -117,11 +117,33 @@ fonctionnel.
 - **Temps de réflexion et rythme** — pauses configurables entre étapes, indispensables pour simuler
   un parcours utilisateur crédible.
 
-> **Décision structurante à trancher ici.** Enrichir le format déclaratif (conditions, boucles)
-> **ou** embarquer un moteur de script. Trois options réelles : Roslyn (C# scripté, cohérent avec
-> l'écosystème mais lent à démarrer), un moteur JavaScript type Jint (attire les utilisateurs k6,
-> mais un runtime de plus à porter), ou pousser le déclaratif au maximum (plus sûr, plafonne vite).
-> Ce choix conditionne les phases 5 et 6 — à ne pas repousser par accumulation.
+> **Décision structurante tranchée et mise en œuvre : Roslyn (C# scripté).** Voir [Scénarios
+> scriptés](README.md#scénarios-scriptés-roslyn) — `ScriptedWorkflowLoader`/`WorkflowFileLoader`,
+> vérifiés par un vrai tir (`scenarios/scripted-checkout.csx`). Limite restante : mode distribué
+> non pris en charge pour ce format, `WorkerCoordinator` reste câblé sur le déclaratif seul.
+>
+> Un scénario scripté devient un
+> `IWorkflow` compilé à la volée (`Microsoft.CodeAnalysis.CSharp.Scripting`) : zéro couche
+> d'interop à concevoir, réutilisation directe de `Tempest.Domain`/`Application`/`Infrastructure`,
+> déjà publiés en paquets NuGet (voir [Paquets NuGet](README.md#paquets-nuget)) — un script
+> scénario et une bibliothèque scénario deviennent le même code, à la compilation près. L'AOT
+> était déjà hors de portée pour d'autres raisons (`YamlDotNet`/JSON par réflexion dans
+> `ScenarioDefinitionLoader`, voir [Binaires autonomes](README.md#binaires-autonomes)) : Roslyn
+> n'aggrave donc pas une limite qui n'existait pas encore.
+>
+> Écarté : un moteur JavaScript type Jint aurait mieux attaqué la position dominante de k6 (mêmes
+> scripts, syntaxe familière), mais au prix d'un runtime de plus à maintenir dans la durée et
+> d'une couche de binding JS↔C# entière à concevoir et tester, qui n'existe nulle part
+> aujourd'hui. Pousser le déclaratif plus loin (conditions, boucles en YAML/JSON) restait la
+> voie la plus sûre à court terme, mais c'est exactement l'impasse qui a motivé cette phase :
+> un YAML avec des boucles devient vite un langage de programmation mal conçu.
+>
+> **Implications pour les phases 5 et 6** : les convertisseurs (HAR/OpenAPI/Postman) généreront
+> du C#, pas du YAML ni du JS — plus proche d'une génération de client typé que d'un simple
+> mapping de requêtes. Le contrat de plugin de la phase 6 n'a besoin d'aucune couche de binding
+> supplémentaire : un protocole tiers reste un assemblage .NET ordinaire, chargé dynamiquement.
+> Le format déclaratif existant (`DeclarativeWorkflow`) n'est pas remplacé — il reste la voie la
+> plus sûre pour un scénario linéaire sans logique, les deux coexistent.
 
 ### Phase 3 — Modèles de charge complets
 
@@ -235,8 +257,15 @@ qu'il reste privé, rien de ce qui a été construit — la fusion d'histogramme
 modes gRPC, le mode distribué sécurisé, l'installation en une commande — n'a de valeur pour
 quiconque d'autre que son auteur.
 
-Ensuite **la décision de la phase 2** : script ou déclaratif enrichi. C'est le seul choix de cette
-roadmap difficile à défaire ensuite, et il conditionne quatre phases sur huit.
+**La décision de la phase 2 est tranchée et le moteur de script existe** : Roslyn (C# scripté),
+voir [Scénarios scriptés](README.md#scénarios-scriptés-roslyn). C'était le seul choix de cette
+roadmap difficile à défaire une fois pris ; il conditionne les phases 5 et 6, toujours valables
+telles que décrites dans la note de la phase 2. Reste à construire le contenu de la phase 2 —
+jeux de données, checks, groupes/étiquettes, métriques personnalisées, temps de réflexion —, déjà
+partiellement accessible en C# pur sans attendre une API dédiée (une boucle de nouvelle tentative
+ou une donnée par utilisateur virtuel s'écrivent directement dans un script, voir
+`scenarios/scripted-checkout.csx`), mais sans encore l'ergonomie d'une API `Check`/métrique
+personnalisée de premier ordre.
 
 Le reste peut attendre des retours d'utilisateurs réels. Construire les phases 4 à 8 sans eux,
 c'est deviner.

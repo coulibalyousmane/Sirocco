@@ -28,16 +28,6 @@
   </PropertyGroup>
 
   <!--
-    Liste commune des RID des binaires autonomes (Windows, Linux, macOS x64/arm64). Un seul
-    endroit a faire evoluer : tout projet self-contained publiable (Tempest.Cli) doit restaurer
-    ces RID pour lui-meme ET pour tout Sdk.Web qu'il reference (Tempest.Host, meme s'il n'est
-    lui-meme jamais publie self-contained), sous peine de NETSDK1047 a la restauration.
-  -->
-  <PropertyGroup>
-    <TempestStandaloneRuntimeIdentifiers>win-x64;linux-x64;osx-x64;osx-arm64</TempestStandaloneRuntimeIdentifiers>
-  </PropertyGroup>
-
-  <!--
     Le chemin critique du moteur est "zero-allocation" : on veut que le JIT
     puisse inliner et vectoriser agressivement, et que les structs passees par
     'in' ne soient jamais copiees defensivement.

@@ -9,7 +9,6 @@ using Tempest.Domain.Metrics;
 using Tempest.Host.Configuration;
 using Tempest.Infrastructure.DependencyInjection;
 using Tempest.Scenarios;
-using Tempest.Scenarios.Declarative;
 
 namespace Tempest.Host;
 
@@ -41,7 +40,7 @@ public static class StandaloneHost
         IWorkflow workflow;
         if (!string.IsNullOrWhiteSpace(tempestOptions.ScenarioFile))
         {
-            workflow = new DeclarativeWorkflow(ScenarioDefinitionLoader.LoadFromFile(tempestOptions.ScenarioFile));
+            workflow = WorkflowFileLoader.LoadFromFile(tempestOptions.ScenarioFile);
         }
         else if (string.Equals(tempestOptions.Workflow, TempestHostOptions.WEBSOCKET_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
         {

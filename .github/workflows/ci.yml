@@ -108,3 +108,6 @@ jobs:
             -o publish/linux-x64
           chmod +x publish/linux-x64/tempest
           ./publish/linux-x64/tempest run --target-url http://localhost:5281 --rps 10 --duration 5s
+
+      - name: Tir de fumee d'un scenario scripte (verifie le moteur Roslyn de la phase 2)
+        run: ./publish/linux-x64/tempest run scenarios/scripted-checkout.csx --target-url http://localhost:5281 --rps 15 --duration 5s --max-vus 10

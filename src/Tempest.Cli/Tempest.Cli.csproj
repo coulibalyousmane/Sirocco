@@ -17,17 +17,22 @@
   </PropertyGroup>
 
   <!--
-    Binaires autonomes (roadmap phase 1, troisieme bullet) : ces RID permettent un
-    "dotnet publish" auto-suffisant (option self-contained, fichier unique) pour Windows, Linux
-    et macOS (x64 et arm64), sans que la machine cible ait besoin du SDK ni du runtime .NET
-    installes. Pas de PublishAot ici : YamlDotNet (DeserializerBuilder par defaut) et la
+    Binaires autonomes (roadmap phase 1, troisieme bullet) : un "dotnet publish" self-contained,
+    fichier unique, fonctionne pour Windows, Linux et macOS (x64 et arm64) sans qu'aucun RID ne
+    soit declare ici — le SDK restaure a la demande ce dont cette seule invocation a besoin, y
+    compris a travers Tempest.Host (ProjectReference). Deliberement pas de RuntimeIdentifiers
+    permanent : le declarer casse le pack sans recompilation sur une arborescence propre (comme
+    un runner CI) avec une erreur de manifeste static web assets par RID (fichier
+    staticwebassets.build.json introuvable) : dotnet pack tente alors de produire, en plus du
+    paquet outil portable, un paquet outil self-contained par RID, qui exigerait d'avoir
+    prealablement publie (pas seulement construit) pour chacun. Ce bug a reellement casse la CI
+    (commit a01498d) avant d'etre trouve et corrige ici.
+
+    Pas de PublishAot non plus : YamlDotNet (DeserializerBuilder par defaut) et la
     deserialisation JSON par reflexion de ScenarioDefinitionLoader echouent a la compilation AOT
     (IL3050/IL2026) sans reecrire ce pipeline en code source-genere : chantier separe, plus
     risque, non traite ici.
   -->
-  <PropertyGroup>
-    <RuntimeIdentifiers>$(TempestStandaloneRuntimeIdentifiers)</RuntimeIdentifiers>
-  </PropertyGroup>
 
   <!--
     Packaging dotnet tool (roadmap phase 1, deuxieme bullet) : dotnet pack produit un .nupkg

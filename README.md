@@ -572,6 +572,65 @@ jeton via `$.token` plutôt qu'un motif Regex : 125 itérations, **0 échec** su
 `login`/`browse`/`checkout` — `checkout` reste à 0 % d'échec, confirmant que le jeton extrait
 par JsonPath se propage correctement à l'en-tête `Authorization`, exactement comme avec Regex.
 
+## Scénarios scriptés (Roslyn)
+
+Le format déclaratif ci-dessus ne sait pas exprimer de branchement ni de boucle — la limite
+documentée depuis l'étape 6. Décision structurante de la [roadmap
+phase 2](ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) : plutôt que d'enrichir
+indéfiniment un langage de configuration, un scénario peut désormais être un vrai script C#,
+compilé à la volée par Roslyn (`Microsoft.CodeAnalysis.CSharp.Scripting`).
+
+Un fichier `.csx`/`.cs` doit se terminer par une expression qui produit un `IWorkflow` — le plus
+souvent l'instanciation d'une classe déclarée juste au-dessus, exactement comme un scénario écrit
+en dur dans `Tempest.Scenarios` :
+
+```csharp
+public sealed class PingWorkflow : IWorkflow
+{
+    private StepId _pingStep;
+    public string Name => "ping";
+    public void RegisterSteps(StepRegistry registry) => _pingStep = registry.Register("ping");
+
+    public async ValueTask ExecuteAsync(IVirtualUserContext context, CancellationToken cancellationToken)
+    {
+        StepScope scope = context.BeginStep(_pingStep);
+        using HttpResponseMessage response = await context.HttpClient.GetAsync("/ping", cancellationToken);
+        scope.CompleteHttp((int)response.StatusCode);
+    }
+}
+
+new PingWorkflow()
+```
+
+```bash
+tempest run scenario.csx --target-url http://localhost:5299 --rps 50 --duration 30s
+```
+
+`System`, `System.Net.Http`, `System.Threading(.Tasks)`, `Tempest.Domain.Execution` et
+`Tempest.Domain.Metrics` sont importés par défaut ; un script ajoute ses propres `using` pour le
+reste (`System.Text.Json.Nodes`, `System.Net.Http.Json`...). Toutes les assemblies déjà chargées
+dans le processus hôte sont visibles du script sans configuration : `Tempest.Scenarios` pour
+réutiliser `DynamicCheckoutWorkflow` comme base, par exemple.
+
+[`scenarios/scripted-checkout.csx`](scenarios/scripted-checkout.csx) démontre exactement ce que
+le déclaratif ne peut pas exprimer : le même parcours login/browse/checkout que
+`smoke-test.yaml`, avec une boucle de nouvelle tentative bornée sur `checkout` (arrêt anticipé
+dès qu'il ne s'agit plus d'une 503 temporaire) — impossible à écrire sans une syntaxe de
+branchement dédiée dans un format purement déclaratif.
+
+**Un script s'exécute avec la confiance totale du processus** : rien n'est sandboxé, comme un
+script k6 (JavaScript) ou NBomber (C# aussi) — propriété inhérente à la décision, pas un oubli.
+
+Vérifié par de vrais tirs : `scripted-checkout.csx` exécuté via `tempest run`, jeton mis en cache
+par utilisateur virtuel (`context.State`) — 400 itérations avec `--max-vus 20`, seulement 20
+appels réels à `login`, les 380 autres réutilisant le jeton mis en cache, exactement comme
+`DynamicCheckoutWorkflow` ; une erreur de compilation et un script sans expression finale
+produisent tous deux un message d'erreur clair plutôt qu'une exception Roslyn brute.
+
+**Limite** : mode distribué (Master/Workers) non pris en charge pour les scénarios scriptés —
+`WorkerCoordinator` reste câblé uniquement sur le format déclaratif ; un `.csx` en mode distribué
+échoue avec l'erreur `NotSupportedException` existante (« Utilisez .yaml, .yml ou .json »).
+
 ## Protocole WebSocket
 
 Un scénario peut ouvrir une connexion WebSocket exactement comme il ouvre une requête HTTP,
@@ -983,6 +1042,7 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 24** — Binaires autonomes (Windows/Linux/macOS x64+arm64, self-contained, fichier unique) : `RuntimeIdentifiers` partagés (`Directory.Build.props`), nettoyage des fichiers hérités de `Tempest.Host` (`appsettings*.json`, `web.config`), workflow `release.yml` (publication en release GitHub sur tag `vX.Y.Z`, jamais encore déclenché) — vérifié par un vrai tir du `tempest.exe` win-x64 publié. Native AOT essayé et abandonné : `YamlDotNet.DeserializerBuilder` et une désérialisation JSON par réflexion dans `ScenarioDefinitionLoader` échouent la compilation AOT (`IL3050`/`IL2026`), migration hors périmètre
 - [x] **Étape 25** — Licence ([Apache License 2.0](LICENSE)), démarrage rapide en trois commandes en tête de ce README. La visibilité du dépôt (privé → public) reste un geste manuel réservé au propriétaire du dépôt — jamais automatisé depuis une session d'assistant
 - [x] **Étape 26** — [Paquets NuGet](#paquets-nuget) : `Tempest.Domain`, `Tempest.Application`, `Tempest.Infrastructure`, `Tempest.Scenarios` — élargi du texte initial de ROADMAP.md (Domain + Scenarios) pour permettre de lancer un tir depuis un projet externe, pas seulement d'écrire un scénario, en vraie parité avec NBomber. Ferme la phase 1 : il ne reste plus qu'un geste manuel (visibilité du dépôt). Vérifié par un vrai tir depuis un projet xUnit sans aucune référence à ce dépôt, uniquement via les paquets NuGet locaux
+- [x] **Étape 27** — [Scénarios scriptés (Roslyn)](#scénarios-scriptés-roslyn) : `ScriptedWorkflowLoader`/`WorkflowFileLoader` (`Tempest.Scenarios`), décision structurante de la roadmap phase 2 mise en œuvre — un fichier `.csx`/`.cs` devient un `IWorkflow` compilé à la volée. Vérifié par un vrai tir (`scenarios/scripted-checkout.csx`, boucle de nouvelle tentative sur `checkout`, jeton mis en cache confirmé sur 400 itérations/20 utilisateurs virtuels). Limite documentée : mode distribué non pris en charge pour ce format
 
 ## Roadmap initiale — close
 
