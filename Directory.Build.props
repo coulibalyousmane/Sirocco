@@ -9,6 +9,7 @@
     <Deterministic>true</Deterministic>
     <Product>Tempest</Product>
     <Authors>Tempest</Authors>
+    <Copyright>Copyright 2026 Ousmane Coulibaly</Copyright>
   </PropertyGroup>
 
   <!--

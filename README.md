@@ -1,6 +1,7 @@
 # Tempest
 
 [![CI](https://github.com/coulibalyousmane/Tempest/actions/workflows/ci.yml/badge.svg)](https://github.com/coulibalyousmane/Tempest/actions/workflows/ci.yml)
+[![Licence](https://img.shields.io/badge/licence-Apache%202.0-blue.svg)](LICENSE)
 
 > Une tempête de trafic, à la demande.
 
@@ -8,6 +9,20 @@ Moteur de test de charge haute performance, asynchrone et *cloud-native*, écrit
 Conçu pour simuler des dizaines de milliers de requêtes par seconde depuis une seule machine,
 avec une empreinte mémoire minimale et une mesure de latence honnête
 (**correction du *coordinated omission***).
+
+## Démarrage rapide
+
+```bash
+git clone https://github.com/coulibalyousmane/Tempest.git
+cd Tempest
+dotnet run --project src/Tempest.Cli -- run --target-url https://votre-cible --rps 50 --duration 30s
+```
+
+Pas de scénario écrit, pas de configuration : ces trois commandes suffisent pour un premier tir
+contre n'importe quelle URL. `tempest run --help` documente le reste (scénarios déclaratifs,
+seuils, rapports HTML/JSON) — voir [Interface de ligne de
+commande](#interface-de-ligne-de-commande) pour l'installation en outil global ou en binaire
+autonome, sans dépendre de `git clone` ni du SDK .NET.
 
 ## Pourquoi
 
@@ -918,6 +933,7 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 22** — `Tempest.Cli` (`tempest run [scenario] [options]`) : `--target-url`, `--rps` ou `--from-rps`/`--to-rps` + `--duration`, `--max-vus`, `--workflow`, `--threshold` (répétable), `--report-html`/`--report-json` ; extraction de `StandaloneHost.Run` hors de `Tempest.Host/Program.cs` pour être partagée sans dupliquer le câblage (roadmap phase 1, scope minimal — un seul bullet des cinq : pas de packaging `dotnet tool`, pas de binaires autonomes, pas de mode distribué depuis la CLI)
 - [x] **Étape 23** — Packaging `dotnet tool` de `Tempest.Cli` (`PackAsTool`, commande `tempest`), comblant la limite de l'étape 22 — vérifié par une installation globale réelle et un tir depuis un répertoire hors du dépôt ; job CI dédié (`dotnet pack`). Reste hors périmètre : publication sur nuget.org (dépôt encore privé)
 - [x] **Étape 24** — Binaires autonomes (Windows/Linux/macOS x64+arm64, self-contained, fichier unique) : `RuntimeIdentifiers` partagés (`Directory.Build.props`), nettoyage des fichiers hérités de `Tempest.Host` (`appsettings*.json`, `web.config`), workflow `release.yml` (publication en release GitHub sur tag `vX.Y.Z`, jamais encore déclenché) — vérifié par un vrai tir du `tempest.exe` win-x64 publié. Native AOT essayé et abandonné : `YamlDotNet.DeserializerBuilder` et une désérialisation JSON par réflexion dans `ScenarioDefinitionLoader` échouent la compilation AOT (`IL3050`/`IL2026`), migration hors périmètre
+- [x] **Étape 25** — Licence ([Apache License 2.0](LICENSE)), démarrage rapide en trois commandes en tête de ce README. La visibilité du dépôt (privé → public) reste un geste manuel réservé au propriétaire du dépôt — jamais automatisé depuis une session d'assistant. Le bullet « paquets NuGet bibliothèque » (`Tempest.Domain`, `Tempest.Scenarios`) de la phase 1 reste ouvert, traité après celui-ci par choix explicite
 
 ## Roadmap initiale — close
 
@@ -945,3 +961,7 @@ restent trop pauvres pour un test de charge réel.
 matrice concurrentielle honnête, huit phases ordonnées par dépendance, et une correction
 importante — l'argument « Tempest corrige le *coordinated omission*, contrairement aux autres »
 est **faux** (les trois proposent un modèle ouvert) ; le différenciateur réel est ailleurs.
+
+## Licence
+
+[Apache License 2.0](LICENSE) — la même que k6 et Gatling.

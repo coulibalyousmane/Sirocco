@@ -82,9 +82,13 @@ qui bloque littéralement tout le reste, et c'est aussi le moins cher à traiter
   `ScenarioDefinitionLoader` échouent la compilation AOT (`IL3050`/`IL2026`) — le graphe de
   dépendances actuel ne le permet pas sans réécrire ce pipeline.
 - **Paquets NuGet bibliothèque** — `Tempest.Domain` et `Tempest.Scenarios`, pour écrire des
-  scénarios en C# depuis un projet xUnit, comme le permet NBomber.
-- **Rendre le dépôt public**, avec une licence, un README d'accueil et un démarrage rapide qui
-  tient en trois commandes.
+  scénarios en C# depuis un projet xUnit, comme le permet NBomber. **Pas encore fait** — traité
+  après le bullet suivant plutôt qu'avant, par choix explicite plutôt que par oubli.
+- ~~**Rendre le dépôt public**~~ — licence ([Apache License 2.0](LICENSE), celle de k6 et
+  Gatling), README d'accueil et démarrage rapide en trois commandes faits. Changer la visibilité
+  du dépôt sur GitHub reste un geste que seul le propriétaire du dépôt peut faire (Réglages →
+  Danger Zone → Change visibility) — non automatisable depuis cet environnement (`gh` CLI absent,
+  et l'installer sans qu'on le demande serait aller plus loin que ce qui a été convenu).
 
 ### Phase 2 — Des scénarios qu'on peut réellement écrire
 
