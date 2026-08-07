@@ -17,4 +17,18 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- Paquet NuGet bibliotheque (roadmap phase 1, dernier bullet) : la chaine de mesure
+       (AddTempestMetrics, MetricsProcessor, TempestMeter/OpenTelemetry) — ce qui transforme les
+       mesures brutes du moteur en LoadTestReport. -->
+  <PropertyGroup>
+    <PackageId>Tempest.Infrastructure</PackageId>
+    <Description>Chaine de mesure de Tempest (AddTempestMetrics, MetricsProcessor, export OpenTelemetry) — agrege les mesures de Tempest.Application en LoadTestReport.</Description>
+    <PackageTags>load-testing;performance;opentelemetry</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
 </Project>

@@ -30,6 +30,13 @@ jobs:
       - name: Empaqueter Tempest.Cli (outil dotnet)
         run: dotnet pack src/Tempest.Cli --configuration Release --no-build
 
+      - name: Empaqueter les paquets NuGet bibliotheque
+        run: |
+          dotnet pack src/Tempest.Domain --configuration Release --no-build
+          dotnet pack src/Tempest.Application --configuration Release --no-build
+          dotnet pack src/Tempest.Infrastructure --configuration Release --no-build
+          dotnet pack src/Tempest.Scenarios --configuration Release --no-build
+
       - name: Verifier le formatage
         run: dotnet format Tempest.sln --verify-no-changes --severity info
 

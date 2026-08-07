@@ -30,4 +30,19 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- Paquet NuGet bibliotheque (roadmap phase 1, dernier bullet) : scenarios de reference
+       (DynamicCheckoutWorkflow, WebSocketEchoWorkflow, les quatre workflows gRPC) et le format
+       declaratif (DeclarativeWorkflow, ScenarioDefinitionLoader, ExtractionRule) — reutilisables
+       tels quels ou comme modele pour ecrire son propre IWorkflow. -->
+  <PropertyGroup>
+    <PackageId>Tempest.Scenarios</PackageId>
+    <Description>Scenarios de reference et format declaratif de Tempest (DynamicCheckoutWorkflow, workflows gRPC/WebSocket, DeclarativeWorkflow) — a reutiliser ou comme modele pour ecrire son propre IWorkflow.</Description>
+    <PackageTags>load-testing;performance</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
 </Project>

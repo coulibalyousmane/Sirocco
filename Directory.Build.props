@@ -13,6 +13,21 @@
   </PropertyGroup>
 
   <!--
+    Metadonnees NuGet communes a tous les paquets publiables du depot (Tempest.Domain,
+    Tempest.Application, Tempest.Infrastructure, Tempest.Scenarios, Tempest.Cli) : un seul
+    endroit pour la licence, l'URL du depot et la version, plutot que quatre copies qui
+    divergeraient tot ou tard. Sans effet sur les projets non publiables (IsPackable=false,
+    comme Tempest.Host ou les tests) : ces proprietes ne sont lues qu'au moment du pack.
+  -->
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/coulibalyousmane/Tempest</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/coulibalyousmane/Tempest</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <!--
     Liste commune des RID des binaires autonomes (Windows, Linux, macOS x64/arm64). Un seul
     endroit a faire evoluer : tout projet self-contained publiable (Tempest.Cli) doit restaurer
     ces RID pour lui-meme ET pour tout Sdk.Web qu'il reference (Tempest.Host, meme s'il n'est

@@ -43,12 +43,8 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>tempest</ToolCommandName>
     <PackageId>Tempest.Cli</PackageId>
-    <Version>0.1.0</Version>
     <Description>CLI de Tempest, moteur de test de charge async cloud-native. "tempest run [scenario] [options]" lance un tir et se termine a la fin.</Description>
     <PackageTags>load-testing;performance;cli</PackageTags>
-    <RepositoryUrl>https://github.com/coulibalyousmane/Tempest</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/coulibalyousmane/Tempest</PackageProjectUrl>
-    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 

@@ -14,4 +14,17 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- Paquet NuGet bibliotheque (roadmap phase 1, dernier bullet) : le moteur d'injection lui-meme
+       (TargetRpsLoadEngine, AddTempestEngine) — ce qui deroule reellement un IWorkflow. -->
+  <PropertyGroup>
+    <PackageId>Tempest.Application</PackageId>
+    <Description>Moteur d'injection de charge de Tempest (TargetRpsLoadEngine, AddTempestEngine) — deroule un IWorkflow (Tempest.Domain) a un debit cible, avec correction du coordinated omission.</Description>
+    <PackageTags>load-testing;performance</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
 </Project>

@@ -81,9 +81,14 @@ qui bloque littéralement tout le reste, et c'est aussi le moins cher à traiter
   abandonné : `YamlDotNet.DeserializerBuilder` et une désérialisation JSON par réflexion dans
   `ScenarioDefinitionLoader` échouent la compilation AOT (`IL3050`/`IL2026`) — le graphe de
   dépendances actuel ne le permet pas sans réécrire ce pipeline.
-- **Paquets NuGet bibliothèque** — `Tempest.Domain` et `Tempest.Scenarios`, pour écrire des
-  scénarios en C# depuis un projet xUnit, comme le permet NBomber. **Pas encore fait** — traité
-  après le bullet suivant plutôt qu'avant, par choix explicite plutôt que par oubli.
+- ~~**Paquets NuGet bibliothèque**~~ — fait, voir [Paquets NuGet](README.md#paquets-nuget) :
+  élargi de `Tempest.Domain` et `Tempest.Scenarios` (le texte initial de ce bullet) à
+  `Tempest.Application` et `Tempest.Infrastructure` aussi — sans le moteur ni la chaîne de
+  mesure, un projet externe pouvait écrire un scénario mais pas le lancer, contrairement à
+  NBomber, cité en référence quelques lignes plus haut. Vérifié par un vrai tir depuis un projet
+  xUnit externe qui ne référence que ces quatre paquets (aucun `ProjectReference` vers ce dépôt).
+  Pas encore publiés sur nuget.org — le dépôt reste privé (bullet précédent, maintenant fait :
+  seule la visibilité GitHub reste un geste manuel).
 - ~~**Rendre le dépôt public**~~ — licence ([Apache License 2.0](LICENSE), celle de k6 et
   Gatling), README d'accueil et démarrage rapide en trois commandes faits. Changer la visibilité
   du dépôt sur GitHub reste un geste que seul le propriétaire du dépôt peut faire (Réglages →
@@ -223,10 +228,12 @@ de plugin avant les protocoles qu'il doit accueillir.
 
 ## Recommandation
 
-**La phase 1 en entier, avant tout le reste.** Quelques jours de travail, aucune difficulté
-technique, et elle transforme un projet personnel en logiciel utilisable. Tout ce qui a été
-construit en vingt-et-une étapes — la fusion d'histogrammes exacte, les quatre modes gRPC, le mode
-distribué sécurisé — n'a aucune valeur tant que l'installation demande de cloner un dépôt privé.
+**La phase 1 est faite** — CLI, packaging `dotnet tool`, binaires autonomes, paquets NuGet
+bibliothèque, licence et démarrage rapide. Un seul geste manuel reste : basculer la visibilité du
+dépôt GitHub de privé à public (Réglages → Danger Zone), réservé au propriétaire du dépôt. Tant
+qu'il reste privé, rien de ce qui a été construit — la fusion d'histogrammes exacte, les quatre
+modes gRPC, le mode distribué sécurisé, l'installation en une commande — n'a de valeur pour
+quiconque d'autre que son auteur.
 
 Ensuite **la décision de la phase 2** : script ou déclaratif enrichi. C'est le seul choix de cette
 roadmap difficile à défaire ensuite, et il conditionne quatre phases sur huit.

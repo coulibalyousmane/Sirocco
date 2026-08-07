@@ -296,6 +296,54 @@ de l'hôte au lieu d'échouer avec le message d'erreur attendu.
 **Limite restante** : dépôt encore privé — dernier bullet de la
 [phase 1 de ROADMAP.md](ROADMAP.md#phase-1--rendre-tempest-installable).
 
+## Paquets NuGet
+
+Le moteur se consomme aussi comme une bibliothèque C#, à la NBomber : `Tempest.Domain`,
+`Tempest.Application`, `Tempest.Infrastructure` et `Tempest.Scenarios` s'installent séparément,
+chacun avec son propre rôle.
+
+| Paquet | Contenu | Dépend de |
+|---|---|---|
+| `Tempest.Domain` | Contrats (`IWorkflow`, `IVirtualUserContext`), profils de charge, rapports. Zéro dépendance NuGet. | — |
+| `Tempest.Application` | Le moteur (`TargetRpsLoadEngine`, `AddTempestEngine`) — déroule un `IWorkflow` à un débit cible. | `Tempest.Domain` |
+| `Tempest.Infrastructure` | La chaîne de mesure (`AddTempestMetrics`, export OpenTelemetry) — transforme les mesures en `LoadTestReport`. | `Tempest.Domain`, `Tempest.Application` |
+| `Tempest.Scenarios` | Scénarios de référence (`DynamicCheckoutWorkflow`, gRPC, WebSocket) et le format déclaratif. | `Tempest.Domain` |
+
+```csharp
+// Ecrire et lancer un scenario depuis un projet xUnit, sans cloner ce depot :
+HostApplicationBuilder builder = Host.CreateApplicationBuilder();
+builder.Services.AddSingleton(new HttpClient { BaseAddress = new Uri("https://votre-cible") });
+builder.Services.AddSingleton<IWorkflow>(new DynamicCheckoutWorkflow());
+
+LoadProfile profile = new([LoadStage.Ramp(fromRps: 0, toRps: 50, TimeSpan.FromSeconds(30))]);
+builder.Services.AddTempestEngine(profile, new LoadTestOptions { MaxVirtualUsers = 100 });
+builder.Services.AddTempestMetrics();
+
+using IHost host = builder.Build();
+await host.StartAsync();
+
+TargetRpsLoadEngine engine = host.Services.GetRequiredService<TargetRpsLoadEngine>();
+MetricsProcessor metricsProcessor = host.Services.GetRequiredService<MetricsProcessor>();
+metricsProcessor.Start();
+LoadTestSummary summary = await engine.RunAsync(CancellationToken.None);
+await metricsProcessor.StopAsync();
+
+LoadTestReport report = metricsProcessor.Aggregator.Snapshot(StatisticsScope.Cumulative);
+```
+
+Le bullet initial de ROADMAP.md ne citait que `Tempest.Domain` et `Tempest.Scenarios` — élargi à
+`Tempest.Application` et `Tempest.Infrastructure` : sans eux, un projet externe pouvait écrire un
+scénario mais pas le lancer, ce qui aurait manqué la parité avec NBomber explicitement visée.
+
+Vérifié par un vrai tir depuis un projet xUnit **entièrement externe** (aucun `ProjectReference`
+vers ce dépôt, uniquement les quatre `.nupkg` via une source NuGet locale) : `DynamicCheckoutWorkflow`
+(`Tempest.Scenarios`) exécuté à travers `AddTempestEngine`/`AddTempestMetrics`, contre
+`Tempest.SampleTarget`, avec un rapport contenant bien l'étape `checkout`.
+
+**Limite restante** : pas encore publiés sur nuget.org (le dépôt reste privé). Les quatre paquets
+s'installent aujourd'hui depuis une source locale (`dotnet pack` puis `--add-source`) ou un flux
+privé, comme `Tempest.Cli`.
+
 ## Scénario de référence
 
 `DynamicCheckoutWorkflow` (login → browse → checkout) illustre trois capacités du moteur en
@@ -933,7 +981,8 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 22** — `Tempest.Cli` (`tempest run [scenario] [options]`) : `--target-url`, `--rps` ou `--from-rps`/`--to-rps` + `--duration`, `--max-vus`, `--workflow`, `--threshold` (répétable), `--report-html`/`--report-json` ; extraction de `StandaloneHost.Run` hors de `Tempest.Host/Program.cs` pour être partagée sans dupliquer le câblage (roadmap phase 1, scope minimal — un seul bullet des cinq : pas de packaging `dotnet tool`, pas de binaires autonomes, pas de mode distribué depuis la CLI)
 - [x] **Étape 23** — Packaging `dotnet tool` de `Tempest.Cli` (`PackAsTool`, commande `tempest`), comblant la limite de l'étape 22 — vérifié par une installation globale réelle et un tir depuis un répertoire hors du dépôt ; job CI dédié (`dotnet pack`). Reste hors périmètre : publication sur nuget.org (dépôt encore privé)
 - [x] **Étape 24** — Binaires autonomes (Windows/Linux/macOS x64+arm64, self-contained, fichier unique) : `RuntimeIdentifiers` partagés (`Directory.Build.props`), nettoyage des fichiers hérités de `Tempest.Host` (`appsettings*.json`, `web.config`), workflow `release.yml` (publication en release GitHub sur tag `vX.Y.Z`, jamais encore déclenché) — vérifié par un vrai tir du `tempest.exe` win-x64 publié. Native AOT essayé et abandonné : `YamlDotNet.DeserializerBuilder` et une désérialisation JSON par réflexion dans `ScenarioDefinitionLoader` échouent la compilation AOT (`IL3050`/`IL2026`), migration hors périmètre
-- [x] **Étape 25** — Licence ([Apache License 2.0](LICENSE)), démarrage rapide en trois commandes en tête de ce README. La visibilité du dépôt (privé → public) reste un geste manuel réservé au propriétaire du dépôt — jamais automatisé depuis une session d'assistant. Le bullet « paquets NuGet bibliothèque » (`Tempest.Domain`, `Tempest.Scenarios`) de la phase 1 reste ouvert, traité après celui-ci par choix explicite
+- [x] **Étape 25** — Licence ([Apache License 2.0](LICENSE)), démarrage rapide en trois commandes en tête de ce README. La visibilité du dépôt (privé → public) reste un geste manuel réservé au propriétaire du dépôt — jamais automatisé depuis une session d'assistant
+- [x] **Étape 26** — [Paquets NuGet](#paquets-nuget) : `Tempest.Domain`, `Tempest.Application`, `Tempest.Infrastructure`, `Tempest.Scenarios` — élargi du texte initial de ROADMAP.md (Domain + Scenarios) pour permettre de lancer un tir depuis un projet externe, pas seulement d'écrire un scénario, en vraie parité avec NBomber. Ferme la phase 1 : il ne reste plus qu'un geste manuel (visibilité du dépôt). Vérifié par un vrai tir depuis un projet xUnit sans aucune référence à ce dépôt, uniquement via les paquets NuGet locaux
 
 ## Roadmap initiale — close
 
