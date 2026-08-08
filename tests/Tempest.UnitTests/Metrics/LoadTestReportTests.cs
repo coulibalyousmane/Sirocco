@@ -144,4 +144,170 @@ public sealed class LoadTestReportTests
         Assert.Contains("au moins un echec", html);
         Assert.Contains("class=\"fail\"", html);
     }
+
+    [Fact]
+    public void No_tags_by_default()
+    {
+        Assert.Empty(CreateReport([CreateStep("login", 10L, 10_000L)]).Tags);
+    }
+
+    [Fact]
+    public void ToTable_shows_the_tags_when_present()
+    {
+        LoadTestReport report = CreateReport([CreateStep("login", 10L, 10_000L)]) with
+        {
+            Tags = new Dictionary<string, string> { ["region"] = "eu-west" },
+        };
+
+        Assert.Contains("region=eu-west", report.ToTable());
+    }
+
+    [Fact]
+    public void ToTable_omits_the_tags_line_when_there_are_none()
+    {
+        Assert.DoesNotContain("etiquettes", CreateReport([CreateStep("login", 10L, 10_000L)]).ToTable());
+    }
+
+    [Fact]
+    public void ToHtml_shows_the_tags_when_present()
+    {
+        LoadTestReport report = CreateReport([CreateStep("login", 10L, 10_000L)]) with
+        {
+            Tags = new Dictionary<string, string> { ["version"] = "v2" },
+        };
+
+        Assert.Contains("version=v2", report.ToHtml());
+    }
+
+    /// <summary>
+    /// Le rapport n'essaie jamais de reinterpreter un nom d'etape qualifie (voir
+    /// <see cref="Declarative.HttpStepDefinition.QualifiedName"/>) comme une arborescence a
+    /// l'affichage : il l'affiche tel quel, comme n'importe quel autre nom d'etape. Le
+    /// regroupement est une convention de nommage, pas une syntaxe interpretee par le rapport —
+    /// sinon un nom d'etape ordinaire contenant un '/' (pas rare, ni malveillant : voir le test
+    /// d'echappement HTML ci-dessous, dont le nom malicieux contient lui-meme un '/') serait
+    /// coupe en deux de facon inattendue.
+    /// </summary>
+    [Fact]
+    public void ToTable_shows_a_qualified_step_name_as_a_plain_flat_name()
+    {
+        LoadTestReport report = CreateReport([CreateStep("checkout/pay", 10L, 10_000L)]);
+
+        Assert.Contains("checkout/pay", report.ToTable());
+    }
+
+    [Fact]
+    public void ToHtml_shows_a_qualified_step_name_as_a_plain_flat_name()
+    {
+        LoadTestReport report = CreateReport([CreateStep("checkout/pay", 10L, 10_000L)]);
+
+        Assert.Contains("checkout/pay", report.ToHtml());
+    }
+
+    [Fact]
+    public void No_custom_metrics_by_default()
+    {
+        Assert.Empty(CreateReport([CreateStep("login", 10L, 10_000L)]).CustomMetrics);
+    }
+
+    private static CustomMetricSnapshot CounterMetric(string name, double sum) => new()
+    {
+        Name = name,
+        Kind = CustomMetricKind.Counter,
+        Count = (long)sum,
+        Sum = sum,
+        Min = 0d,
+        Max = 0d,
+        Last = 0d,
+    };
+
+    [Fact]
+    public void ToTable_omits_the_custom_metrics_section_when_there_are_none()
+    {
+        Assert.DoesNotContain("metriques personnalisees", CreateReport([CreateStep("login", 10L, 10_000L)]).ToTable());
+    }
+
+    /// <summary>
+    /// ToTable() formate ses nombres dans la culture courante (lisibilite au terminal), a
+    /// l'inverse de ToHtml() qui force l'invariant — voir <see cref="FormatCustomMetricValue"/>.
+    /// Les assertions ci-dessous comparent donc au meme format que produirait la culture
+    /// courante, plutot que d'exiger un separateur decimal fixe qui romprait des que la culture
+    /// de la machine qui execute les tests differe (typiquement en CI).
+    /// </summary>
+    [Fact]
+    public void ToTable_shows_a_counter_as_its_sum()
+    {
+        LoadTestReport report = CreateReport([CreateStep("login", 10L, 10_000L)]) with
+        {
+            CustomMetrics = [CounterMetric("orders_total", 42d)],
+        };
+
+        string table = report.ToTable();
+        Assert.Contains("metriques personnalisees", table);
+        Assert.Contains("orders_total", table);
+        Assert.Contains(42d.ToString("F2"), table);
+    }
+
+    [Fact]
+    public void ToTable_shows_a_gauge_as_its_last_value()
+    {
+        LoadTestReport report = CreateReport([CreateStep("login", 10L, 10_000L)]) with
+        {
+            CustomMetrics = [new CustomMetricSnapshot { Name = "active_carts", Kind = CustomMetricKind.Gauge, Count = 3, Sum = 0d, Min = 0d, Max = 0d, Last = 8d }],
+        };
+
+        Assert.Contains(8d.ToString("F2"), report.ToTable());
+    }
+
+    [Fact]
+    public void ToTable_shows_a_rate_as_a_percentage()
+    {
+        LoadTestReport report = CreateReport([CreateStep("login", 10L, 10_000L)]) with
+        {
+            CustomMetrics = [new CustomMetricSnapshot { Name = "cache_hit_rate", Kind = CustomMetricKind.Rate, Count = 4, Sum = 3d, Min = 0d, Max = 0d, Last = 0d }],
+        };
+
+        Assert.Contains(0.75d.ToString("P1"), report.ToTable());
+    }
+
+    [Fact]
+    public void ToTable_shows_a_trend_as_min_mean_and_max()
+    {
+        LoadTestReport report = CreateReport([CreateStep("login", 10L, 10_000L)]) with
+        {
+            CustomMetrics = [new CustomMetricSnapshot { Name = "order_value", Kind = CustomMetricKind.Trend, Count = 2, Sum = 60d, Min = 10d, Max = 50d, Last = 0d }],
+        };
+
+        string table = report.ToTable();
+        Assert.Contains($"min {10d:F2}", table);
+        Assert.Contains($"moy {30d:F2}", table);
+        Assert.Contains($"max {50d:F2}", table);
+    }
+
+    [Fact]
+    public void ToHtml_shows_the_custom_metrics_section()
+    {
+        LoadTestReport report = CreateReport([CreateStep("login", 10L, 10_000L)]) with
+        {
+            CustomMetrics = [CounterMetric("orders_total", 42d)],
+        };
+
+        string html = report.ToHtml();
+        Assert.Contains("Metriques personnalisees", html);
+        Assert.Contains("orders_total", html);
+    }
+
+    [Fact]
+    public void ToHtml_escapes_a_malicious_custom_metric_name()
+    {
+        const string maliciousName = "<script>alert(1)</script>";
+        LoadTestReport report = CreateReport([CreateStep("login", 10L, 10_000L)]) with
+        {
+            CustomMetrics = [CounterMetric(maliciousName, 1d)],
+        };
+
+        string html = report.ToHtml();
+        Assert.DoesNotContain(maliciousName, html);
+        Assert.Contains(System.Net.WebUtility.HtmlEncode(maliciousName), html);
+    }
 }

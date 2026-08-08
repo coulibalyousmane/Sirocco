@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Globalization;
+using System.Net;
 using System.Text;
 
 namespace Tempest.Domain.Metrics;
@@ -26,6 +27,19 @@ public sealed record LoadTestReport
     /// <summary>Nombre de mesures perdues faute de place dans le canal.</summary>
     public required long MetricsDropped { get; init; }
 
+    /// <summary>
+    /// Etiquettes du scenario qui a produit ce rapport (ex. <c>région: eu-west</c>), reportees
+    /// depuis <see cref="Execution.IWorkflow.Tags"/> — une metadonnee d'affichage, jamais utilisee
+    /// pour l'agregation des metriques ci-dessus. Vide par defaut.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Tags { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>
+    /// Metriques personnalisees du scenario (compteur/jauge/taux/tendance), agregees separement
+    /// du tableau d'etapes ci-dessus — voir <see cref="CustomMetricSnapshot"/>. Vide par defaut.
+    /// </summary>
+    public IReadOnlyList<CustomMetricSnapshot> CustomMetrics { get; init; } = [];
+
     /// <summary>Debit moyen sur la periode, iterations par seconde.</summary>
     public double IterationsPerSecond =>
         Duration > TimeSpan.Zero ? Iteration.Count / Duration.TotalSeconds : 0d;
@@ -44,6 +58,11 @@ public sealed record LoadTestReport
         builder.AppendLine(
             $"Rapport {Scope} — {Duration.TotalSeconds:F1}s, {IterationsPerSecond:N0} iterations/s");
 
+        if (Tags.Count > 0)
+        {
+            builder.AppendLine($"  etiquettes : {FormatTags()}");
+        }
+
         if (!IsTrustworthy)
         {
             builder.AppendLine(
@@ -61,7 +80,53 @@ public sealed record LoadTestReport
                 $"{step.Response.P99Milliseconds,9:F2}ms {step.Service.P99Milliseconds,9:F2}ms");
         }
 
+        if (CustomMetrics.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("  metriques personnalisees");
+            builder.AppendLine($"  {"metrique",-24} {"type",-8} {"n",8}   valeur");
+
+            foreach (CustomMetricSnapshot metric in CustomMetrics)
+            {
+                builder.AppendLine(
+                    $"  {metric.Name,-24} {metric.Kind.ToString().ToLowerInvariant(),-8} {metric.Count,8:N0}   {FormatCustomMetricValue(metric, CultureInfo.CurrentCulture)}");
+            }
+        }
+
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// Formate la valeur d'une metrique personnalisee selon son type : la somme pour un
+    /// compteur, la derniere valeur pour une jauge, la fraction pour un taux, et les trois bornes
+    /// utiles pour une tendance — sans centiles, voir <see cref="CustomMetricSnapshot"/>.
+    /// </summary>
+    private static string FormatCustomMetricValue(CustomMetricSnapshot metric, IFormatProvider culture) => metric.Kind switch
+    {
+        CustomMetricKind.Counter => metric.Sum.ToString("F2", culture),
+        CustomMetricKind.Gauge => metric.Last.ToString("F2", culture),
+        CustomMetricKind.Rate => metric.Mean.ToString("P1", culture),
+        CustomMetricKind.Trend =>
+            $"min {metric.Min.ToString("F2", culture)} / moy {metric.Mean.ToString("F2", culture)} / max {metric.Max.ToString("F2", culture)}",
+        _ => string.Empty,
+    };
+
+    private string FormatTags()
+    {
+        StringBuilder tags = new();
+        bool first = true;
+        foreach ((string key, string value) in Tags)
+        {
+            if (!first)
+            {
+                tags.Append(", ");
+            }
+
+            tags.Append(key).Append('=').Append(value);
+            first = false;
+        }
+
+        return tags.ToString();
     }
 
     /// <summary>
@@ -107,6 +172,11 @@ public sealed record LoadTestReport
         html.AppendLine(FormattableString.Invariant(
             $"<p class=\"subtitle\">{Duration.TotalSeconds:F1} s — {IterationsPerSecond:N0} iterations/s</p>"));
 
+        if (Tags.Count > 0)
+        {
+            html.AppendLine($"<p class=\"subtitle\">etiquettes : {WebUtility.HtmlEncode(FormatTags())}</p>");
+        }
+
         if (!IsTrustworthy)
         {
             html.AppendLine(
@@ -134,6 +204,29 @@ public sealed record LoadTestReport
 
         html.AppendLine("</tbody>");
         html.AppendLine("</table>");
+
+        if (CustomMetrics.Count > 0)
+        {
+            html.AppendLine("<h2>Metriques personnalisees</h2>");
+            html.AppendLine("<table>");
+            html.AppendLine("<thead><tr><th>Metrique</th><th>Type</th><th>n</th><th>Valeur</th></tr></thead>");
+            html.AppendLine("<tbody>");
+
+            foreach (CustomMetricSnapshot metric in CustomMetrics)
+            {
+                html.AppendLine(FormattableString.Invariant($"""
+                    <tr>
+                      <td>{WebUtility.HtmlEncode(metric.Name)}</td>
+                      <td>{metric.Kind.ToString().ToLowerInvariant()}</td>
+                      <td>{metric.Count:N0}</td>
+                      <td>{FormatCustomMetricValue(metric, CultureInfo.InvariantCulture)}</td>
+                    </tr>
+                    """));
+            }
+
+            html.AppendLine("</tbody>");
+            html.AppendLine("</table>");
+        }
 
         if (thresholds is not null)
         {

@@ -115,17 +115,17 @@ public static class StandaloneHost
         app.MapPrometheusScrapingEndpoint();
 
         app.MapGet("/report", (MetricsAggregator aggregator) =>
-            Results.Ok(aggregator.Snapshot(StatisticsScope.Cumulative)));
+            Results.Ok(aggregator.Snapshot(StatisticsScope.Cumulative) with { Tags = workflow.Tags }));
 
         app.MapGet("/report/live", (MetricsAggregator aggregator) =>
-            Results.Ok(aggregator.Snapshot(StatisticsScope.Sliding)));
+            Results.Ok(aggregator.Snapshot(StatisticsScope.Sliding) with { Tags = workflow.Tags }));
 
         app.MapGet("/thresholds", (MetricsAggregator aggregator, TempestHostOptions options) =>
             Results.Ok(ThresholdReport.Evaluate(options.Thresholds, aggregator.Snapshot(StatisticsScope.Cumulative))));
 
         app.MapGet("/report.html", (MetricsAggregator aggregator, TempestHostOptions options) =>
         {
-            LoadTestReport report = aggregator.Snapshot(StatisticsScope.Cumulative);
+            LoadTestReport report = aggregator.Snapshot(StatisticsScope.Cumulative) with { Tags = workflow.Tags };
             ThresholdReport thresholds = ThresholdReport.Evaluate(options.Thresholds, report);
             return Results.Content(report.ToHtml(thresholds), "text/html");
         });

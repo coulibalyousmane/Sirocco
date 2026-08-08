@@ -32,9 +32,12 @@ public static class TempestMetricsServiceCollectionExtensions
         effectiveOptions.Validate();
 
         services.TryAddSingleton(effectiveOptions);
+        services.TryAddSingleton(provider => new CustomMetricsAggregator(
+            provider.GetRequiredService<CustomMetricRegistry>()));
         services.TryAddSingleton(provider => new MetricsAggregator(
             provider.GetRequiredService<StepRegistry>(),
-            provider.GetRequiredService<MetricsAggregatorOptions>()));
+            provider.GetRequiredService<MetricsAggregatorOptions>(),
+            provider.GetRequiredService<CustomMetricsAggregator>()));
 
         services.TryAddSingleton<MetricsProcessor>();
         services.TryAddSingleton<TempestMeter>();

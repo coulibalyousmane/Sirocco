@@ -22,6 +22,7 @@ namespace Tempest.Application.Metrics;
 public sealed class MetricsAggregator
 {
     private readonly StepRegistry _steps;
+    private readonly CustomMetricsAggregator? _customMetrics;
     private readonly MetricsAggregatorOptions _options;
     private readonly Lock _buildGate = new();
     private readonly long _bucketTicks;
@@ -35,7 +36,11 @@ public sealed class MetricsAggregator
     /// Registre d'etapes. Peut encore etre vide a cet instant : voir <see cref="EnsureAccumulators"/>.
     /// </param>
     /// <param name="options">Reglages de la fenetre glissante.</param>
-    public MetricsAggregator(StepRegistry steps, MetricsAggregatorOptions? options = null)
+    /// <param name="customMetrics">
+    /// Agregateur de metriques personnalisees a inclure dans chaque rapport. Omis (donc rapport
+    /// sans <see cref="LoadTestReport.CustomMetrics"/>) si le scenario n'en declare aucune.
+    /// </param>
+    public MetricsAggregator(StepRegistry steps, MetricsAggregatorOptions? options = null, CustomMetricsAggregator? customMetrics = null)
     {
         ArgumentNullException.ThrowIfNull(steps);
 
@@ -43,6 +48,7 @@ public sealed class MetricsAggregator
         effectiveOptions.Validate();
 
         _steps = steps;
+        _customMetrics = customMetrics;
         _options = effectiveOptions;
         _bucketTicks = Math.Max(1L, TempestClock.FromTimeSpan(effectiveOptions.BucketDuration));
         _startTicks = TempestClock.Now;
@@ -122,6 +128,7 @@ public sealed class MetricsAggregator
             Steps = statistics,
             Iteration = iteration,
             MetricsDropped = MetricsDropped,
+            CustomMetrics = _customMetrics?.Snapshot() ?? [],
         };
     }
 

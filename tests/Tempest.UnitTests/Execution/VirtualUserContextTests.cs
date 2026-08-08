@@ -209,6 +209,30 @@ public sealed class VirtualUserContextTests
     }
 
     [Fact]
+    public void RecordCustomMetric_forwards_to_the_custom_metric_sink()
+    {
+        CollectingMetricSink sink = new();
+        CollectingCustomMetricSink customMetricSink = new();
+        VirtualUserContext context = new(3, _sharedClient, sink, _iterationStep, customMetricSink);
+        CustomMetricId ordersTotal = new(0);
+
+        context.RecordCustomMetric(ordersTotal, 42d);
+
+        Assert.Equal([42d], customMetricSink.ValuesFor(ordersTotal));
+    }
+
+    [Fact]
+    public void RecordCustomMetric_without_a_sink_does_not_throw()
+    {
+        CollectingMetricSink sink = new();
+        VirtualUserContext context = CreateContext(sink);
+
+        Exception? escaped = Record.Exception(() => context.RecordCustomMetric(new CustomMetricId(0), 1d));
+
+        Assert.Null(escaped);
+    }
+
+    [Fact]
     public void State_survives_across_iterations_of_the_same_virtual_user()
     {
         CollectingMetricSink sink = new();

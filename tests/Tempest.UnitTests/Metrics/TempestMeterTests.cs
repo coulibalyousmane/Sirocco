@@ -143,4 +143,87 @@ public sealed class TempestMeterTests
         // tableaux de bord avec des courbes plates indiscernables d'une cible instantanee.
         Assert.DoesNotContain(Collect(meter), o => o.Instrument == LATENCY_INSTRUMENT);
     }
+
+    private static MetricsAggregator CreateAggregatorWithCustomMetrics(CustomMetricsAggregator customMetrics)
+    {
+        StepRegistry steps = new();
+        steps.Register(WellKnownSteps.ITERATION);
+        steps.Seal();
+
+        return new MetricsAggregator(steps, customMetrics: customMetrics);
+    }
+
+    [Fact]
+    public void Custom_counter_is_published_as_its_cumulative_sum()
+    {
+        CustomMetricRegistry registry = new();
+        CustomMetricId ordersTotal = registry.Register("orders_total", CustomMetricKind.Counter);
+        registry.Seal();
+
+        CustomMetricsAggregator customMetrics = new(registry);
+        customMetrics.Record(new CustomMetricResult(ordersTotal, 1d));
+        customMetrics.Record(new CustomMetricResult(ordersTotal, 2d));
+
+        using TempestMeter meter = new(CreateAggregatorWithCustomMetrics(customMetrics));
+
+        Observation counter = Collect(meter).Single(o => o.Instrument == "tempest.custom.counter");
+        Assert.Equal(3d, counter.Value);
+        Assert.Equal("orders_total", counter.Tags["metric"]);
+    }
+
+    [Fact]
+    public void Custom_gauge_is_published_as_its_last_value()
+    {
+        CustomMetricRegistry registry = new();
+        CustomMetricId activeCarts = registry.Register("active_carts", CustomMetricKind.Gauge);
+        registry.Seal();
+
+        CustomMetricsAggregator customMetrics = new(registry);
+        customMetrics.Record(new CustomMetricResult(activeCarts, 5d));
+        customMetrics.Record(new CustomMetricResult(activeCarts, 8d));
+
+        using TempestMeter meter = new(CreateAggregatorWithCustomMetrics(customMetrics));
+
+        Observation gauge = Collect(meter).Single(o => o.Instrument == "tempest.custom.gauge");
+        Assert.Equal(8d, gauge.Value);
+    }
+
+    [Fact]
+    public void Custom_rate_is_published_as_a_fraction()
+    {
+        CustomMetricRegistry registry = new();
+        CustomMetricId cacheHitRate = registry.Register("cache_hit_rate", CustomMetricKind.Rate);
+        registry.Seal();
+
+        CustomMetricsAggregator customMetrics = new(registry);
+        customMetrics.Record(new CustomMetricResult(cacheHitRate, 1d));
+        customMetrics.Record(new CustomMetricResult(cacheHitRate, 1d));
+        customMetrics.Record(new CustomMetricResult(cacheHitRate, 0d));
+        customMetrics.Record(new CustomMetricResult(cacheHitRate, 0d));
+
+        using TempestMeter meter = new(CreateAggregatorWithCustomMetrics(customMetrics));
+
+        Observation rate = Collect(meter).Single(o => o.Instrument == "tempest.custom.rate");
+        Assert.Equal(0.5d, rate.Value);
+    }
+
+    [Fact]
+    public void Custom_trend_publishes_min_mean_and_max_as_separate_measurements()
+    {
+        CustomMetricRegistry registry = new();
+        CustomMetricId orderValue = registry.Register("order_value", CustomMetricKind.Trend);
+        registry.Seal();
+
+        CustomMetricsAggregator customMetrics = new(registry);
+        customMetrics.Record(new CustomMetricResult(orderValue, 10d));
+        customMetrics.Record(new CustomMetricResult(orderValue, 20d));
+        customMetrics.Record(new CustomMetricResult(orderValue, 30d));
+
+        using TempestMeter meter = new(CreateAggregatorWithCustomMetrics(customMetrics));
+
+        List<Observation> trend = [.. Collect(meter).Where(o => o.Instrument == "tempest.custom.trend")];
+        Assert.Equal(10d, trend.Single(o => o.Tags["stat"] == "min").Value);
+        Assert.Equal(20d, trend.Single(o => o.Tags["stat"] == "mean").Value);
+        Assert.Equal(30d, trend.Single(o => o.Tags["stat"] == "max").Value);
+    }
 }

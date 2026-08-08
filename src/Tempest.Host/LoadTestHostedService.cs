@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using Tempest.Application.Execution;
+using Tempest.Domain.Execution;
 using Tempest.Domain.Metrics;
 using Tempest.Host.Configuration;
 using Tempest.Infrastructure.Metrics;
@@ -21,6 +22,7 @@ internal sealed class LoadTestHostedService(
     TargetRpsLoadEngine engine,
     MetricsProcessor metricsProcessor,
     TempestHostOptions options,
+    IWorkflow workflow,
     IHostApplicationLifetime lifetime,
     ILogger<LoadTestHostedService> logger) : BackgroundService
 {
@@ -55,7 +57,7 @@ internal sealed class LoadTestHostedService(
             logger.LogInformation("Tir termine. {Summary}", summary);
         }
 
-        LoadTestReport report = metricsProcessor.Aggregator.Snapshot(StatisticsScope.Cumulative);
+        LoadTestReport report = metricsProcessor.Aggregator.Snapshot(StatisticsScope.Cumulative) with { Tags = workflow.Tags };
         if (logger.IsEnabled(LogLevel.Information))
         {
             logger.LogInformation("{Report}", report.ToTable());

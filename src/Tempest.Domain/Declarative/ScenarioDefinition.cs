@@ -1,4 +1,6 @@
-﻿namespace Tempest.Domain.Declarative;
+﻿using Tempest.Domain.Metrics;
+
+namespace Tempest.Domain.Declarative;
 
 /// <summary>
 /// Description declarative complete d'un scenario : un nom, une sequence d'etapes HTTP.
@@ -24,6 +26,15 @@ public sealed record ScenarioDefinition
     /// </summary>
     public IReadOnlyList<DataSetDefinition> Datasets { get; init; } = [];
 
+    /// <summary>
+    /// Etiquettes du tir (ex. <c>région: eu-west</c>, <c>version: v2</c>) : une metadonnee du
+    /// scenario dans son ensemble, pas d'une etape precise — utile pour distinguer deux rapports
+    /// produits par le meme scenario contre des cibles differentes. Vide par defaut. Reportee
+    /// telle quelle dans <see cref="Metrics.LoadTestReport.Tags"/>, jamais utilisee pour
+    /// l'agregation des metriques.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Tags { get; init; } = new Dictionary<string, string>();
+
     /// <summary>Valide la coherence du scenario et de chacune de ses etapes.</summary>
     /// <exception cref="ArgumentException">Le scenario est incoherent.</exception>
     public void Validate()
@@ -40,16 +51,18 @@ public sealed record ScenarioDefinition
 
         // Meme espace de noms pour les etapes et leurs checks : les deux deviennent chacun leur
         // propre StepId dans le rapport (voir DeclarativeWorkflow), une collision entre les deux
-        // fusionnerait silencieusement deux lignes distinctes du rapport en une seule.
+        // fusionnerait silencieusement deux lignes distinctes du rapport en une seule. La cle est
+        // QualifiedName (groupe compris), pas Name : deux etapes de meme nom dans deux groupes
+        // differents restent deux lignes distinctes du rapport, donc pas une collision.
         HashSet<string> seenNames = new(StringComparer.Ordinal);
         foreach (HttpStepDefinition step in Steps)
         {
             step.Validate();
 
-            if (!seenNames.Add(step.Name))
+            if (!seenNames.Add(step.QualifiedName))
             {
                 throw new ArgumentException(
-                    $"Le nom d'etape '{step.Name}' apparait plusieurs fois : les noms doivent etre uniques.",
+                    $"Le nom d'etape '{step.QualifiedName}' apparait plusieurs fois : les noms doivent etre uniques.",
                     nameof(Steps));
             }
 
@@ -74,6 +87,41 @@ public sealed record ScenarioDefinition
                 throw new ArgumentException(
                     $"Le nom de jeu de donnees '{dataset.Name}' apparait plusieurs fois : les noms doivent etre uniques.",
                     nameof(Datasets));
+            }
+        }
+
+        foreach ((string key, string value) in Tags)
+        {
+            if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(value))
+            {
+                throw new ArgumentException(
+                    $"L'etiquette '{key}' est invalide : ni la cle ni la valeur ne peuvent etre vides.",
+                    nameof(Tags));
+            }
+        }
+
+        // Contrairement aux etapes et aux checks, une meme metrique peut legitimement apparaitre
+        // dans plusieurs etapes (un compteur metier alimente a deux endroits differents) : ce
+        // n'est pas une collision de nom qui est rejetee ici, seulement une incoherence de type.
+        Dictionary<string, CustomMetricKind> seenMetricKinds = new(StringComparer.Ordinal);
+        foreach (HttpStepDefinition step in Steps)
+        {
+            foreach (MetricRule metric in step.Metrics)
+            {
+                if (seenMetricKinds.TryGetValue(metric.Name, out CustomMetricKind existingKind))
+                {
+                    if (existingKind != metric.Kind)
+                    {
+                        throw new ArgumentException(
+                            $"La metrique '{metric.Name}' est declaree en tant que {existingKind} puis " +
+                            $"{metric.Kind} : le type d'une metrique doit etre le meme partout ou elle apparait.",
+                            nameof(Steps));
+                    }
+                }
+                else
+                {
+                    seenMetricKinds[metric.Name] = metric.Kind;
+                }
             }
         }
     }

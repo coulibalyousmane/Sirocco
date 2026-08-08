@@ -27,11 +27,21 @@ public sealed class TempestMeter : IDisposable
     private const string BYTES_INSTRUMENT = "tempest.bytes.received";
     private const string SCHEDULING_DELAY_INSTRUMENT = "tempest.scheduling.delay.max";
     private const string DROPPED_METRICS_INSTRUMENT = "tempest.metrics.dropped";
+    private const string CUSTOM_COUNTER_INSTRUMENT = "tempest.custom.counter";
+    private const string CUSTOM_GAUGE_INSTRUMENT = "tempest.custom.gauge";
+    private const string CUSTOM_RATE_INSTRUMENT = "tempest.custom.rate";
+    private const string CUSTOM_TREND_INSTRUMENT = "tempest.custom.trend";
 
     private const string TAG_STEP = "step";
     private const string TAG_QUANTILE = "quantile";
     private const string TAG_KIND = "kind";
     private const string TAG_OUTCOME = "outcome";
+    private const string TAG_METRIC = "metric";
+    private const string TAG_STAT = "stat";
+
+    private const string STAT_MIN = "min";
+    private const string STAT_MEAN = "mean";
+    private const string STAT_MAX = "max";
 
     /// <summary>Latence corrigee du <i>coordinated omission</i>.</summary>
     private const string KIND_RESPONSE = "response";
@@ -107,6 +117,26 @@ public sealed class TempestMeter : IDisposable
             ObserveDroppedMetrics,
             UNIT_REQUESTS,
             "Mesures perdues faute de place : toute valeur non nulle invalide les centiles.");
+
+        _meter.CreateObservableCounter(
+            CUSTOM_COUNTER_INSTRUMENT,
+            ObserveCustomCounters,
+            description: "Metriques personnalisees de type compteur (somme cumulee), par nom.");
+
+        _meter.CreateObservableGauge(
+            CUSTOM_GAUGE_INSTRUMENT,
+            ObserveCustomGauges,
+            description: "Metriques personnalisees de type jauge (derniere valeur), par nom.");
+
+        _meter.CreateObservableGauge(
+            CUSTOM_RATE_INSTRUMENT,
+            ObserveCustomRates,
+            description: "Metriques personnalisees de type taux (fraction 0..1), par nom.");
+
+        _meter.CreateObservableGauge(
+            CUSTOM_TREND_INSTRUMENT,
+            ObserveCustomTrends,
+            description: "Metriques personnalisees de type tendance (min/moyenne/max), par nom et par statistique.");
     }
 
     /// <inheritdoc />
@@ -196,4 +226,51 @@ public sealed class TempestMeter : IDisposable
 
     private IEnumerable<Measurement<long>> ObserveDroppedMetrics() =>
         [new Measurement<long>(_snapshotProvider(StatisticsScope.Cumulative).MetricsDropped)];
+
+    private IEnumerable<Measurement<double>> ObserveCustomCounters() =>
+        SelectCustomMetrics(CustomMetricKind.Counter, static m => m.Sum);
+
+    private IEnumerable<Measurement<double>> ObserveCustomGauges() =>
+        SelectCustomMetrics(CustomMetricKind.Gauge, static m => m.Last);
+
+    private IEnumerable<Measurement<double>> ObserveCustomRates() =>
+        SelectCustomMetrics(CustomMetricKind.Rate, static m => m.Mean);
+
+    private List<Measurement<double>> SelectCustomMetrics(CustomMetricKind kind, Func<CustomMetricSnapshot, double> selector)
+    {
+        LoadTestReport report = _snapshotProvider(StatisticsScope.Cumulative);
+        List<Measurement<double>> measurements = [];
+
+        foreach (CustomMetricSnapshot metric in report.CustomMetrics)
+        {
+            if (metric.Kind != kind || metric.Count == 0L)
+            {
+                continue;
+            }
+
+            measurements.Add(new Measurement<double>(selector(metric), new KeyValuePair<string, object?>(TAG_METRIC, metric.Name)));
+        }
+
+        return measurements;
+    }
+
+    private IEnumerable<Measurement<double>> ObserveCustomTrends()
+    {
+        LoadTestReport report = _snapshotProvider(StatisticsScope.Cumulative);
+        List<Measurement<double>> measurements = [];
+
+        foreach (CustomMetricSnapshot metric in report.CustomMetrics)
+        {
+            if (metric.Kind != CustomMetricKind.Trend || metric.Count == 0L)
+            {
+                continue;
+            }
+
+            measurements.Add(new Measurement<double>(metric.Min, new KeyValuePair<string, object?>(TAG_METRIC, metric.Name), new KeyValuePair<string, object?>(TAG_STAT, STAT_MIN)));
+            measurements.Add(new Measurement<double>(metric.Mean, new KeyValuePair<string, object?>(TAG_METRIC, metric.Name), new KeyValuePair<string, object?>(TAG_STAT, STAT_MEAN)));
+            measurements.Add(new Measurement<double>(metric.Max, new KeyValuePair<string, object?>(TAG_METRIC, metric.Name), new KeyValuePair<string, object?>(TAG_STAT, STAT_MAX)));
+        }
+
+        return measurements;
+    }
 }

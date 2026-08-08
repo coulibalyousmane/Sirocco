@@ -55,6 +55,16 @@ public interface IVirtualUserContext
     void Report(in MetricResult result);
 
     /// <summary>
+    /// Enregistre une valeur pour une metrique personnalisee (voir <see cref="CustomMetricRegistry"/>).
+    /// L'interpretation de <paramref name="value"/> depend du type de la metrique — voir
+    /// <see cref="CustomMetricSnapshot"/>. Sans effet par defaut : un contexte de test qui n'en a
+    /// pas besoin n'a rien a implementer.
+    /// </summary>
+    void RecordCustomMetric(CustomMetricId metric, double value)
+    {
+    }
+
+    /// <summary>
     /// Ouvre une connexion WebSocket vers <paramref name="uri"/>.
     /// <para>
     /// Cree une nouvelle <see cref="System.Net.WebSockets.ClientWebSocket"/> a chaque appel :

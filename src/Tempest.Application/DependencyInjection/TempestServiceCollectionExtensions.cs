@@ -30,12 +30,14 @@ public static class TempestServiceCollectionExtensions
     /// <param name="options">Reglages de l'injecteur ; valeurs par defaut si omis.</param>
     /// <param name="metricQueueCapacity">Profondeur du canal de metriques.</param>
     /// <param name="schedulerSpinThreshold">Marge de rotation active de l'ordonnanceur.</param>
+    /// <param name="customMetricQueueCapacity">Profondeur du canal de metriques personnalisees.</param>
     public static IServiceCollection AddTempestEngine(
         this IServiceCollection services,
         LoadProfile profile,
         LoadTestOptions? options = null,
         int metricQueueCapacity = ChannelMetricSink.DEFAULT_CAPACITY,
-        TimeSpan? schedulerSpinThreshold = null)
+        TimeSpan? schedulerSpinThreshold = null,
+        int customMetricQueueCapacity = ChannelCustomMetricSink.DEFAULT_CAPACITY)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(profile);
@@ -46,6 +48,7 @@ public static class TempestServiceCollectionExtensions
         services.TryAddSingleton(profile);
         services.TryAddSingleton(effectiveOptions);
         services.TryAddSingleton<StepRegistry>();
+        services.TryAddSingleton<CustomMetricRegistry>();
 
         services.TryAddSingleton<ILoadScheduler>(_ => new CoordinatedRateLimiter(profile, schedulerSpinThreshold));
 
@@ -53,6 +56,9 @@ public static class TempestServiceCollectionExtensions
         // de metriques a besoin du ChannelReader, que l'interface n'expose deliberement pas.
         services.TryAddSingleton(_ => new ChannelMetricSink(metricQueueCapacity));
         services.TryAddSingleton<IMetricSink>(provider => provider.GetRequiredService<ChannelMetricSink>());
+
+        services.TryAddSingleton(_ => new ChannelCustomMetricSink(customMetricQueueCapacity));
+        services.TryAddSingleton<ICustomMetricSink>(provider => provider.GetRequiredService<ChannelCustomMetricSink>());
 
         services.TryAddSingleton<TargetRpsLoadEngine>();
 

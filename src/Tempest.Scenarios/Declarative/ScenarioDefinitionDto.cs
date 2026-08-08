@@ -1,5 +1,6 @@
 ﻿using Tempest.Domain.Data;
 using Tempest.Domain.Declarative;
+using Tempest.Domain.Metrics;
 
 namespace Tempest.Scenarios.Declarative;
 
@@ -24,11 +25,14 @@ internal sealed class ScenarioDefinitionDto
 
     public List<DataSetDefinitionDto> Datasets { get; set; } = [];
 
+    public Dictionary<string, string> Tags { get; set; } = [];
+
     public ScenarioDefinition ToDefinition() => new()
     {
         Name = Name,
         Steps = Steps.ConvertAll(static step => step.ToDefinition()),
         Datasets = Datasets.ConvertAll(static dataset => dataset.ToDefinition()),
+        Tags = Tags,
     };
 }
 
@@ -58,6 +62,8 @@ internal sealed class HttpStepDefinitionDto
 {
     public string Name { get; set; } = string.Empty;
 
+    public string? Group { get; set; }
+
     public string Method { get; set; } = string.Empty;
 
     public string Path { get; set; } = string.Empty;
@@ -74,9 +80,12 @@ internal sealed class HttpStepDefinitionDto
 
     public List<CheckRuleDto> Checks { get; set; } = [];
 
+    public List<MetricRuleDto> Metrics { get; set; } = [];
+
     public HttpStepDefinition ToDefinition() => new()
     {
         Name = Name,
+        Group = Group,
         Method = Method,
         Path = Path,
         Body = Body,
@@ -85,6 +94,7 @@ internal sealed class HttpStepDefinitionDto
         ExpectedStatusCodes = ExpectedStatusCodes,
         Extract = Extract.ConvertAll(static rule => rule.ToDefinition()),
         Checks = Checks.ConvertAll(static check => check.ToDefinition()),
+        Metrics = Metrics.ConvertAll(static metric => metric.ToDefinition()),
     };
 }
 
@@ -124,6 +134,36 @@ internal sealed class CheckRuleDto
     public CheckRule ToDefinition() => new()
     {
         Name = Name,
+        Regex = Regex,
+        XPath = XPath,
+        JsonPath = JsonPath,
+        Expected = Expected,
+    };
+}
+
+/// <inheritdoc cref="ScenarioDefinitionDto" />
+internal sealed class MetricRuleDto
+{
+    public string Name { get; set; } = string.Empty;
+
+    public string Kind { get; set; } = string.Empty;
+
+    public string? Regex { get; set; }
+
+    public string? XPath { get; set; }
+
+    public string? JsonPath { get; set; }
+
+    public string? Expected { get; set; }
+
+    public MetricRule ToDefinition() => new()
+    {
+        Name = Name,
+        Kind = Enum.TryParse(Kind, ignoreCase: true, out CustomMetricKind kind)
+            ? kind
+            : throw new FormatException(
+                $"Type de metrique personnalisee inconnu : '{Kind}'. Valeurs possibles : " +
+                $"{string.Join(", ", Enum.GetNames<CustomMetricKind>())}."),
         Regex = Regex,
         XPath = XPath,
         JsonPath = JsonPath,

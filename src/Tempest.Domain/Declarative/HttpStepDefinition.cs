@@ -15,6 +15,17 @@ public sealed record HttpStepDefinition
     /// <summary>Nom de l'etape, tel qu'il apparait dans les rapports.</summary>
     public required string Name { get; init; }
 
+    /// <summary>
+    /// Groupe hierarchique de l'etape (ex. <c>"checkout"</c> ou <c>"checkout/paiement"</c>),
+    /// <see langword="null"/> par defaut : l'etape n'appartient a aucun groupe. Compose avec
+    /// <see cref="Name"/> pour former <see cref="QualifiedName"/>, le nom effectivement enregistre
+    /// et affiche dans les rapports (voir <see cref="Metrics.LoadTestReport"/>).
+    /// </summary>
+    public string? Group { get; init; }
+
+    /// <summary>Nom effectif de l'etape dans le rapport : <c>"{Group}/{Name}"</c> si un groupe est defini, sinon <see cref="Name"/>.</summary>
+    public string QualifiedName => string.IsNullOrEmpty(Group) ? Name : $"{Group}/{Name}";
+
     /// <summary>Methode HTTP (GET, POST, ...).</summary>
     public required string Method { get; init; }
 
@@ -50,6 +61,13 @@ public sealed record HttpStepDefinition
     /// </summary>
     public IReadOnlyList<CheckRule> Checks { get; init; } = [];
 
+    /// <summary>
+    /// Metriques personnalisees alimentees par la reponse de cette etape (voir
+    /// <see cref="MetricRule"/>), rapportees separement du tableau d'etapes. Vide par defaut :
+    /// aucune metrique personnalisee n'a lieu.
+    /// </summary>
+    public IReadOnlyList<MetricRule> Metrics { get; init; } = [];
+
     /// <summary>Valide la coherence de l'etape et de chacune de ses regles d'extraction et de ses checks.</summary>
     /// <exception cref="ArgumentException">L'etape est incoherente.</exception>
     public void Validate()
@@ -74,6 +92,16 @@ public sealed record HttpStepDefinition
             throw new ArgumentException($"L'etape '{Name}' a un corps mais pas de type de contenu.", nameof(ContentType));
         }
 
+        if (Group is not null)
+        {
+            if (string.IsNullOrWhiteSpace(Group) || Group.StartsWith('/') || Group.EndsWith('/') || Group.Contains("//", StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    $"Le groupe de l'etape '{Name}' est invalide : '{Group}'. Un groupe ne peut pas etre vide ni commencer, terminer ou contenir un '/' double.",
+                    nameof(Group));
+            }
+        }
+
         foreach (ExtractionRule rule in Extract)
         {
             rule.Validate();
@@ -82,6 +110,11 @@ public sealed record HttpStepDefinition
         foreach (CheckRule check in Checks)
         {
             check.Validate();
+        }
+
+        foreach (MetricRule metric in Metrics)
+        {
+            metric.Validate();
         }
     }
 }

@@ -23,6 +23,7 @@ public sealed class TargetRpsLoadEngine
     private readonly IWorkflow _workflow;
     private readonly HttpClient _httpClient;
     private readonly IMetricSink _sink;
+    private readonly ICustomMetricSink _customMetricSink;
     private readonly LoadTestOptions _options;
 
     /// <summary>Cree un moteur de tir.</summary>
@@ -32,13 +33,21 @@ public sealed class TargetRpsLoadEngine
     /// <param name="sink">Destination des mesures.</param>
     /// <param name="options">Reglages de l'injecteur.</param>
     /// <param name="steps">Registre d'etapes, partage avec l'agregateur de metriques.</param>
+    /// <param name="customMetrics">
+    /// Registre de metriques personnalisees, partage avec son propre agregateur. Un registre
+    /// autonome si omis : seul le cablage par injection de dependances (<c>AddTempestEngine</c>)
+    /// le partage reellement avec un <c>CustomMetricsAggregator</c> capable de le lire.
+    /// </param>
+    /// <param name="customMetricSink">Destination des metriques personnalisees. Sans effet si omis.</param>
     public TargetRpsLoadEngine(
         ILoadScheduler scheduler,
         IWorkflow workflow,
         HttpClient httpClient,
         IMetricSink sink,
         LoadTestOptions options,
-        StepRegistry steps)
+        StepRegistry steps,
+        CustomMetricRegistry? customMetrics = null,
+        ICustomMetricSink? customMetricSink = null)
     {
         ArgumentNullException.ThrowIfNull(scheduler);
         ArgumentNullException.ThrowIfNull(workflow);
@@ -53,12 +62,17 @@ public sealed class TargetRpsLoadEngine
         _workflow = workflow;
         _httpClient = httpClient;
         _sink = sink;
+        _customMetricSink = customMetricSink ?? NullCustomMetricSink.Instance;
         _options = options;
         Steps = steps;
+        CustomMetrics = customMetrics ?? new CustomMetricRegistry();
     }
 
     /// <summary>Registre des etapes, scelle des le demarrage du tir.</summary>
     public StepRegistry Steps { get; }
+
+    /// <summary>Registre des metriques personnalisees, scelle des le demarrage du tir.</summary>
+    public CustomMetricRegistry CustomMetrics { get; }
 
     /// <summary>Deroule le tir complet et renvoie son bilan.</summary>
     /// <param name="cancellationToken">Interrompt le tir avant la fin du profil.</param>
@@ -88,6 +102,9 @@ public sealed class TargetRpsLoadEngine
         StepId iterationStep = Steps.Register(WellKnownSteps.ITERATION);
         _workflow.RegisterSteps(Steps);
         Steps.Seal();
+
+        _workflow.RegisterMetrics(CustomMetrics);
+        CustomMetrics.Seal();
 
         return iterationStep;
     }
@@ -134,7 +151,7 @@ public sealed class TargetRpsLoadEngine
         VirtualUserWorker[] workers = new VirtualUserWorker[_options.MaxVirtualUsers];
         for (int i = 0; i < workers.Length; i++)
         {
-            VirtualUserContext context = new(i, _httpClient, _sink, iterationStep);
+            VirtualUserContext context = new(i, _httpClient, _sink, iterationStep, _customMetricSink);
             workers[i] = new VirtualUserWorker(context, _workflow, maxDelayTicks);
         }
 

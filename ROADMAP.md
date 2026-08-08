@@ -27,7 +27,7 @@ Légende : ● solide · ◐ partiel · ○ absent
 | Dette d'ordonnancement mesurée et publiée | ● `Response` + `Service` | ○ | ○ | ○ |
 | Scénarios programmables (branchement, boucle) | ◐ C# recompilé, ou YAML linéaire | ● JavaScript/TS | ● DSL Scala/Java/Kotlin | ● C#/F# |
 | Jeux de données (CSV, JSON, SQL) | ◐ CSV/JSON, pas SQL | ● `SharedArray` | ● *feeders* | ● *data feed* |
-| Checks, groupes, étiquettes, métriques custom | ◐ checks seuls | ● | ● | ◐ |
+| Checks, groupes, étiquettes, métriques custom | ● checks, groupes, étiquettes, métriques custom | ● | ● | ◐ |
 | Rapport avec séries temporelles | ◐ tableau HTML ; temporel via Prometheus | ● Grafana natif | ● référence du marché | ● HTML + temps réel |
 | Mode distribué | ● fusion d'histogrammes exacte | ● `k6-operator` | ◐ Enterprise | ● Studio / K8s |
 | Installation en une commande | ○ cloner et compiler | ● brew, apt, docker | ● bundle, maven | ● NuGet |
@@ -118,10 +118,23 @@ fonctionnel.
   la requête HTTP dont elle dérive, mais compte comme n'importe quelle étape pour l'issue de
   l'itération. Sans effet sur les scénarios scriptés, qui pouvaient déjà publier ce genre
   d'assertion directement via `StepRegistry`/`StepScope`. Vérifié par de vrais tirs.
-- **Groupes et étiquettes** — hiérarchie d'étapes et découpage par dimension (`endpoint`, `région`,
-  `version`) dans le rapport.
-- **Métriques personnalisées** — compteur, jauge, taux, tendance, alimentés depuis le scénario et
-  agrégés comme les métriques natives.
+- ~~**Groupes et étiquettes**~~ — fait, voir [Groupes et étiquettes](README.md#groupes-et-étiquettes) :
+  un `group` par étape (préfixé au nom pour former le nom qualifié, réutilise `StepId` tel quel —
+  couvre la dimension `endpoint`) et des `tags` de scénario (métadonnée de tir reportée dans
+  l'en-tête du rapport — couvre `région`/`version`, qui varient par tir, pas par requête). Rendu
+  délibérément plat : pas de hiérarchie visuelle (indentation, sous-total par groupe) déduite du
+  nom, ni de tags par requête façon k6 — les deux exigeraient de faire d'une valeur choisie à
+  l'exécution une clé d'agrégation à part entière, jusque dans `StepAccumulator`/`MetricResult`.
+  Limite : étiquettes non propagées au rapport fusionné en mode distribué. Vérifié par un vrai tir.
+- ~~**Métriques personnalisées**~~ — fait, voir [Métriques personnalisées](README.md#métriques-personnalisées) :
+  `CustomMetricKind` (compteur/jauge/taux/tendance), `CustomMetricRegistry`/`MetricRule` (même
+  vocabulaire Regex/XPath/JsonPath que les checks), section `metrics` par étape. Première
+  fonctionnalité de cette phase à ne pas pouvoir réutiliser `StepId`/`StepAccumulator` tels
+  quels — une valeur métier arbitraire n'est pas une durée de requête — d'où une seconde chaîne
+  d'agrégation parallèle (canal borné, accumulateur, agrégateur), même discipline « consommateur
+  unique » que la chaîne native. Rendue dans le rapport et dans Prometheus. Limites : pas de
+  centiles pour la tendance (`LatencyHistogram` est bâti pour une durée non négative bornée), pas
+  de fenêtre glissante, pas de fusion inter-workers en mode distribué. Vérifié par un vrai tir.
 - **Temps de réflexion et rythme** — pauses configurables entre étapes, indispensables pour simuler
   un parcours utilisateur crédible.
 
@@ -268,12 +281,14 @@ quiconque d'autre que son auteur.
 **La décision de la phase 2 est tranchée et le moteur de script existe** : Roslyn (C# scripté),
 voir [Scénarios scriptés](README.md#scénarios-scriptés-roslyn). C'était le seul choix de cette
 roadmap difficile à défaire une fois pris ; il conditionne les phases 5 et 6, toujours valables
-telles que décrites dans la note de la phase 2. Les jeux de données et les checks sont faits, voir
-[Jeux de données](README.md#jeux-de-données) et [Checks](README.md#checks). Reste à construire le
-reste du contenu de la phase 2 — groupes/étiquettes, métriques personnalisées, temps de
-réflexion —, déjà partiellement accessible en C# pur sans attendre une API dédiée (une boucle de
-nouvelle tentative s'écrit directement dans un script, voir `scenarios/scripted-checkout.csx`),
-mais sans encore l'ergonomie d'une API de métrique personnalisée de premier ordre.
+telles que décrites dans la note de la phase 2. Les jeux de données, les checks, les
+groupes/étiquettes et les métriques personnalisées sont faits, voir
+[Jeux de données](README.md#jeux-de-données), [Checks](README.md#checks),
+[Groupes et étiquettes](README.md#groupes-et-étiquettes) et
+[Métriques personnalisées](README.md#métriques-personnalisées). Ne reste que le temps de
+réflexion et le rythme pour clore entièrement le contenu de la phase 2 — déjà partiellement
+accessible en C# pur sans attendre une API dédiée (une pause s'écrit directement dans un script
+via `Task.Delay`), mais sans encore l'ergonomie d'une pause déclarative de premier ordre.
 
 Le reste peut attendre des retours d'utilisateurs réels. Construire les phases 4 à 8 sans eux,
 c'est deviner.

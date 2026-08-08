@@ -1,5 +1,6 @@
 ﻿using Tempest.Domain.Data;
 using Tempest.Domain.Declarative;
+using Tempest.Domain.Metrics;
 using Tempest.Scenarios.Declarative;
 
 namespace Tempest.UnitTests.Declarative;
@@ -347,5 +348,142 @@ public sealed class ScenarioDefinitionLoaderTests
             """;
 
         Assert.Empty(ScenarioDefinitionLoader.Parse(yaml, ScenarioFormat.Yaml).Steps[0].Checks);
+    }
+
+    [Fact]
+    public void A_group_and_tags_survive_the_yaml_and_json_dto_round_trip()
+    {
+        const string yaml = """
+            name: grouped-scenario
+            tags:
+              region: eu-west
+              version: v2
+            steps:
+              - name: pay
+                group: checkout
+                method: POST
+                path: /api/checkout/pay
+            """;
+
+        const string json = """
+            {
+              "name": "grouped-scenario",
+              "tags": { "region": "eu-west", "version": "v2" },
+              "steps": [
+                { "name": "pay", "group": "checkout", "method": "POST", "path": "/api/checkout/pay" }
+              ]
+            }
+            """;
+
+        foreach ((string content, ScenarioFormat format) in new[] { (yaml, ScenarioFormat.Yaml), (json, ScenarioFormat.Json) })
+        {
+            ScenarioDefinition scenario = ScenarioDefinitionLoader.Parse(content, format);
+            Assert.Equal("eu-west", scenario.Tags["region"]);
+            Assert.Equal("v2", scenario.Tags["version"]);
+            Assert.Equal("checkout", scenario.Steps[0].Group);
+            Assert.Equal("checkout/pay", scenario.Steps[0].QualifiedName);
+        }
+    }
+
+    [Fact]
+    public void No_group_and_no_tags_by_default()
+    {
+        const string yaml = """
+            name: grouped-scenario
+            steps:
+              - name: ping
+                method: GET
+                path: /api/ping
+            """;
+
+        ScenarioDefinition scenario = ScenarioDefinitionLoader.Parse(yaml, ScenarioFormat.Yaml);
+        Assert.Null(scenario.Steps[0].Group);
+        Assert.Empty(scenario.Tags);
+    }
+
+    [Fact]
+    public void A_metrics_section_survives_the_yaml_and_json_dto_round_trip()
+    {
+        const string yaml = """
+            name: metrics-scenario
+            steps:
+              - name: checkout
+                method: POST
+                path: /api/checkout
+                metrics:
+                  - name: orders_total
+                    kind: counter
+                  - name: order_value
+                    kind: trend
+                    jsonPath: $.total
+                  - name: status_ok_rate
+                    kind: rate
+                    jsonPath: $.status
+                    expected: ok
+            """;
+
+        const string json = """
+            {
+              "name": "metrics-scenario",
+              "steps": [
+                {
+                  "name": "checkout",
+                  "method": "POST",
+                  "path": "/api/checkout",
+                  "metrics": [
+                    { "name": "orders_total", "kind": "counter" },
+                    { "name": "order_value", "kind": "trend", "jsonPath": "$.total" },
+                    { "name": "status_ok_rate", "kind": "rate", "jsonPath": "$.status", "expected": "ok" }
+                  ]
+                }
+              ]
+            }
+            """;
+
+        foreach ((string content, ScenarioFormat format) in new[] { (yaml, ScenarioFormat.Yaml), (json, ScenarioFormat.Json) })
+        {
+            IReadOnlyList<MetricRule> metrics = ScenarioDefinitionLoader.Parse(content, format).Steps[0].Metrics;
+            Assert.Equal(3, metrics.Count);
+            Assert.Equal("orders_total", metrics[0].Name);
+            Assert.Equal(CustomMetricKind.Counter, metrics[0].Kind);
+            Assert.Null(metrics[0].JsonPath);
+            Assert.Equal("order_value", metrics[1].Name);
+            Assert.Equal(CustomMetricKind.Trend, metrics[1].Kind);
+            Assert.Equal("$.total", metrics[1].JsonPath);
+            Assert.Equal("status_ok_rate", metrics[2].Name);
+            Assert.Equal(CustomMetricKind.Rate, metrics[2].Kind);
+            Assert.Equal("ok", metrics[2].Expected);
+        }
+    }
+
+    [Fact]
+    public void No_metrics_by_default()
+    {
+        const string yaml = """
+            name: metrics-scenario
+            steps:
+              - name: ping
+                method: GET
+                path: /api/ping
+            """;
+
+        Assert.Empty(ScenarioDefinitionLoader.Parse(yaml, ScenarioFormat.Yaml).Steps[0].Metrics);
+    }
+
+    [Fact]
+    public void An_unknown_metric_kind_is_rejected()
+    {
+        const string yaml = """
+            name: metrics-scenario
+            steps:
+              - name: ping
+                method: GET
+                path: /api/ping
+                metrics:
+                  - name: bogus
+                    kind: not-a-real-kind
+            """;
+
+        Assert.Throws<FormatException>(() => ScenarioDefinitionLoader.Parse(yaml, ScenarioFormat.Yaml));
     }
 }

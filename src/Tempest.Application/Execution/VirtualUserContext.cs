@@ -15,6 +15,7 @@ namespace Tempest.Application.Execution;
 public sealed class VirtualUserContext : IVirtualUserContext
 {
     private readonly IMetricSink _sink;
+    private readonly ICustomMetricSink _customMetricSink;
     private readonly StepId _iterationStep;
 
     private bool _firstStepPending;
@@ -25,7 +26,16 @@ public sealed class VirtualUserContext : IVirtualUserContext
     /// <param name="httpClient">Client HTTP partage par tout l'injecteur.</param>
     /// <param name="sink">Destination des mesures.</param>
     /// <param name="iterationStep">Etape technique portant la duree totale d'une iteration.</param>
-    public VirtualUserContext(int virtualUserId, HttpClient httpClient, IMetricSink sink, StepId iterationStep)
+    /// <param name="customMetricSink">
+    /// Destination des metriques personnalisees. <see cref="NullCustomMetricSink"/> si omis : la
+    /// plupart des scenarios (et la quasi-totalite des tests existants) n'en emettent aucune.
+    /// </param>
+    public VirtualUserContext(
+        int virtualUserId,
+        HttpClient httpClient,
+        IMetricSink sink,
+        StepId iterationStep,
+        ICustomMetricSink? customMetricSink = null)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         ArgumentNullException.ThrowIfNull(sink);
@@ -34,6 +44,7 @@ public sealed class VirtualUserContext : IVirtualUserContext
         HttpClient = httpClient;
         _sink = sink;
         _iterationStep = iterationStep;
+        _customMetricSink = customMetricSink ?? NullCustomMetricSink.Instance;
     }
 
     /// <inheritdoc />
@@ -194,6 +205,10 @@ public sealed class VirtualUserContext : IVirtualUserContext
 
         _sink.TryWrite(in result);
     }
+
+    /// <inheritdoc />
+    public void RecordCustomMetric(CustomMetricId metric, double value) =>
+        _customMetricSink.TryWrite(new CustomMetricResult(metric, value));
 
     /// <inheritdoc />
     public async Task<WebSocketConnection> ConnectWebSocketAsync(

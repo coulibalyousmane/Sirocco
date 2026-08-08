@@ -1,5 +1,6 @@
 ﻿using Tempest.Domain.Data;
 using Tempest.Domain.Declarative;
+using Tempest.Domain.Metrics;
 
 namespace Tempest.UnitTests.Declarative;
 
@@ -142,6 +143,94 @@ public sealed class ScenarioDefinitionTests
 
         Assert.Throws<ArgumentException>(scenario.Validate);
     }
+
+    [Fact]
+    public void Two_steps_with_the_same_name_in_different_groups_do_not_collide()
+    {
+        ScenarioDefinition scenario = new()
+        {
+            Name = "smoke",
+            Steps = [CreateStep("pay") with { Group = "checkout" }, CreateStep("pay") with { Group = "refund" }],
+        };
+
+        scenario.Validate();
+    }
+
+    [Fact]
+    public void Two_steps_with_the_same_qualified_name_are_rejected()
+    {
+        ScenarioDefinition scenario = new()
+        {
+            Name = "smoke",
+            Steps = [CreateStep("pay") with { Group = "checkout" }, CreateStep("pay") with { Group = "checkout" }],
+        };
+
+        Assert.Throws<ArgumentException>(scenario.Validate);
+    }
+
+    [Fact]
+    public void No_tags_by_default()
+    {
+        Assert.Empty(new ScenarioDefinition { Name = "smoke", Steps = [CreateStep()] }.Tags);
+    }
+
+    [Fact]
+    public void A_scenario_with_valid_tags_is_valid()
+    {
+        ScenarioDefinition scenario = new()
+        {
+            Name = "smoke",
+            Steps = [CreateStep()],
+            Tags = new Dictionary<string, string> { ["region"] = "eu-west", ["version"] = "v2" },
+        };
+
+        scenario.Validate();
+    }
+
+    [Fact]
+    public void A_tag_with_a_blank_value_is_rejected()
+    {
+        ScenarioDefinition scenario = new()
+        {
+            Name = "smoke",
+            Steps = [CreateStep()],
+            Tags = new Dictionary<string, string> { ["region"] = " " },
+        };
+
+        Assert.Throws<ArgumentException>(scenario.Validate);
+    }
+
+    [Fact]
+    public void The_same_metric_name_can_appear_in_two_steps_with_the_same_kind()
+    {
+        HttpStepDefinition addItem = CreateStep("add-item") with
+        {
+            Metrics = [new MetricRule { Name = "orders_total", Kind = CustomMetricKind.Counter }],
+        };
+        HttpStepDefinition pay = CreateStep("pay") with
+        {
+            Metrics = [new MetricRule { Name = "orders_total", Kind = CustomMetricKind.Counter }],
+        };
+        ScenarioDefinition scenario = new() { Name = "smoke", Steps = [addItem, pay] };
+
+        scenario.Validate();
+    }
+
+    [Fact]
+    public void The_same_metric_name_with_a_different_kind_in_another_step_is_rejected()
+    {
+        HttpStepDefinition addItem = CreateStep("add-item") with
+        {
+            Metrics = [new MetricRule { Name = "orders_total", Kind = CustomMetricKind.Counter }],
+        };
+        HttpStepDefinition pay = CreateStep("pay") with
+        {
+            Metrics = [new MetricRule { Name = "orders_total", Kind = CustomMetricKind.Gauge, JsonPath = "$.total" }],
+        };
+        ScenarioDefinition scenario = new() { Name = "smoke", Steps = [addItem, pay] };
+
+        Assert.Throws<ArgumentException>(scenario.Validate);
+    }
 }
 
 public sealed class DataSetDefinitionTests
@@ -213,6 +302,50 @@ public sealed class HttpStepDefinitionTests
     public void An_invalid_check_makes_the_whole_step_invalid()
     {
         HttpStepDefinition step = CreateStep() with { Checks = [new CheckRule { Name = "has-token" }] };
+
+        Assert.Throws<ArgumentException>(step.Validate);
+    }
+
+    [Fact]
+    public void No_group_by_default() => Assert.Null(CreateStep().Group);
+
+    [Fact]
+    public void QualifiedName_is_just_the_name_without_a_group() =>
+        Assert.Equal("login", CreateStep().QualifiedName);
+
+    [Fact]
+    public void QualifiedName_prefixes_the_name_with_the_group() =>
+        Assert.Equal("checkout/login", (CreateStep() with { Group = "checkout" }).QualifiedName);
+
+    [Fact]
+    public void A_blank_group_is_rejected() =>
+        Assert.Throws<ArgumentException>(() => (CreateStep() with { Group = " " }).Validate());
+
+    [Fact]
+    public void A_group_starting_with_a_slash_is_rejected() =>
+        Assert.Throws<ArgumentException>(() => (CreateStep() with { Group = "/checkout" }).Validate());
+
+    [Fact]
+    public void A_group_ending_with_a_slash_is_rejected() =>
+        Assert.Throws<ArgumentException>(() => (CreateStep() with { Group = "checkout/" }).Validate());
+
+    [Fact]
+    public void A_group_with_a_double_slash_is_rejected() =>
+        Assert.Throws<ArgumentException>(() => (CreateStep() with { Group = "checkout//payment" }).Validate());
+
+    [Fact]
+    public void A_nested_group_is_valid() => (CreateStep() with { Group = "checkout/payment" }).Validate();
+
+    [Fact]
+    public void No_metrics_by_default() => Assert.Empty(CreateStep().Metrics);
+
+    [Fact]
+    public void An_invalid_metric_makes_the_whole_step_invalid()
+    {
+        HttpStepDefinition step = CreateStep() with
+        {
+            Metrics = [new MetricRule { Name = "order_value", Kind = CustomMetricKind.Trend }],
+        };
 
         Assert.Throws<ArgumentException>(step.Validate);
     }
@@ -291,5 +424,139 @@ public sealed class CheckRuleTests
 
         Assert.True(check.Evaluate("""{"orderId":"abc-123"}"""));
         Assert.False(check.Evaluate("""{"other":"x"}"""));
+    }
+}
+
+public sealed class MetricRuleTests
+{
+    [Fact]
+    public void A_counter_without_an_expression_is_valid() =>
+        (new MetricRule { Name = "orders_total", Kind = CustomMetricKind.Counter }).Validate();
+
+    [Fact]
+    public void A_gauge_without_an_expression_is_rejected() =>
+        Assert.Throws<ArgumentException>(() => (new MetricRule { Name = "active_carts", Kind = CustomMetricKind.Gauge }).Validate());
+
+    [Fact]
+    public void A_trend_without_an_expression_is_rejected() =>
+        Assert.Throws<ArgumentException>(() => (new MetricRule { Name = "order_value", Kind = CustomMetricKind.Trend }).Validate());
+
+    [Fact]
+    public void A_rate_without_an_expression_is_rejected() =>
+        Assert.Throws<ArgumentException>(() => (new MetricRule { Name = "cache_hit_rate", Kind = CustomMetricKind.Rate }).Validate());
+
+    [Fact]
+    public void A_blank_name_is_rejected() =>
+        Assert.Throws<ArgumentException>(() => (new MetricRule { Name = " ", Kind = CustomMetricKind.Counter }).Validate());
+
+    [Fact]
+    public void A_gauge_with_a_jsonpath_expression_is_valid() =>
+        (new MetricRule { Name = "active_carts", Kind = CustomMetricKind.Gauge, JsonPath = "$.cartSize" }).Validate();
+
+    [Fact]
+    public void Two_expressions_at_once_is_rejected() =>
+        Assert.Throws<ArgumentException>(() => (new MetricRule
+        {
+            Name = "order_value",
+            Kind = CustomMetricKind.Trend,
+            JsonPath = "$.total",
+            Regex = "x",
+        }).Validate());
+
+    [Fact]
+    public void An_invalid_regex_syntax_is_rejected() =>
+        Assert.Throws<ArgumentException>(() => (new MetricRule { Name = "m", Kind = CustomMetricKind.Trend, Regex = "(" }).Validate());
+
+    [Fact]
+    public void Expected_on_a_counter_is_rejected() =>
+        Assert.Throws<ArgumentException>(() => (new MetricRule
+        {
+            Name = "orders_total",
+            Kind = CustomMetricKind.Counter,
+            Expected = "ok",
+        }).Validate());
+
+    [Fact]
+    public void Expected_on_a_rate_is_valid() =>
+        (new MetricRule
+        {
+            Name = "status_ok_rate",
+            Kind = CustomMetricKind.Rate,
+            JsonPath = "$.status",
+            Expected = "ok",
+        }).Validate();
+
+    [Fact]
+    public void Evaluate_a_counter_without_an_expression_always_yields_one()
+    {
+        MetricRule metric = new() { Name = "orders_total", Kind = CustomMetricKind.Counter };
+
+        Assert.Equal(1d, metric.Evaluate("""{"anything":"x"}"""));
+    }
+
+    [Fact]
+    public void Evaluate_a_counter_with_an_expression_extracts_the_increment()
+    {
+        MetricRule metric = new() { Name = "items_sold", Kind = CustomMetricKind.Counter, JsonPath = "$.quantity" };
+
+        Assert.Equal(3d, metric.Evaluate("""{"quantity":3}"""));
+    }
+
+    [Fact]
+    public void Evaluate_a_gauge_extracts_the_current_value()
+    {
+        MetricRule metric = new() { Name = "active_carts", Kind = CustomMetricKind.Gauge, JsonPath = "$.cartSize" };
+
+        Assert.Equal(4d, metric.Evaluate("""{"cartSize":4}"""));
+    }
+
+    [Fact]
+    public void Evaluate_a_trend_extracts_the_observed_value()
+    {
+        MetricRule metric = new() { Name = "order_value", Kind = CustomMetricKind.Trend, JsonPath = "$.total" };
+
+        Assert.Equal(87.5d, metric.Evaluate("""{"total":87.5}"""));
+    }
+
+    [Fact]
+    public void Evaluate_a_gauge_or_trend_yields_null_when_the_expression_does_not_match()
+    {
+        MetricRule metric = new() { Name = "active_carts", Kind = CustomMetricKind.Gauge, JsonPath = "$.cartSize" };
+
+        Assert.Null(metric.Evaluate("""{"other":"x"}"""));
+    }
+
+    [Fact]
+    public void Evaluate_a_gauge_or_trend_yields_null_when_the_matched_value_is_not_numeric()
+    {
+        MetricRule metric = new() { Name = "active_carts", Kind = CustomMetricKind.Gauge, JsonPath = "$.cartSize" };
+
+        Assert.Null(metric.Evaluate("""{"cartSize":"not-a-number"}"""));
+    }
+
+    [Fact]
+    public void Evaluate_a_rate_without_expected_yields_one_when_the_expression_matches()
+    {
+        MetricRule metric = new() { Name = "has_token_rate", Kind = CustomMetricKind.Rate, JsonPath = "$.token" };
+
+        Assert.Equal(1d, metric.Evaluate("""{"token":"abc"}"""));
+    }
+
+    [Fact]
+    public void Evaluate_a_rate_without_expected_yields_zero_when_the_expression_does_not_match()
+    {
+        MetricRule metric = new() { Name = "has_token_rate", Kind = CustomMetricKind.Rate, JsonPath = "$.token" };
+
+        Assert.Equal(0d, metric.Evaluate("""{"other":"x"}"""));
+    }
+
+    [Fact]
+    public void Evaluate_a_rate_with_expected_yields_one_only_when_the_matched_value_equals_it()
+    {
+        MetricRule metric = new() { Name = "status_ok_rate", Kind = CustomMetricKind.Rate, JsonPath = "$.status", Expected = "ok" };
+
+        Assert.Equal(1d, metric.Evaluate("""{"status":"ok"}"""));
+        Assert.Equal(0d, metric.Evaluate("""{"status":"degraded"}"""));
+        Assert.Equal(0d, metric.Evaluate("""{"other":"x"}"""));
     }
 }

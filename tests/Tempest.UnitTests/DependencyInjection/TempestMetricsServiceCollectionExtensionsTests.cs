@@ -32,6 +32,7 @@ public sealed class TempestMetricsServiceCollectionExtensionsTests
 
         ServiceCollection services = new();
         services.AddSingleton<StepRegistry>();
+        services.AddSingleton<CustomMetricRegistry>();
         services.AddTempestMetrics();
 
         using ServiceProvider provider = services.BuildServiceProvider();
@@ -74,6 +75,7 @@ public sealed class TempestMetricsServiceCollectionExtensionsTests
     {
         ServiceCollection services = new();
         services.AddSingleton<StepRegistry>();
+        services.AddSingleton<CustomMetricRegistry>();
         services.AddTempestMetrics();
 
         using ServiceProvider provider = services.BuildServiceProvider();

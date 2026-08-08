@@ -669,6 +669,141 @@ Scénario **scripté** : rien de nouveau n'est nécessaire — un script a déj�
 assertion comme sa propre étape (`registry.Register(...)` puis `context.BeginStep(...)` /
 `.Complete(...)`), exactement le mécanisme que `CheckRule` automatise pour le format déclaratif.
 
+### Groupes et étiquettes
+
+Troisième bullet de la [roadmap phase 2](ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) :
+une hiérarchie d'étapes (`endpoint`) et des métadonnées de tir (`région`, `version`) dans le
+rapport. Les deux couvrent des besoins distincts et n'ont volontairement pas la même portée.
+
+**Groupe** — une étape peut porter un `group`, préfixé à son nom pour former le nom
+effectivement enregistré (`QualifiedName`) :
+
+```yaml
+name: checkout-flow
+steps:
+  - name: login
+    group: checkout
+    method: POST
+    path: /api/auth/login
+  - name: pay
+    group: checkout
+    method: POST
+    path: /api/checkout
+```
+
+Ce scénario produit deux lignes `checkout/login` et `checkout/pay` dans le rapport — la même
+`StepId`/`StepScope` que n'importe quelle étape, donc les mêmes `/metrics` Prometheus et les
+mêmes seuils via `--threshold`, sans aucun changement dans `Tempest.Application`/
+`Tempest.Infrastructure`. Deux étapes de même nom dans deux groupes différents (`checkout/pay`,
+`refund/pay`) restent deux lignes distinctes : la collision est vérifiée sur le nom qualifié, pas
+sur le nom seul.
+
+Le rapport affiche ce nom qualifié tel quel, sans tenter d'en déduire une arborescence visuelle
+(indentation, sous-total par groupe) : un nom d'étape reste une chaîne libre, et interpréter un
+`/` comme séparateur de groupe à l'affichage romprait pour toute étape dont le nom en contient un
+sans intention de groupe — un cas réel, pas hypothétique, rencontré pendant le développement de
+cette fonctionnalité (le test d'échappement HTML utilise justement un nom malicieux contenant
+`</script>`, lui-même porteur d'un `/`). Le regroupement reste donc une convention de nommage
+visible dans la colonne existante, pas une syntaxe interprétée.
+
+**Étiquettes** — une métadonnée de tir dans son ensemble, pas d'une étape précise, portée par
+`ScenarioDefinition.Tags` :
+
+```yaml
+name: checkout-flow
+tags:
+  region: eu-west
+  version: v2
+steps:
+  - name: login
+    method: POST
+    path: /api/auth/login
+```
+
+Reportées telles quelles dans l'en-tête du rapport (texte et HTML), jamais dans l'agrégation des
+métriques : une étiquette classe un rapport, elle ne découpe pas ses lignes. C'est une différence
+assumée avec un système de tags par requête façon k6, qui exigerait de faire de la valeur d'une
+étiquette une clé d'agrégation à part entière — un changement bien plus profond (jusque dans
+`StepAccumulator`/`MetricResult`, aujourd'hui une structure non managée volontairement sans
+référence, voir son commentaire) pour un besoin réel mais différent : classer deux tirs du même
+scénario contre deux cibles, pas ventiler un seul tir par région choisie par requête.
+
+Scénario **scripté** : `IWorkflow.Tags` est une propriété d'interface à défaut vide — un script
+qui en a besoin la surcharge directement dans sa classe, sans mécanisme supplémentaire.
+
+Limite assumée : en mode distribué (maître/workers), les étiquettes ne sont pas encore
+propagées jusqu'au rapport fusionné — seul le mode autonome (`tempest run` sans rôle) les affiche
+aujourd'hui. À traiter si le besoin se présente.
+
+Vérifié par un vrai tir contre `Tempest.SampleTarget` : un scénario avec `login`/`pay` groupés
+sous `checkout` et une étape `browse` sans groupe affiche `checkout/login`, `checkout/pay` et
+`browse` dans la même table, et l'en-tête du rapport (texte et HTML) affiche
+`etiquettes : region=eu-west, version=v2`.
+
+### Métriques personnalisées
+
+Dernier bullet réellement nouveau de la [roadmap phase 2](ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) :
+un compteur, une jauge, un taux ou une tendance métier, alimentés depuis une réponse de scénario
+et agrégés comme les métriques natives — même vocabulaire que les `Counter`/`Gauge`/`Rate`/`Trend`
+de k6. Contrairement aux checks et aux groupes/étiquettes, cette fonctionnalité ne pouvait pas se
+contenter de réutiliser `StepId`/`StepAccumulator` tels quels : une métrique personnalisée porte
+une valeur métier arbitraire (un montant, une taille de panier), pas une durée de requête, donc
+une seconde chaîne d'agrégation parallèle était réellement nécessaire — canal borné dédié
+(`ChannelCustomMetricSink`), accumulateur (`CustomMetricAccumulator`) et agrégateur
+(`CustomMetricsAggregator`), sur le même principe qu'un seul consommateur en arrière-plan que la
+chaîne native.
+
+```yaml
+steps:
+  - name: checkout
+    method: POST
+    path: /api/checkout
+    metrics:
+      - name: orders_total
+        kind: counter
+      - name: order_value
+        kind: trend
+        jsonPath: $.total
+      - name: active_carts
+        kind: gauge
+        jsonPath: $.cartSize
+      - name: checkout_success_rate
+        kind: rate
+        jsonPath: $.orderId
+```
+
+Même vocabulaire d'expression que la [corrélation dynamique](#corrélation-dynamique-regexxpathjsonpath)
+et les [checks](#checks) — `regex`, `xpath` ou `jsonPath` — avec une exception : un `counter` sans
+expression compte simplement les passages sur l'étape (valeur implicite 1 à chaque exécution), le
+cas le plus courant ne devrait pas exiger d'extraire quoi que ce soit d'une réponse. `gauge` et
+`trend` exigent une expression numérique. `rate` évalue une condition comme un check (trouvé, ou
+identique à `expected` si fourni) et enregistre 1 ou 0. Une expression manquée ou non numérique
+n'enregistre simplement rien cette fois-ci — ce n'est jamais un échec de la requête HTTP dont la
+métrique dérive, exactement comme un check.
+
+Le nom d'une métrique vit dans son propre espace, distinct des étapes et des checks : une même
+métrique peut légitimement apparaître dans plusieurs étapes (un compteur métier alimenté à deux
+endroits différents), à condition de garder le même type partout où elle apparaît — un type
+incohérent est rejeté au chargement.
+
+Rendue dans le rapport (texte et HTML) sous une section dédiée, et dans Prometheus sous quatre
+instruments (`tempest.custom.counter`, `.gauge`, `.rate`, `.trend`), étiquetés par `metric` (et
+par `stat` pour la tendance : `min`/`mean`/`max`). Limites assumées pour ce premier tour, dans le
+même esprit que les précédentes : pas de centiles pour la tendance (`LatencyHistogram` est bâti
+pour une durée non négative bornée, pas pour une valeur métier de plage arbitraire — voir son
+commentaire), pas de fenêtre glissante (une seule photographie cumulée), et pas de fusion
+inter-workers en mode distribué.
+
+Scénario **scripté** : aucun changement nécessaire — `CustomMetricRegistry`/`CustomMetricId` sont
+déjà dans les imports par défaut (`Tempest.Domain.Metrics`), et `IWorkflow.RegisterMetrics` a un
+défaut vide qu'un script surcharge s'il en a besoin, exactement comme il enregistre déjà ses
+propres étapes.
+
+Vérifié par un vrai tir contre `Tempest.SampleTarget` : `orders_total` (compteur) au nombre exact
+d'itérations, `order_value`/`active_carts` reflétant le montant réel de la commande retournée par
+la cible, `checkout_success_rate` à 100 % — confirmés à la fois dans le rapport texte et dans
+`/metrics`.
+
 ## Scénarios scriptés (Roslyn)
 
 Le format déclaratif ci-dessus ne sait pas exprimer de branchement ni de boucle — la limite
@@ -1162,6 +1297,8 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 28** — Deux corrections trouvées en vérifiant réellement la CI plutôt qu'en la supposant verte : `<RuntimeIdentifiers>` (étape 24) faisait échouer `dotnet pack --no-build` sur une arborescence propre — retiré, `dotnet publish -r <rid>` fonctionne tout aussi bien sans lui. `Assembly.Location` dans `ScriptedWorkflowLoader` (étape 27) faisait échouer la publication *fichier unique* (`IL3000`) — supprimé explicitement, avec un garde qui rejette maintenant un scénario scripté depuis ce genre de binaire par un message clair (`NotSupportedException`) plutôt qu'un crash. Les deux ont été reproduits sur une arborescence entièrement nettoyée avant d'être corrigés, pas devinés
 - [x] **Étape 29** — [Jeux de données](#jeux-de-données) : `DataSet`/`DataSetIterationStrategy` (`Tempest.Domain.Data`), `DataSetLoader` CSV/JSON (`Tempest.Scenarios.Data`), section `datasets` du format déclaratif (`{{jeu.colonne}}`, même mécanisme de substitution que les variables extraites) et accès direct depuis un scénario scripté (imports par défaut élargis). Premier bullet de la roadmap phase 2. Vérifié par de vrais tirs : un scénario déclaratif substituant `productId`/`quantity` depuis un CSV avec `uniquePerVirtualUser` (0 % d'échec, une ligne distincte et stable par utilisateur virtuel confirmée par instrumentation temporaire) et `scenarios/scripted-checkout.csx` mis à jour pour utiliser `scenarios/users.csv` — a aussi révélé qu'un script consommant un jeu de données a besoin de `System.Collections.Generic` dans les imports par défaut, corrigé dans le même chantier
 - [x] **Étape 30** — [Checks](#checks) : `CheckRule` (`Tempest.Domain.Declarative`, même vocabulaire Regex/XPath/JsonPath que l'extraction, plus une valeur attendue optionnelle), section `checks` par étape du format déclaratif. Chaque check devient sa propre étape du rapport (réutilise `StepId`/`StepScope`/`MetricResult` tels quels, aucun changement dans `Tempest.Application`/`Tempest.Infrastructure`) — un check qui échoue ne fait jamais échouer la requête HTTP dont il dérive, mais compte comme n'importe quelle étape pour l'issue de l'itération. Deuxième bullet de la roadmap phase 2. Sans effet sur les scénarios scriptés : un script publie déjà ce genre d'assertion via `StepRegistry`/`StepScope` directement. Vérifié par un vrai tir : un check qui trouve toujours son jeton (0 % d'échec) et un second qui ne trouve jamais un champ absent de la réponse réelle (100 % d'échec) — l'étape HTTP dont ils dérivent reste à 0 % d'échec dans les deux cas
+- [x] **Étape 31** — [Groupes et étiquettes](#groupes-et-étiquettes) : `HttpStepDefinition.Group` (préfixé au nom pour former `QualifiedName`, le nom effectivement enregistré — `checkout/pay` reste une `StepId` comme une autre, collision vérifiée sur le nom qualifié) et `ScenarioDefinition.Tags` (métadonnée de tir, reportée via `IWorkflow.Tags` jusqu'à l'en-tête du rapport texte/HTML, jamais dans l'agrégation). Troisième bullet de la roadmap phase 2. Rendu délibérément plat : le rapport affiche le nom qualifié tel quel sans tenter d'en déduire une arborescence visuelle — une première version qui découpait l'affichage sur le dernier `/` cassait tout nom d'étape contenant un `/` sans intention de groupe (démontré par un test d'échappement HTML existant, dont le nom malicieux contient `</script>`), corrigée avant de committer. Limite documentée : étiquettes non propagées au rapport fusionné en mode distribué. Vérifié par un vrai tir : `checkout/login`, `checkout/pay` et `browse` (sans groupe) dans la même table, en-tête `etiquettes : region=eu-west, version=v2` présent en texte et en HTML
+- [x] **Étape 32** — [Métriques personnalisées](#métriques-personnalisées) : `CustomMetricKind` (compteur/jauge/taux/tendance), `CustomMetricRegistry`/`CustomMetricId` (`Tempest.Domain.Metrics`, même discipline que `StepRegistry`/`StepId`) et `MetricRule` (`Tempest.Domain.Declarative`, même vocabulaire Regex/XPath/JsonPath que l'extraction et les checks), section `metrics` par étape du format déclaratif. Première fonctionnalité de la phase 2 à ne pas pouvoir réutiliser `StepId`/`StepAccumulator` tels quels (une valeur métier arbitraire n'est pas une durée de requête) : chaîne d'agrégation parallèle complète (`ChannelCustomMetricSink`, `CustomMetricAccumulator`, `CustomMetricsAggregator`), même discipline « canal borné, consommateur unique » que la chaîne native, `VirtualUserContext`/`TargetRpsLoadEngine`/`MetricsProcessor` étendus avec des paramètres additifs par défaut (aucun site d'appel existant cassé). Rendue dans le rapport texte/HTML et dans Prometheus (`tempest.custom.counter`/`.gauge`/`.rate`/`.trend`). Dernier bullet réellement nouveau de la roadmap phase 2. Limites documentées : pas de centiles pour la tendance, pas de fenêtre glissante, pas de fusion inter-workers en mode distribué. Vérifié par un vrai tir contre `Tempest.SampleTarget` : compteur, tendance, jauge et taux tous corrects dans le rapport texte et dans `/metrics`
 
 ## Roadmap initiale — close
 

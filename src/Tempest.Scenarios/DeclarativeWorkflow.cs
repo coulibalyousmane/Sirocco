@@ -26,6 +26,24 @@ namespace Tempest.Scenarios;
 /// il derive, qui garde l'issue que <see cref="HttpStepDefinition.ExpectedStatusCodes"/> lui
 /// donne, que le check reussisse ou non.
 /// </para>
+/// <para>
+/// Une metrique personnalisee (<see cref="MetricRule"/>) alimente un compteur/jauge/taux/tendance
+/// depuis la reponse d'une etape, agrege separement du tableau d'etapes
+/// (<see cref="Metrics.LoadTestReport.CustomMetrics"/>) — contrairement a un check, ce n'est pas
+/// une assertion et elle ne devient pas sa propre etape.
+/// </para>
+/// <para>
+/// Le <see cref="HttpStepDefinition.Group"/> d'une etape (optionnel) est prefixe a son nom pour
+/// former <see cref="HttpStepDefinition.QualifiedName"/>, le nom effectivement enregistre : deux
+/// etapes de meme nom dans deux groupes differents restent deux lignes distinctes du rapport
+/// (<c>"checkout/pay"</c>, <c>"refund/pay"</c>), sans qu'aucun StepId ne devienne conceptuellement
+/// different d'un autre. Le rapport affiche ce nom qualifie tel quel, sans tenter de le
+/// reinterpreter comme une arborescence : un nom d'etape est une chaine libre, et y detecter une
+/// hierarchie a l'affichage romprait pour toute etape dont le nom contient un '/' sans intention
+/// de groupe. Les <see cref="ScenarioDefinition.Tags"/> du scenario sont exposees via
+/// <see cref="Tags"/> et reportees telles quelles dans le rapport final, sans jamais entrer dans
+/// l'agregation.
+/// </para>
 /// </summary>
 public sealed partial class DeclarativeWorkflow : IWorkflow
 {
@@ -35,6 +53,7 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
     private readonly StepId[] _stepIds;
     private readonly Dictionary<string, DataSet> _dataSets = new(StringComparer.Ordinal);
     private readonly Dictionary<string, StepId> _checkStepIds = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CustomMetricId> _metricIds = new(StringComparer.Ordinal);
 
     /// <summary>Cree le scenario a partir d'une description deja validee.</summary>
     /// <param name="definition">Description du scenario.</param>
@@ -51,18 +70,33 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
     public string Name => _definition.Name;
 
     /// <inheritdoc />
+    public IReadOnlyDictionary<string, string> Tags => _definition.Tags;
+
+    /// <inheritdoc />
     public void RegisterSteps(StepRegistry registry)
     {
         for (int i = 0; i < _definition.Steps.Count; i++)
         {
             HttpStepDefinition step = _definition.Steps[i];
-            _stepIds[i] = registry.Register(step.Name);
+            _stepIds[i] = registry.Register(step.QualifiedName);
 
             // Chaque check devient sa propre etape dans le rapport, distincte de celle-ci :
             // ScenarioDefinition.Validate() garantit deja qu'aucun nom ne collisionne.
             foreach (CheckRule check in step.Checks)
             {
                 _checkStepIds[check.Name] = registry.Register(check.Name);
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public void RegisterMetrics(CustomMetricRegistry registry)
+    {
+        foreach (HttpStepDefinition step in _definition.Steps)
+        {
+            foreach (MetricRule metric in step.Metrics)
+            {
+                _metricIds[metric.Name] = registry.Register(metric.Name, metric.Kind);
             }
         }
     }
@@ -97,7 +131,7 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
 
         for (int i = 0; i < _definition.Steps.Count; i++)
         {
-            await ExecuteStepAsync(context, _definition.Steps[i], _stepIds[i], _checkStepIds, variables, cancellationToken).ConfigureAwait(false);
+            await ExecuteStepAsync(context, _definition.Steps[i], _stepIds[i], _checkStepIds, _metricIds, variables, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -106,6 +140,7 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
         HttpStepDefinition step,
         StepId stepId,
         Dictionary<string, StepId> checkStepIds,
+        Dictionary<string, CustomMetricId> metricIds,
         Dictionary<string, string> variables,
         CancellationToken cancellationToken)
     {
@@ -147,7 +182,7 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
                     ? StepScope.ClassifyHttp(statusCode)
                     : step.ExpectedStatusCodes.Contains(statusCode) ? RequestOutcome.Success : RequestOutcome.AssertionFailed;
 
-                if (step.Extract.Count > 0 || step.Checks.Count > 0)
+                if (step.Extract.Count > 0 || step.Checks.Count > 0 || step.Metrics.Count > 0)
                 {
                     string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                     foreach (ExtractionRule rule in step.Extract)
@@ -174,6 +209,17 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
                             check.Evaluate(body) ? RequestOutcome.Success : RequestOutcome.AssertionFailed,
                             statusCode,
                             bytesReceived: 0);
+                    }
+
+                    // Une metrique personnalisee n'est ni une etape ni une assertion : une
+                    // extraction manquee ou non numerique n'enregistre simplement rien cette
+                    // fois-ci (voir MetricRule.Evaluate), sans jamais toucher "outcome".
+                    foreach (MetricRule metric in step.Metrics)
+                    {
+                        if (metric.Evaluate(body) is { } value)
+                        {
+                            context.RecordCustomMetric(metricIds[metric.Name], value);
+                        }
                     }
                 }
 

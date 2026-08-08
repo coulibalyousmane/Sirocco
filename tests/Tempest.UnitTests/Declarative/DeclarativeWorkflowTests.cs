@@ -12,16 +12,19 @@ public sealed class DeclarativeWorkflowTests
 {
     private static HttpStepDefinition Step(
         string name,
+        string? group = null,
         string method = "GET",
         string path = "/api/ping",
         string? body = null,
         IReadOnlyDictionary<string, string>? headers = null,
         IReadOnlyList<int>? expectedStatusCodes = null,
         IReadOnlyList<ExtractionRule>? extract = null,
-        IReadOnlyList<CheckRule>? checks = null) =>
+        IReadOnlyList<CheckRule>? checks = null,
+        IReadOnlyList<MetricRule>? metrics = null) =>
         new()
         {
             Name = name,
+            Group = group,
             Method = method,
             Path = path,
             Body = body,
@@ -29,6 +32,7 @@ public sealed class DeclarativeWorkflowTests
             ExpectedStatusCodes = expectedStatusCodes ?? [],
             Extract = extract ?? [],
             Checks = checks ?? [],
+            Metrics = metrics ?? [],
         };
 
     /// <summary>
@@ -58,6 +62,40 @@ public sealed class DeclarativeWorkflowTests
         VirtualUserContext context = new(virtualUserId: 0, client, sink, iterationStep);
 
         return (workflow, context, sink, handler, registry);
+    }
+
+    /// <summary>
+    /// Meme assemblage que <see cref="CreateHarness"/>, avec en plus le registre et le puits de
+    /// metriques personnalisees — separe pour ne pas alourdir la signature des tests qui n'en
+    /// ont pas besoin.
+    /// </summary>
+    private static (
+        DeclarativeWorkflow Workflow,
+        VirtualUserContext Context,
+        CollectingCustomMetricSink CustomMetricSink,
+        StubHttpMessageHandler Handler,
+        CustomMetricRegistry CustomMetrics)
+        CreateHarnessWithCustomMetrics(ScenarioDefinition definition)
+    {
+        StubHttpMessageHandler handler = new();
+        HttpClient client = new(handler) { BaseAddress = new Uri("https://target.example") };
+
+        DeclarativeWorkflow workflow = new(definition);
+
+        StepRegistry registry = new();
+        StepId iterationStep = registry.Register(WellKnownSteps.ITERATION);
+        workflow.RegisterSteps(registry);
+        registry.Seal();
+
+        CustomMetricRegistry customMetrics = new();
+        workflow.RegisterMetrics(customMetrics);
+        customMetrics.Seal();
+
+        CollectingMetricSink sink = new();
+        CollectingCustomMetricSink customMetricSink = new();
+        VirtualUserContext context = new(virtualUserId: 0, client, sink, iterationStep, customMetricSink);
+
+        return (workflow, context, customMetricSink, handler, customMetrics);
     }
 
     private static async Task RunIterationAsync(DeclarativeWorkflow workflow, VirtualUserContext context)
@@ -571,6 +609,205 @@ public sealed class DeclarativeWorkflowTests
         {
             File.Delete(path);
         }
+    }
+
+    [Fact]
+    public void RegisterSteps_registers_a_grouped_step_under_its_qualified_name()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps = [Step("pay", group: "checkout")],
+        };
+
+        StepRegistry registry = new();
+        new DeclarativeWorkflow(definition).RegisterSteps(registry);
+
+        Assert.True(registry.TryGetId("checkout/pay", out _));
+        Assert.False(registry.TryGetId("pay", out _));
+    }
+
+    [Fact]
+    public async Task A_grouped_step_still_reports_metrics_under_its_qualified_name()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps = [Step("pay", group: "checkout")],
+        };
+
+        (DeclarativeWorkflow workflow, VirtualUserContext context, CollectingMetricSink sink, StubHttpMessageHandler handler, StepRegistry steps) =
+            CreateHarness(definition);
+        handler.On(HttpMethod.Get, "/api/ping", HttpStatusCode.OK);
+
+        await RunIterationAsync(workflow, context);
+
+        Assert.True(steps.TryGetId("checkout/pay", out StepId payStep));
+        Assert.Equal(RequestOutcome.Success, Assert.Single(sink.For(payStep)).Outcome);
+    }
+
+    [Fact]
+    public void Tags_reflects_the_definitions_tags()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps = [Step("ping")],
+            Tags = new Dictionary<string, string> { ["region"] = "eu-west" },
+        };
+
+        Assert.Equal("eu-west", new DeclarativeWorkflow(definition).Tags["region"]);
+    }
+
+    [Fact]
+    public void No_tags_by_default_on_the_workflow()
+    {
+        ScenarioDefinition definition = new() { Name = "smoke", Steps = [Step("ping")] };
+
+        Assert.Empty(new DeclarativeWorkflow(definition).Tags);
+    }
+
+    [Fact]
+    public void RegisterMetrics_registers_each_declared_metric()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps = [Step("checkout", metrics: [new MetricRule { Name = "orders_total", Kind = CustomMetricKind.Counter }])],
+        };
+
+        CustomMetricRegistry registry = new();
+        new DeclarativeWorkflow(definition).RegisterMetrics(registry);
+
+        Assert.Equal(1, registry.Count);
+        Assert.True(registry.TryGetId("orders_total", out CustomMetricId id));
+        Assert.Equal(CustomMetricKind.Counter, registry.GetKind(id));
+    }
+
+    [Fact]
+    public async Task A_counter_without_an_expression_records_one_per_execution()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps = [Step("checkout", metrics: [new MetricRule { Name = "orders_total", Kind = CustomMetricKind.Counter }])],
+        };
+
+        (DeclarativeWorkflow workflow, VirtualUserContext context, CollectingCustomMetricSink customMetricSink, StubHttpMessageHandler handler, CustomMetricRegistry customMetrics) =
+            CreateHarnessWithCustomMetrics(definition);
+        handler.On(HttpMethod.Get, "/api/ping", HttpStatusCode.OK);
+
+        await RunIterationAsync(workflow, context);
+
+        Assert.True(customMetrics.TryGetId("orders_total", out CustomMetricId ordersTotal));
+        Assert.Equal([1d], customMetricSink.ValuesFor(ordersTotal));
+    }
+
+    [Fact]
+    public async Task A_gauge_records_the_extracted_value()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps = [Step("checkout", metrics: [new MetricRule { Name = "active_carts", Kind = CustomMetricKind.Gauge, JsonPath = "$.cartSize" }])],
+        };
+
+        (DeclarativeWorkflow workflow, VirtualUserContext context, CollectingCustomMetricSink customMetricSink, StubHttpMessageHandler handler, CustomMetricRegistry customMetrics) =
+            CreateHarnessWithCustomMetrics(definition);
+        handler.On(HttpMethod.Get, "/api/ping", HttpStatusCode.OK, """{"cartSize":4}""");
+
+        await RunIterationAsync(workflow, context);
+
+        Assert.True(customMetrics.TryGetId("active_carts", out CustomMetricId activeCarts));
+        Assert.Equal([4d], customMetricSink.ValuesFor(activeCarts));
+    }
+
+    [Fact]
+    public async Task A_trend_records_the_extracted_value()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps = [Step("checkout", metrics: [new MetricRule { Name = "order_value", Kind = CustomMetricKind.Trend, JsonPath = "$.total" }])],
+        };
+
+        (DeclarativeWorkflow workflow, VirtualUserContext context, CollectingCustomMetricSink customMetricSink, StubHttpMessageHandler handler, CustomMetricRegistry customMetrics) =
+            CreateHarnessWithCustomMetrics(definition);
+        handler.On(HttpMethod.Get, "/api/ping", HttpStatusCode.OK, """{"total":87.5}""");
+
+        await RunIterationAsync(workflow, context);
+
+        Assert.True(customMetrics.TryGetId("order_value", out CustomMetricId orderValue));
+        Assert.Equal([87.5d], customMetricSink.ValuesFor(orderValue));
+    }
+
+    [Fact]
+    public async Task A_rate_records_one_when_the_condition_is_met_and_zero_otherwise()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps = [Step("checkout", metrics: [new MetricRule { Name = "status_ok_rate", Kind = CustomMetricKind.Rate, JsonPath = "$.status", Expected = "ok" }])],
+        };
+
+        (DeclarativeWorkflow workflow, VirtualUserContext context, CollectingCustomMetricSink customMetricSink, StubHttpMessageHandler handler, CustomMetricRegistry customMetrics) =
+            CreateHarnessWithCustomMetrics(definition);
+        handler.On(HttpMethod.Get, "/api/ping", HttpStatusCode.OK, """{"status":"degraded"}""");
+
+        await RunIterationAsync(workflow, context);
+
+        Assert.True(customMetrics.TryGetId("status_ok_rate", out CustomMetricId statusOkRate));
+        Assert.Equal([0d], customMetricSink.ValuesFor(statusOkRate));
+    }
+
+    /// <summary>
+    /// Le coeur de la distinction avec un check : une metrique personnalisee n'est jamais une
+    /// assertion. Une extraction manquee (ici, aucun champ "cartSize" dans la reponse) reste
+    /// silencieuse — pas de mesure enregistree cette fois, mais l'etape HTTP elle-meme garde
+    /// son issue de succes.
+    /// </summary>
+    [Fact]
+    public async Task A_missed_extraction_records_nothing_and_does_not_fail_the_step()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps = [Step("checkout", metrics: [new MetricRule { Name = "active_carts", Kind = CustomMetricKind.Gauge, JsonPath = "$.cartSize" }])],
+        };
+
+        (DeclarativeWorkflow workflow, VirtualUserContext context, CollectingCustomMetricSink customMetricSink, StubHttpMessageHandler handler, CustomMetricRegistry customMetrics) =
+            CreateHarnessWithCustomMetrics(definition);
+        handler.On(HttpMethod.Get, "/api/ping", HttpStatusCode.OK, """{"other":"x"}""");
+
+        await RunIterationAsync(workflow, context);
+
+        Assert.True(customMetrics.TryGetId("active_carts", out CustomMetricId activeCarts));
+        Assert.Empty(customMetricSink.ValuesFor(activeCarts));
+    }
+
+    [Fact]
+    public async Task The_same_metric_fed_by_two_steps_accumulates_both_values()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps =
+            [
+                Step("add-item", metrics: [new MetricRule { Name = "orders_total", Kind = CustomMetricKind.Counter }]),
+                Step("pay", path: "/api/second", metrics: [new MetricRule { Name = "orders_total", Kind = CustomMetricKind.Counter }]),
+            ],
+        };
+
+        (DeclarativeWorkflow workflow, VirtualUserContext context, CollectingCustomMetricSink customMetricSink, StubHttpMessageHandler handler, CustomMetricRegistry customMetrics) =
+            CreateHarnessWithCustomMetrics(definition);
+        handler
+            .On(HttpMethod.Get, "/api/ping", HttpStatusCode.OK)
+            .On(HttpMethod.Get, "/api/second", HttpStatusCode.OK);
+
+        await RunIterationAsync(workflow, context);
+
+        Assert.True(customMetrics.TryGetId("orders_total", out CustomMetricId ordersTotal));
+        Assert.Equal([1d, 1d], customMetricSink.ValuesFor(ordersTotal));
     }
 
     [Fact]
