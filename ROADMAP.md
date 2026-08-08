@@ -27,7 +27,7 @@ Légende : ● solide · ◐ partiel · ○ absent
 | Dette d'ordonnancement mesurée et publiée | ● `Response` + `Service` | ○ | ○ | ○ |
 | Scénarios programmables (branchement, boucle) | ◐ C# recompilé, ou YAML linéaire | ● JavaScript/TS | ● DSL Scala/Java/Kotlin | ● C#/F# |
 | Jeux de données (CSV, JSON, SQL) | ◐ CSV/JSON, pas SQL | ● `SharedArray` | ● *feeders* | ● *data feed* |
-| Checks, groupes, étiquettes, métriques custom | ○ | ● | ● | ◐ |
+| Checks, groupes, étiquettes, métriques custom | ◐ checks seuls | ● | ● | ◐ |
 | Rapport avec séries temporelles | ◐ tableau HTML ; temporel via Prometheus | ● Grafana natif | ● référence du marché | ● HTML + temps réel |
 | Mode distribué | ● fusion d'histogrammes exacte | ● `k6-operator` | ◐ Enterprise | ● Studio / K8s |
 | Installation en une commande | ○ cloner et compiler | ● brew, apt, docker | ● bundle, maven | ● NuGet |
@@ -111,8 +111,13 @@ fonctionnel.
   écarté : une source de données arbitraire (requête, pool de connexions, ré-exécution par tir)
   dépasse le scope d'un chargement de fichier unique et mériterait son propre chantier plutôt
   qu'un troisième format ajouté en hâte à `DataSetLoader`. Vérifié par de vrais tirs.
-- **Checks** — assertions qui enregistrent un échec logique sans faire échouer la requête,
-  distinctes des erreurs de transport.
+- ~~**Checks**~~ — fait, voir [Checks](README.md#checks) : `CheckRule` (même vocabulaire
+  Regex/XPath/JsonPath que l'extraction), section `checks` par étape. Chaque check devient sa
+  propre étape du rapport — reutilise `StepId`/`StepScope` tels quels, aucun changement dans
+  `Tempest.Application`/`Tempest.Infrastructure`. Une assertion qui échoue ne fait jamais échouer
+  la requête HTTP dont elle dérive, mais compte comme n'importe quelle étape pour l'issue de
+  l'itération. Sans effet sur les scénarios scriptés, qui pouvaient déjà publier ce genre
+  d'assertion directement via `StepRegistry`/`StepScope`. Vérifié par de vrais tirs.
 - **Groupes et étiquettes** — hiérarchie d'étapes et découpage par dimension (`endpoint`, `région`,
   `version`) dans le rapport.
 - **Métriques personnalisées** — compteur, jauge, taux, tendance, alimentés depuis le scénario et
@@ -263,12 +268,12 @@ quiconque d'autre que son auteur.
 **La décision de la phase 2 est tranchée et le moteur de script existe** : Roslyn (C# scripté),
 voir [Scénarios scriptés](README.md#scénarios-scriptés-roslyn). C'était le seul choix de cette
 roadmap difficile à défaire une fois pris ; il conditionne les phases 5 et 6, toujours valables
-telles que décrites dans la note de la phase 2. Les jeux de données sont faits, voir [Jeux de
-données](README.md#jeux-de-données). Reste à construire le reste du contenu de la phase 2 —
-checks, groupes/étiquettes, métriques personnalisées, temps de réflexion —, déjà partiellement
-accessible en C# pur sans attendre une API dédiée (une boucle de nouvelle tentative s'écrit
-directement dans un script, voir `scenarios/scripted-checkout.csx`), mais sans encore l'ergonomie
-d'une API `Check`/métrique personnalisée de premier ordre.
+telles que décrites dans la note de la phase 2. Les jeux de données et les checks sont faits, voir
+[Jeux de données](README.md#jeux-de-données) et [Checks](README.md#checks). Reste à construire le
+reste du contenu de la phase 2 — groupes/étiquettes, métriques personnalisées, temps de
+réflexion —, déjà partiellement accessible en C# pur sans attendre une API dédiée (une boucle de
+nouvelle tentative s'écrit directement dans un script, voir `scenarios/scripted-checkout.csx`),
+mais sans encore l'ergonomie d'une API de métrique personnalisée de premier ordre.
 
 Le reste peut attendre des retours d'utilisateurs réels. Construire les phases 4 à 8 sans eux,
 c'est deviner.

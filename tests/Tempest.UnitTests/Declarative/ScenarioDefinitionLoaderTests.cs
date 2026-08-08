@@ -288,4 +288,64 @@ public sealed class ScenarioDefinitionLoaderTests
 
         Assert.Throws<FormatException>(() => ScenarioDefinitionLoader.Parse(yaml, ScenarioFormat.Yaml));
     }
+
+    [Fact]
+    public void A_checks_section_survives_the_yaml_and_json_dto_round_trip()
+    {
+        const string yaml = """
+            name: checks-scenario
+            steps:
+              - name: login
+                method: POST
+                path: /api/auth/login
+                checks:
+                  - name: has-token
+                    jsonPath: $.token
+                  - name: status-ok
+                    jsonPath: $.status
+                    expected: ok
+            """;
+
+        const string json = """
+            {
+              "name": "checks-scenario",
+              "steps": [
+                {
+                  "name": "login",
+                  "method": "POST",
+                  "path": "/api/auth/login",
+                  "checks": [
+                    { "name": "has-token", "jsonPath": "$.token" },
+                    { "name": "status-ok", "jsonPath": "$.status", "expected": "ok" }
+                  ]
+                }
+              ]
+            }
+            """;
+
+        foreach ((string content, ScenarioFormat format) in new[] { (yaml, ScenarioFormat.Yaml), (json, ScenarioFormat.Json) })
+        {
+            IReadOnlyList<CheckRule> checks = ScenarioDefinitionLoader.Parse(content, format).Steps[0].Checks;
+            Assert.Equal(2, checks.Count);
+            Assert.Equal("has-token", checks[0].Name);
+            Assert.Equal("$.token", checks[0].JsonPath);
+            Assert.Null(checks[0].Expected);
+            Assert.Equal("status-ok", checks[1].Name);
+            Assert.Equal("ok", checks[1].Expected);
+        }
+    }
+
+    [Fact]
+    public void No_checks_by_default()
+    {
+        const string yaml = """
+            name: checks-scenario
+            steps:
+              - name: ping
+                method: GET
+                path: /api/ping
+            """;
+
+        Assert.Empty(ScenarioDefinitionLoader.Parse(yaml, ScenarioFormat.Yaml).Steps[0].Checks);
+    }
 }

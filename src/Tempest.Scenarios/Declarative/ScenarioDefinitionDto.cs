@@ -72,6 +72,8 @@ internal sealed class HttpStepDefinitionDto
 
     public List<ExtractionRuleDto> Extract { get; set; } = [];
 
+    public List<CheckRuleDto> Checks { get; set; } = [];
+
     public HttpStepDefinition ToDefinition() => new()
     {
         Name = Name,
@@ -82,6 +84,7 @@ internal sealed class HttpStepDefinitionDto
         Headers = Headers,
         ExpectedStatusCodes = ExpectedStatusCodes,
         Extract = Extract.ConvertAll(static rule => rule.ToDefinition()),
+        Checks = Checks.ConvertAll(static check => check.ToDefinition()),
     };
 }
 
@@ -102,5 +105,28 @@ internal sealed class ExtractionRuleDto
         Regex = Regex,
         XPath = XPath,
         JsonPath = JsonPath,
+    };
+}
+
+/// <inheritdoc cref="ScenarioDefinitionDto" />
+internal sealed class CheckRuleDto
+{
+    public string Name { get; set; } = string.Empty;
+
+    public string? Regex { get; set; }
+
+    public string? XPath { get; set; }
+
+    public string? JsonPath { get; set; }
+
+    public string? Expected { get; set; }
+
+    public CheckRule ToDefinition() => new()
+    {
+        Name = Name,
+        Regex = Regex,
+        XPath = XPath,
+        JsonPath = JsonPath,
+        Expected = Expected,
     };
 }

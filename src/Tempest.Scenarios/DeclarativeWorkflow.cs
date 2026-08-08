@@ -20,6 +20,12 @@ namespace Tempest.Scenarios;
 /// <c>{{nom.colonne}}</c> : une ligne est choisie une fois par iteration et vaut pour toutes
 /// les etapes de cette iteration.
 /// </para>
+/// <para>
+/// Un check (<see cref="CheckRule"/>) est une assertion logique sur la reponse d'une etape,
+/// rapportee sur sa <b>propre</b> etape du rapport — jamais sur celle de la requete HTTP dont
+/// il derive, qui garde l'issue que <see cref="HttpStepDefinition.ExpectedStatusCodes"/> lui
+/// donne, que le check reussisse ou non.
+/// </para>
 /// </summary>
 public sealed partial class DeclarativeWorkflow : IWorkflow
 {
@@ -28,6 +34,7 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
     private readonly ScenarioDefinition _definition;
     private readonly StepId[] _stepIds;
     private readonly Dictionary<string, DataSet> _dataSets = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, StepId> _checkStepIds = new(StringComparer.Ordinal);
 
     /// <summary>Cree le scenario a partir d'une description deja validee.</summary>
     /// <param name="definition">Description du scenario.</param>
@@ -48,7 +55,15 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
     {
         for (int i = 0; i < _definition.Steps.Count; i++)
         {
-            _stepIds[i] = registry.Register(_definition.Steps[i].Name);
+            HttpStepDefinition step = _definition.Steps[i];
+            _stepIds[i] = registry.Register(step.Name);
+
+            // Chaque check devient sa propre etape dans le rapport, distincte de celle-ci :
+            // ScenarioDefinition.Validate() garantit deja qu'aucun nom ne collisionne.
+            foreach (CheckRule check in step.Checks)
+            {
+                _checkStepIds[check.Name] = registry.Register(check.Name);
+            }
         }
     }
 
@@ -82,7 +97,7 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
 
         for (int i = 0; i < _definition.Steps.Count; i++)
         {
-            await ExecuteStepAsync(context, _definition.Steps[i], _stepIds[i], variables, cancellationToken).ConfigureAwait(false);
+            await ExecuteStepAsync(context, _definition.Steps[i], _stepIds[i], _checkStepIds, variables, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -90,6 +105,7 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
         IVirtualUserContext context,
         HttpStepDefinition step,
         StepId stepId,
+        Dictionary<string, StepId> checkStepIds,
         Dictionary<string, string> variables,
         CancellationToken cancellationToken)
     {
@@ -131,7 +147,7 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
                     ? StepScope.ClassifyHttp(statusCode)
                     : step.ExpectedStatusCodes.Contains(statusCode) ? RequestOutcome.Success : RequestOutcome.AssertionFailed;
 
-                if (step.Extract.Count > 0)
+                if (step.Extract.Count > 0 || step.Checks.Count > 0)
                 {
                     string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                     foreach (ExtractionRule rule in step.Extract)
@@ -146,6 +162,18 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
                             // reponse n'a pas fournie, ce n'est pas un succes silencieux.
                             outcome = RequestOutcome.AssertionFailed;
                         }
+                    }
+
+                    // Chaque check est rapporte sur sa propre etape, jamais sur "outcome" : un
+                    // check qui echoue ne fait jamais echouer CETTE requete HTTP, seulement sa
+                    // propre ligne du rapport (voir CheckRule).
+                    foreach (CheckRule check in step.Checks)
+                    {
+                        StepScope checkScope = context.BeginStep(checkStepIds[check.Name]);
+                        checkScope.Complete(
+                            check.Evaluate(body) ? RequestOutcome.Success : RequestOutcome.AssertionFailed,
+                            statusCode,
+                            bytesReceived: 0);
                     }
                 }
 

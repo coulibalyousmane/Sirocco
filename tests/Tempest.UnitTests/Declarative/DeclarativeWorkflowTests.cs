@@ -17,7 +17,8 @@ public sealed class DeclarativeWorkflowTests
         string? body = null,
         IReadOnlyDictionary<string, string>? headers = null,
         IReadOnlyList<int>? expectedStatusCodes = null,
-        IReadOnlyList<ExtractionRule>? extract = null) =>
+        IReadOnlyList<ExtractionRule>? extract = null,
+        IReadOnlyList<CheckRule>? checks = null) =>
         new()
         {
             Name = name,
@@ -27,6 +28,7 @@ public sealed class DeclarativeWorkflowTests
             Headers = headers ?? new Dictionary<string, string>(),
             ExpectedStatusCodes = expectedStatusCodes ?? [],
             Extract = extract ?? [],
+            Checks = checks ?? [],
         };
 
     /// <summary>
@@ -318,6 +320,117 @@ public sealed class DeclarativeWorkflowTests
 
         Assert.True(steps.TryGetId("login", out StepId loginStep));
         Assert.Equal(RequestOutcome.AssertionFailed, Assert.Single(sink.For(loginStep)).Outcome);
+    }
+
+    [Fact]
+    public async Task A_passing_check_reports_success_on_its_own_step()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps = [Step("login", checks: [new CheckRule { Name = "has-token", JsonPath = "$.token" }])],
+        };
+
+        (DeclarativeWorkflow workflow, VirtualUserContext context, CollectingMetricSink sink, StubHttpMessageHandler handler, StepRegistry steps) =
+            CreateHarness(definition);
+        handler.On(HttpMethod.Get, "/api/ping", HttpStatusCode.OK, """{"token":"abc"}""");
+
+        await RunIterationAsync(workflow, context);
+
+        Assert.True(steps.TryGetId("has-token", out StepId checkStep));
+        Assert.Equal(RequestOutcome.Success, Assert.Single(sink.For(checkStep)).Outcome);
+    }
+
+    /// <summary>
+    /// Le coeur de la fonctionnalite : un check qui echoue enregistre son propre echec, mais ne
+    /// fait PAS echouer la requete HTTP dont il derive — un 200 qui ne satisfait pas le check
+    /// reste un 200 pour "login".
+    /// </summary>
+    [Fact]
+    public async Task A_failing_check_does_not_fail_the_http_step_it_derives_from()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps = [Step("login", checks: [new CheckRule { Name = "has-token", JsonPath = "$.token" }])],
+        };
+
+        (DeclarativeWorkflow workflow, VirtualUserContext context, CollectingMetricSink sink, StubHttpMessageHandler handler, StepRegistry steps) =
+            CreateHarness(definition);
+        handler.On(HttpMethod.Get, "/api/ping", HttpStatusCode.OK, """{"other":"x"}""");
+
+        await RunIterationAsync(workflow, context);
+
+        Assert.True(steps.TryGetId("login", out StepId loginStep));
+        Assert.True(steps.TryGetId("has-token", out StepId checkStep));
+        Assert.Equal(RequestOutcome.Success, Assert.Single(sink.For(loginStep)).Outcome);
+        Assert.Equal(RequestOutcome.AssertionFailed, Assert.Single(sink.For(checkStep)).Outcome);
+    }
+
+    [Fact]
+    public async Task A_check_with_an_expected_value_fails_when_the_matched_value_differs()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps = [Step("login", checks: [new CheckRule { Name = "status-ok", JsonPath = "$.status", Expected = "ok" }])],
+        };
+
+        (DeclarativeWorkflow workflow, VirtualUserContext context, CollectingMetricSink sink, StubHttpMessageHandler handler, StepRegistry steps) =
+            CreateHarness(definition);
+        handler.On(HttpMethod.Get, "/api/ping", HttpStatusCode.OK, """{"status":"degraded"}""");
+
+        await RunIterationAsync(workflow, context);
+
+        Assert.True(steps.TryGetId("status-ok", out StepId checkStep));
+        Assert.Equal(RequestOutcome.AssertionFailed, Assert.Single(sink.For(checkStep)).Outcome);
+    }
+
+    [Fact]
+    public async Task Multiple_checks_on_the_same_step_each_report_independently()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps =
+            [
+                Step(
+                    "login",
+                    checks:
+                    [
+                        new CheckRule { Name = "has-token", JsonPath = "$.token" },
+                        new CheckRule { Name = "status-ok", JsonPath = "$.status", Expected = "ok" },
+                    ]),
+            ],
+        };
+
+        (DeclarativeWorkflow workflow, VirtualUserContext context, CollectingMetricSink sink, StubHttpMessageHandler handler, StepRegistry steps) =
+            CreateHarness(definition);
+        handler.On(HttpMethod.Get, "/api/ping", HttpStatusCode.OK, """{"token":"abc","status":"degraded"}""");
+
+        await RunIterationAsync(workflow, context);
+
+        Assert.True(steps.TryGetId("has-token", out StepId hasToken));
+        Assert.True(steps.TryGetId("status-ok", out StepId statusOk));
+        Assert.Equal(RequestOutcome.Success, Assert.Single(sink.For(hasToken)).Outcome);
+        Assert.Equal(RequestOutcome.AssertionFailed, Assert.Single(sink.For(statusOk)).Outcome);
+    }
+
+    [Fact]
+    public void RegisterSteps_registers_each_check_as_its_own_step()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps = [Step("login", checks: [new CheckRule { Name = "has-token", JsonPath = "$.token" }])],
+        };
+
+        StepRegistry registry = new();
+        new DeclarativeWorkflow(definition).RegisterSteps(registry);
+
+        Assert.Equal(2, registry.Count);
+        Assert.True(registry.TryGetId("login", out _));
+        Assert.True(registry.TryGetId("has-token", out _));
     }
 
     [Fact]

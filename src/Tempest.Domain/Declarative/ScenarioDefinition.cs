@@ -38,6 +38,9 @@ public sealed record ScenarioDefinition
             throw new ArgumentException("Un scenario declaratif doit contenir au moins une etape.", nameof(Steps));
         }
 
+        // Meme espace de noms pour les etapes et leurs checks : les deux deviennent chacun leur
+        // propre StepId dans le rapport (voir DeclarativeWorkflow), une collision entre les deux
+        // fusionnerait silencieusement deux lignes distinctes du rapport en une seule.
         HashSet<string> seenNames = new(StringComparer.Ordinal);
         foreach (HttpStepDefinition step in Steps)
         {
@@ -48,6 +51,16 @@ public sealed record ScenarioDefinition
                 throw new ArgumentException(
                     $"Le nom d'etape '{step.Name}' apparait plusieurs fois : les noms doivent etre uniques.",
                     nameof(Steps));
+            }
+
+            foreach (CheckRule check in step.Checks)
+            {
+                if (!seenNames.Add(check.Name))
+                {
+                    throw new ArgumentException(
+                        $"Le nom '{check.Name}' apparait plusieurs fois (etape ou check) : les noms doivent etre uniques dans tout le scenario.",
+                        nameof(Steps));
+                }
             }
         }
 

@@ -43,7 +43,14 @@ public sealed record HttpStepDefinition
     /// </summary>
     public IReadOnlyList<ExtractionRule> Extract { get; init; } = [];
 
-    /// <summary>Valide la coherence de l'etape et de chacune de ses regles d'extraction.</summary>
+    /// <summary>
+    /// Assertions logiques sur la reponse de cette etape, chacune rapportee comme sa propre
+    /// etape dans les rapports — sans jamais faire echouer <b>cette</b> requete (voir
+    /// <see cref="CheckRule"/>). Vide par defaut : aucun check n'a lieu.
+    /// </summary>
+    public IReadOnlyList<CheckRule> Checks { get; init; } = [];
+
+    /// <summary>Valide la coherence de l'etape et de chacune de ses regles d'extraction et de ses checks.</summary>
     /// <exception cref="ArgumentException">L'etape est incoherente.</exception>
     public void Validate()
     {
@@ -70,6 +77,11 @@ public sealed record HttpStepDefinition
         foreach (ExtractionRule rule in Extract)
         {
             rule.Validate();
+        }
+
+        foreach (CheckRule check in Checks)
+        {
+            check.Validate();
         }
     }
 }

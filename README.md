@@ -621,6 +621,54 @@ sur 3 utilisateurs virtuels, chacun recevant sa propre ligne à chaque itératio
 instrumentation temporaire) ; `scenarios/scripted-checkout.csx` (voir plus bas) recevant de même
 un identifiant distinct par utilisateur virtuel depuis `scenarios/users.csv`.
 
+### Checks
+
+Deuxième bullet de la [roadmap phase 2](ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) :
+une assertion logique sur la réponse d'une étape, qui enregistre un échec **sans jamais faire
+échouer la requête HTTP** dont elle dérive — `checkout` reste un 200 même si un check sur son
+corps échoue. Chaque check devient sa **propre étape** dans le rapport (même table, mêmes
+`/metrics`, même seuil possible via `--threshold`), avec son propre compte de succès/échec :
+
+```yaml
+steps:
+  - name: login
+    method: POST
+    path: /api/auth/login
+    body: '{"username":"demo","password":"demo"}'
+    checks:
+      - name: has-token
+        jsonPath: $.token
+      - name: status-ok
+        jsonPath: $.status
+        expected: ok
+```
+
+Même vocabulaire d'expression que la [corrélation dynamique](#corrélation-dynamique-regexxpathjsonpath)
+— `regex`, `xpath` ou `jsonPath`, exactement une des trois — plutôt qu'un second langage
+d'assertion : un check est une extraction dont on ne garde que le résultat booléen. Sans
+`expected`, le check réussit dès que l'expression trouve quelque chose ; avec, il ne réussit que
+si la valeur trouvée lui est identique (comparaison de texte exacte).
+
+Le nom d'un check partage l'espace de noms des noms d'étape — les deux deviennent chacun leur
+propre ligne du même rapport — un check ne peut donc pas porter le nom d'une étape existante, ni
+d'un autre check, dans tout le scénario ; une collision est rejetée au chargement.
+
+Un check qui échoue compte comme n'importe quelle étape pour l'issue de l'itération dans son
+ensemble (`__iteration`) — seule la requête HTTP dont il dérive reste inchangée. C'est cohérent
+avec l'extraction manquée (étape 9) : un problème logique reste visible dans le signal global,
+sans être imputé à tort au transport.
+
+Vérifié par un vrai tir contre `Tempest.SampleTarget` : `login` avec un check qui trouve
+toujours son jeton (`has-token`, 0 % d'échec) et un second qui ne trouve jamais le champ qu'il
+cherche (`status-ok`, absent de la réponse réelle, 100 % d'échec) — `login` lui-même reste à 0 %
+d'échec sur les 15 itérations, confirmant qu'un check qui échoue ne rejaillit jamais sur la
+requête HTTP dont il dérive.
+
+Scénario **scripté** : rien de nouveau n'est nécessaire — un script a déjà accès à
+`System.Text.RegularExpressions`/`System.Xml`/`System.Text.Json` et peut publier n'importe quelle
+assertion comme sa propre étape (`registry.Register(...)` puis `context.BeginStep(...)` /
+`.Complete(...)`), exactement le mécanisme que `CheckRule` automatise pour le format déclaratif.
+
 ## Scénarios scriptés (Roslyn)
 
 Le format déclaratif ci-dessus ne sait pas exprimer de branchement ni de boucle — la limite
@@ -1113,6 +1161,7 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 27** — [Scénarios scriptés (Roslyn)](#scénarios-scriptés-roslyn) : `ScriptedWorkflowLoader`/`WorkflowFileLoader` (`Tempest.Scenarios`), décision structurante de la roadmap phase 2 mise en œuvre — un fichier `.csx`/`.cs` devient un `IWorkflow` compilé à la volée. Vérifié par un vrai tir (`scenarios/scripted-checkout.csx`, boucle de nouvelle tentative sur `checkout`, jeton mis en cache confirmé sur 400 itérations/20 utilisateurs virtuels). Limite documentée : mode distribué non pris en charge pour ce format
 - [x] **Étape 28** — Deux corrections trouvées en vérifiant réellement la CI plutôt qu'en la supposant verte : `<RuntimeIdentifiers>` (étape 24) faisait échouer `dotnet pack --no-build` sur une arborescence propre — retiré, `dotnet publish -r <rid>` fonctionne tout aussi bien sans lui. `Assembly.Location` dans `ScriptedWorkflowLoader` (étape 27) faisait échouer la publication *fichier unique* (`IL3000`) — supprimé explicitement, avec un garde qui rejette maintenant un scénario scripté depuis ce genre de binaire par un message clair (`NotSupportedException`) plutôt qu'un crash. Les deux ont été reproduits sur une arborescence entièrement nettoyée avant d'être corrigés, pas devinés
 - [x] **Étape 29** — [Jeux de données](#jeux-de-données) : `DataSet`/`DataSetIterationStrategy` (`Tempest.Domain.Data`), `DataSetLoader` CSV/JSON (`Tempest.Scenarios.Data`), section `datasets` du format déclaratif (`{{jeu.colonne}}`, même mécanisme de substitution que les variables extraites) et accès direct depuis un scénario scripté (imports par défaut élargis). Premier bullet de la roadmap phase 2. Vérifié par de vrais tirs : un scénario déclaratif substituant `productId`/`quantity` depuis un CSV avec `uniquePerVirtualUser` (0 % d'échec, une ligne distincte et stable par utilisateur virtuel confirmée par instrumentation temporaire) et `scenarios/scripted-checkout.csx` mis à jour pour utiliser `scenarios/users.csv` — a aussi révélé qu'un script consommant un jeu de données a besoin de `System.Collections.Generic` dans les imports par défaut, corrigé dans le même chantier
+- [x] **Étape 30** — [Checks](#checks) : `CheckRule` (`Tempest.Domain.Declarative`, même vocabulaire Regex/XPath/JsonPath que l'extraction, plus une valeur attendue optionnelle), section `checks` par étape du format déclaratif. Chaque check devient sa propre étape du rapport (réutilise `StepId`/`StepScope`/`MetricResult` tels quels, aucun changement dans `Tempest.Application`/`Tempest.Infrastructure`) — un check qui échoue ne fait jamais échouer la requête HTTP dont il dérive, mais compte comme n'importe quelle étape pour l'issue de l'itération. Deuxième bullet de la roadmap phase 2. Sans effet sur les scénarios scriptés : un script publie déjà ce genre d'assertion via `StepRegistry`/`StepScope` directement. Vérifié par un vrai tir : un check qui trouve toujours son jeton (0 % d'échec) et un second qui ne trouve jamais un champ absent de la réponse réelle (100 % d'échec) — l'étape HTTP dont ils dérivent reste à 0 % d'échec dans les deux cas
 
 ## Roadmap initiale — close
 
