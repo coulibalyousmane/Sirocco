@@ -33,6 +33,12 @@ namespace Tempest.Scenarios;
 /// une assertion et elle ne devient pas sa propre etape.
 /// </para>
 /// <para>
+/// Un <see cref="HttpStepDefinition.ThinkTime"/> (optionnel) suspend l'utilisateur virtuel apres
+/// cette etape, avant la suivante — un temps de reflexion, jamais mesure comme latence d'etape.
+/// Sans effet sur le moteur : un utilisateur virtuel qui dort ne fait que retarder son prochain
+/// jeton pris dans le canal, exactement comme le ferait une reponse HTTP lente.
+/// </para>
+/// <para>
 /// Le <see cref="HttpStepDefinition.Group"/> d'une etape (optionnel) est prefixe a son nom pour
 /// former <see cref="HttpStepDefinition.QualifiedName"/>, le nom effectivement enregistre : deux
 /// etapes de meme nom dans deux groupes differents restent deux lignes distinctes du rapport
@@ -131,7 +137,15 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
 
         for (int i = 0; i < _definition.Steps.Count; i++)
         {
-            await ExecuteStepAsync(context, _definition.Steps[i], _stepIds[i], _checkStepIds, _metricIds, variables, cancellationToken).ConfigureAwait(false);
+            HttpStepDefinition step = _definition.Steps[i];
+            await ExecuteStepAsync(context, step, _stepIds[i], _checkStepIds, _metricIds, variables, cancellationToken).ConfigureAwait(false);
+
+            // Hors de la portee de l'etape (scope.Complete deja appele) : une pause n'est jamais
+            // une latence de requete, seulement un delai avant la suivante.
+            if (step.ThinkTime is { } thinkTime)
+            {
+                await Task.Delay(thinkTime.Sample(), cancellationToken).ConfigureAwait(false);
+            }
         }
     }
 

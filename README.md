@@ -804,6 +804,57 @@ d'itérations, `order_value`/`active_carts` reflétant le montant réel de la co
 la cible, `checkout_success_rate` à 100 % — confirmés à la fois dans le rapport texte et dans
 `/metrics`.
 
+### Temps de réflexion et rythme
+
+Dernier bullet de la [roadmap phase 2](ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) :
+une pause après une étape, avant la suivante — le `sleep()` de k6 ou le `pause()` de Gatling, sans
+lequel un parcours utilisateur simulé enchaîne ses requêtes plus vite qu'aucun humain ne le ferait
+jamais.
+
+```yaml
+steps:
+  - name: browse
+    method: GET
+    path: /api/catalog/products
+    thinkTime: 1s          # pause fixe
+
+  - name: checkout
+    method: POST
+    path: /api/checkout
+    thinkTime: 500ms       # borne basse d'une pause aleatoire...
+    thinkTimeMax: 3s       # ...et sa borne haute, tiree uniformement a chaque iteration
+```
+
+`thinkTime` seul fixe une durée exacte ; ajouter `thinkTimeMax` en fait une plage, tirée uniformément
+à chaque itération (`ThinkTimeDefinition.Sample`) — un parcours réel ne s'arrête jamais identique
+deux fois de suite. Les deux acceptent le même format que `--duration` en ligne de commande
+(`500ms`, `1s`, `2m`, `1h`, ou un nombre nu interprété en secondes).
+
+La pause n'est **jamais** mesurée comme latence de requête : elle a lieu après que l'étape a
+publié sa propre mesure (`scope.Complete()`), donc en dehors de tout ce que `LoadTestReport`
+rapporte pour cette étape. Aucun changement dans le moteur n'était nécessaire — un utilisateur
+virtuel qui dort dans `Task.Delay` ne fait que retarder le prochain jeton qu'il prendra dans le
+canal, exactement comme le ferait une réponse HTTP lente : le modèle ouvert de
+`TargetRpsLoadEngine` absorbe cela nativement en dette d'ordonnancement si le débit cible dépasse
+ce que les utilisateurs virtuels configurés peuvent tenir compte tenu de leurs pauses, sans jamais
+ralentir le rythme d'émission des jetons eux-mêmes.
+
+Scénario **scripté** : sans effet et sans besoin d'API dédiée — une pause s'écrit directement via
+`await Task.Delay(...)` dans le script, ce que Roslyn permettait déjà avant ce chantier.
+
+Vérifié par de vrais tirs contre `Tempest.SampleTarget` : avec un seul utilisateur virtuel, une
+pause fixe de 500 ms et un débit cible de 20 req/s (irréaliste pour un seul utilisateur virtuel
+avec cette pause), le débit effectif tombe à ~2 itérations/s — exactement `1 / (pause + latence)`
+— et la dette d'ordonnancement grimpe en conséquence, pendant que la latence brute de l'étape HTTP
+elle-même reste inchangée (~100 ms de p99), confirmant que la pause n'est jamais comptée dans la
+mesure de la requête. Le même scénario sans `thinkTime` tient les 20 req/s cible avec une dette
+négligeable. Une pause en plage (100–300 ms, 4 utilisateurs virtuels) montre un p50/p95
+d'itération cohérent avec la plage configurée, sans affecter la latence brute rapportée pour
+l'étape HTTP.
+
+Avec ce chantier, le contenu de la [roadmap phase 2](ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire)
+est entièrement traité.
+
 ## Scénarios scriptés (Roslyn)
 
 Le format déclaratif ci-dessus ne sait pas exprimer de branchement ni de boucle — la limite
@@ -1298,7 +1349,8 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 29** — [Jeux de données](#jeux-de-données) : `DataSet`/`DataSetIterationStrategy` (`Tempest.Domain.Data`), `DataSetLoader` CSV/JSON (`Tempest.Scenarios.Data`), section `datasets` du format déclaratif (`{{jeu.colonne}}`, même mécanisme de substitution que les variables extraites) et accès direct depuis un scénario scripté (imports par défaut élargis). Premier bullet de la roadmap phase 2. Vérifié par de vrais tirs : un scénario déclaratif substituant `productId`/`quantity` depuis un CSV avec `uniquePerVirtualUser` (0 % d'échec, une ligne distincte et stable par utilisateur virtuel confirmée par instrumentation temporaire) et `scenarios/scripted-checkout.csx` mis à jour pour utiliser `scenarios/users.csv` — a aussi révélé qu'un script consommant un jeu de données a besoin de `System.Collections.Generic` dans les imports par défaut, corrigé dans le même chantier
 - [x] **Étape 30** — [Checks](#checks) : `CheckRule` (`Tempest.Domain.Declarative`, même vocabulaire Regex/XPath/JsonPath que l'extraction, plus une valeur attendue optionnelle), section `checks` par étape du format déclaratif. Chaque check devient sa propre étape du rapport (réutilise `StepId`/`StepScope`/`MetricResult` tels quels, aucun changement dans `Tempest.Application`/`Tempest.Infrastructure`) — un check qui échoue ne fait jamais échouer la requête HTTP dont il dérive, mais compte comme n'importe quelle étape pour l'issue de l'itération. Deuxième bullet de la roadmap phase 2. Sans effet sur les scénarios scriptés : un script publie déjà ce genre d'assertion via `StepRegistry`/`StepScope` directement. Vérifié par un vrai tir : un check qui trouve toujours son jeton (0 % d'échec) et un second qui ne trouve jamais un champ absent de la réponse réelle (100 % d'échec) — l'étape HTTP dont ils dérivent reste à 0 % d'échec dans les deux cas
 - [x] **Étape 31** — [Groupes et étiquettes](#groupes-et-étiquettes) : `HttpStepDefinition.Group` (préfixé au nom pour former `QualifiedName`, le nom effectivement enregistré — `checkout/pay` reste une `StepId` comme une autre, collision vérifiée sur le nom qualifié) et `ScenarioDefinition.Tags` (métadonnée de tir, reportée via `IWorkflow.Tags` jusqu'à l'en-tête du rapport texte/HTML, jamais dans l'agrégation). Troisième bullet de la roadmap phase 2. Rendu délibérément plat : le rapport affiche le nom qualifié tel quel sans tenter d'en déduire une arborescence visuelle — une première version qui découpait l'affichage sur le dernier `/` cassait tout nom d'étape contenant un `/` sans intention de groupe (démontré par un test d'échappement HTML existant, dont le nom malicieux contient `</script>`), corrigée avant de committer. Limite documentée : étiquettes non propagées au rapport fusionné en mode distribué. Vérifié par un vrai tir : `checkout/login`, `checkout/pay` et `browse` (sans groupe) dans la même table, en-tête `etiquettes : region=eu-west, version=v2` présent en texte et en HTML
-- [x] **Étape 32** — [Métriques personnalisées](#métriques-personnalisées) : `CustomMetricKind` (compteur/jauge/taux/tendance), `CustomMetricRegistry`/`CustomMetricId` (`Tempest.Domain.Metrics`, même discipline que `StepRegistry`/`StepId`) et `MetricRule` (`Tempest.Domain.Declarative`, même vocabulaire Regex/XPath/JsonPath que l'extraction et les checks), section `metrics` par étape du format déclaratif. Première fonctionnalité de la phase 2 à ne pas pouvoir réutiliser `StepId`/`StepAccumulator` tels quels (une valeur métier arbitraire n'est pas une durée de requête) : chaîne d'agrégation parallèle complète (`ChannelCustomMetricSink`, `CustomMetricAccumulator`, `CustomMetricsAggregator`), même discipline « canal borné, consommateur unique » que la chaîne native, `VirtualUserContext`/`TargetRpsLoadEngine`/`MetricsProcessor` étendus avec des paramètres additifs par défaut (aucun site d'appel existant cassé). Rendue dans le rapport texte/HTML et dans Prometheus (`tempest.custom.counter`/`.gauge`/`.rate`/`.trend`). Dernier bullet réellement nouveau de la roadmap phase 2. Limites documentées : pas de centiles pour la tendance, pas de fenêtre glissante, pas de fusion inter-workers en mode distribué. Vérifié par un vrai tir contre `Tempest.SampleTarget` : compteur, tendance, jauge et taux tous corrects dans le rapport texte et dans `/metrics`
+- [x] **Étape 32** — [Métriques personnalisées](#métriques-personnalisées) : `CustomMetricKind` (compteur/jauge/taux/tendance), `CustomMetricRegistry`/`CustomMetricId` (`Tempest.Domain.Metrics`, même discipline que `StepRegistry`/`StepId`) et `MetricRule` (`Tempest.Domain.Declarative`, même vocabulaire Regex/XPath/JsonPath que l'extraction et les checks), section `metrics` par étape du format déclaratif. Première fonctionnalité de la phase 2 à ne pas pouvoir réutiliser `StepId`/`StepAccumulator` tels quels (une valeur métier arbitraire n'est pas une durée de requête) : chaîne d'agrégation parallèle complète (`ChannelCustomMetricSink`, `CustomMetricAccumulator`, `CustomMetricsAggregator`), même discipline « canal borné, consommateur unique » que la chaîne native, `VirtualUserContext`/`TargetRpsLoadEngine`/`MetricsProcessor` étendus avec des paramètres additifs par défaut (aucun site d'appel existant cassé). Rendue dans le rapport texte/HTML et dans Prometheus (`tempest.custom.counter`/`.gauge`/`.rate`/`.trend`). Limites documentées : pas de centiles pour la tendance, pas de fenêtre glissante, pas de fusion inter-workers en mode distribué. Vérifié par un vrai tir contre `Tempest.SampleTarget` : compteur, tendance, jauge et taux tous corrects dans le rapport texte et dans `/metrics`
+- [x] **Étape 33** — [Temps de réflexion et rythme](#temps-de-réflexion-et-rythme) : `ThinkTimeDefinition` (`Tempest.Domain.Declarative`, durée fixe ou plage tirée uniformément), propriété `HttpStepDefinition.ThinkTime`, `thinkTime`/`thinkTimeMax` par étape du format déclaratif — parsés au même format que `--duration` en CLI (`500ms`, `1s`, `2m`, `1h`). Dernier bullet de la roadmap phase 2 : aucun changement dans le moteur, une pause n'est qu'un `Task.Delay` après que l'étape a publié sa mesure, jamais comptée comme latence de requête — le modèle ouvert de `TargetRpsLoadEngine` l'absorbe nativement en dette d'ordonnancement, exactement comme une réponse HTTP lente. Sans effet sur les scénarios scriptés, qui pouvaient déjà faire une pause via `Task.Delay` directement. Vérifié par de vrais tirs contre `Tempest.SampleTarget` : une pause fixe de 500 ms avec un seul utilisateur virtuel fait tomber le débit effectif à ~2 itérations/s pour un débit cible de 20/s (dette d'ordonnancement en conséquence), latence brute de l'étape HTTP inchangée dans les deux cas — et une plage 100–300 ms sur 4 utilisateurs virtuels montre un p50/p95 d'itération cohérent avec la plage configurée. **Clôt entièrement le contenu de la roadmap phase 2**
 
 ## Roadmap initiale — close
 

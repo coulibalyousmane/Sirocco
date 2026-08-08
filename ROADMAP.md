@@ -27,7 +27,7 @@ Légende : ● solide · ◐ partiel · ○ absent
 | Dette d'ordonnancement mesurée et publiée | ● `Response` + `Service` | ○ | ○ | ○ |
 | Scénarios programmables (branchement, boucle) | ◐ C# recompilé, ou YAML linéaire | ● JavaScript/TS | ● DSL Scala/Java/Kotlin | ● C#/F# |
 | Jeux de données (CSV, JSON, SQL) | ◐ CSV/JSON, pas SQL | ● `SharedArray` | ● *feeders* | ● *data feed* |
-| Checks, groupes, étiquettes, métriques custom | ● checks, groupes, étiquettes, métriques custom | ● | ● | ◐ |
+| Checks, groupes, étiquettes, métriques custom, rythme | ● checks, groupes, étiquettes, métriques custom, temps de réflexion | ● | ● | ◐ |
 | Rapport avec séries temporelles | ◐ tableau HTML ; temporel via Prometheus | ● Grafana natif | ● référence du marché | ● HTML + temps réel |
 | Mode distribué | ● fusion d'histogrammes exacte | ● `k6-operator` | ◐ Enterprise | ● Studio / K8s |
 | Installation en une commande | ○ cloner et compiler | ● brew, apt, docker | ● bundle, maven | ● NuGet |
@@ -135,8 +135,13 @@ fonctionnel.
   unique » que la chaîne native. Rendue dans le rapport et dans Prometheus. Limites : pas de
   centiles pour la tendance (`LatencyHistogram` est bâti pour une durée non négative bornée), pas
   de fenêtre glissante, pas de fusion inter-workers en mode distribué. Vérifié par un vrai tir.
-- **Temps de réflexion et rythme** — pauses configurables entre étapes, indispensables pour simuler
-  un parcours utilisateur crédible.
+- ~~**Temps de réflexion et rythme**~~ — fait, voir [Temps de réflexion et rythme](README.md#temps-de-réflexion-et-rythme) :
+  `ThinkTimeDefinition` (durée fixe ou plage tirée uniformément), `thinkTime`/`thinkTimeMax` par
+  étape du format déclaratif. Aucun changement dans le moteur : une pause n'est qu'un `Task.Delay`
+  hors de la portée de mesure de l'étape, que le modèle ouvert absorbe nativement en dette
+  d'ordonnancement — exactement comme le ferait une reponse HTTP lente. Vérifié par de vrais
+  tirs : une pause fixe fait chuter le débit effectif d'un seul utilisateur virtuel exactement à
+  la valeur attendue, sans jamais affecter la latence brute rapportée pour l'étape HTTP.
 
 > **Décision structurante tranchée et mise en œuvre : Roslyn (C# scripté).** Voir [Scénarios
 > scriptés](README.md#scénarios-scriptés-roslyn) — `ScriptedWorkflowLoader`/`WorkflowFileLoader`,
@@ -281,14 +286,12 @@ quiconque d'autre que son auteur.
 **La décision de la phase 2 est tranchée et le moteur de script existe** : Roslyn (C# scripté),
 voir [Scénarios scriptés](README.md#scénarios-scriptés-roslyn). C'était le seul choix de cette
 roadmap difficile à défaire une fois pris ; il conditionne les phases 5 et 6, toujours valables
-telles que décrites dans la note de la phase 2. Les jeux de données, les checks, les
-groupes/étiquettes et les métriques personnalisées sont faits, voir
-[Jeux de données](README.md#jeux-de-données), [Checks](README.md#checks),
-[Groupes et étiquettes](README.md#groupes-et-étiquettes) et
-[Métriques personnalisées](README.md#métriques-personnalisées). Ne reste que le temps de
-réflexion et le rythme pour clore entièrement le contenu de la phase 2 — déjà partiellement
-accessible en C# pur sans attendre une API dédiée (une pause s'écrit directement dans un script
-via `Task.Delay`), mais sans encore l'ergonomie d'une pause déclarative de premier ordre.
+telles que décrites dans la note de la phase 2. **Le contenu de la phase 2 est maintenant
+entièrement traité** : jeux de données, checks, groupes/étiquettes, métriques personnalisées et
+temps de réflexion sont faits, voir [Jeux de données](README.md#jeux-de-données),
+[Checks](README.md#checks), [Groupes et étiquettes](README.md#groupes-et-étiquettes),
+[Métriques personnalisées](README.md#métriques-personnalisées) et
+[Temps de réflexion et rythme](README.md#temps-de-réflexion-et-rythme).
 
 Le reste peut attendre des retours d'utilisateurs réels. Construire les phases 4 à 8 sans eux,
 c'est deviner.

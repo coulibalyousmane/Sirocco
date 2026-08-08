@@ -82,6 +82,10 @@ internal sealed class HttpStepDefinitionDto
 
     public List<MetricRuleDto> Metrics { get; set; } = [];
 
+    public string? ThinkTime { get; set; }
+
+    public string? ThinkTimeMax { get; set; }
+
     public HttpStepDefinition ToDefinition() => new()
     {
         Name = Name,
@@ -95,7 +99,29 @@ internal sealed class HttpStepDefinitionDto
         Extract = Extract.ConvertAll(static rule => rule.ToDefinition()),
         Checks = Checks.ConvertAll(static check => check.ToDefinition()),
         Metrics = Metrics.ConvertAll(static metric => metric.ToDefinition()),
+        ThinkTime = ToThinkTime(),
     };
+
+    private ThinkTimeDefinition? ToThinkTime()
+    {
+        if (ThinkTime is null)
+        {
+            if (ThinkTimeMax is not null)
+            {
+                throw new FormatException(
+                    $"L'etape '{Name}' definit thinkTimeMax ('{ThinkTimeMax}') sans thinkTime : " +
+                    "thinkTime porte la borne minimale (ou la duree fixe), thinkTimeMax est optionnel.");
+            }
+
+            return null;
+        }
+
+        return new ThinkTimeDefinition
+        {
+            Min = DurationText.Parse(ThinkTime),
+            Max = ThinkTimeMax is null ? null : DurationText.Parse(ThinkTimeMax),
+        };
+    }
 }
 
 /// <inheritdoc cref="ScenarioDefinitionDto" />

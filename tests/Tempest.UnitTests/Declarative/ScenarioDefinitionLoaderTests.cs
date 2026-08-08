@@ -486,4 +486,109 @@ public sealed class ScenarioDefinitionLoaderTests
 
         Assert.Throws<FormatException>(() => ScenarioDefinitionLoader.Parse(yaml, ScenarioFormat.Yaml));
     }
+
+    [Fact]
+    public void A_fixed_think_time_survives_the_yaml_and_json_dto_round_trip()
+    {
+        const string yaml = """
+            name: think-time-scenario
+            steps:
+              - name: browse
+                method: GET
+                path: /api/catalog/products
+                thinkTime: 1s
+            """;
+
+        const string json = """
+            {
+              "name": "think-time-scenario",
+              "steps": [
+                { "name": "browse", "method": "GET", "path": "/api/catalog/products", "thinkTime": "1s" }
+              ]
+            }
+            """;
+
+        foreach ((string content, ScenarioFormat format) in new[] { (yaml, ScenarioFormat.Yaml), (json, ScenarioFormat.Json) })
+        {
+            ThinkTimeDefinition? thinkTime = ScenarioDefinitionLoader.Parse(content, format).Steps[0].ThinkTime;
+            Assert.NotNull(thinkTime);
+            Assert.Equal(TimeSpan.FromSeconds(1), thinkTime.Min);
+            Assert.Null(thinkTime.Max);
+        }
+    }
+
+    [Fact]
+    public void A_think_time_range_survives_the_yaml_and_json_dto_round_trip()
+    {
+        const string yaml = """
+            name: think-time-scenario
+            steps:
+              - name: browse
+                method: GET
+                path: /api/catalog/products
+                thinkTime: 500ms
+                thinkTimeMax: 2s
+            """;
+
+        const string json = """
+            {
+              "name": "think-time-scenario",
+              "steps": [
+                { "name": "browse", "method": "GET", "path": "/api/catalog/products", "thinkTime": "500ms", "thinkTimeMax": "2s" }
+              ]
+            }
+            """;
+
+        foreach ((string content, ScenarioFormat format) in new[] { (yaml, ScenarioFormat.Yaml), (json, ScenarioFormat.Json) })
+        {
+            ThinkTimeDefinition? thinkTime = ScenarioDefinitionLoader.Parse(content, format).Steps[0].ThinkTime;
+            Assert.NotNull(thinkTime);
+            Assert.Equal(TimeSpan.FromMilliseconds(500), thinkTime.Min);
+            Assert.Equal(TimeSpan.FromSeconds(2), thinkTime.Max);
+        }
+    }
+
+    [Fact]
+    public void No_think_time_by_default()
+    {
+        const string yaml = """
+            name: think-time-scenario
+            steps:
+              - name: ping
+                method: GET
+                path: /api/ping
+            """;
+
+        Assert.Null(ScenarioDefinitionLoader.Parse(yaml, ScenarioFormat.Yaml).Steps[0].ThinkTime);
+    }
+
+    [Fact]
+    public void An_unparseable_think_time_is_wrapped_in_a_format_exception()
+    {
+        const string yaml = """
+            name: think-time-scenario
+            steps:
+              - name: ping
+                method: GET
+                path: /api/ping
+                thinkTime: not-a-duration
+            """;
+
+        Assert.Throws<FormatException>(() => ScenarioDefinitionLoader.Parse(yaml, ScenarioFormat.Yaml));
+    }
+
+    [Fact]
+    public void A_think_time_maximum_without_a_minimum_is_rejected()
+    {
+        const string yaml = """
+            name: think-time-scenario
+            steps:
+              - name: ping
+                method: GET
+                path: /api/ping
+                thinkTimeMax: 2s
+            """;
+
+        Assert.Throws<FormatException>(() => ScenarioDefinitionLoader.Parse(yaml, ScenarioFormat.Yaml));
+    }
 }

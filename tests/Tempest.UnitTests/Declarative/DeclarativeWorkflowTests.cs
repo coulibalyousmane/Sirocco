@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Diagnostics;
+using System.Net;
 using Tempest.Application.Execution;
 using Tempest.Domain.Data;
 using Tempest.Domain.Declarative;
@@ -20,7 +21,8 @@ public sealed class DeclarativeWorkflowTests
         IReadOnlyList<int>? expectedStatusCodes = null,
         IReadOnlyList<ExtractionRule>? extract = null,
         IReadOnlyList<CheckRule>? checks = null,
-        IReadOnlyList<MetricRule>? metrics = null) =>
+        IReadOnlyList<MetricRule>? metrics = null,
+        ThinkTimeDefinition? thinkTime = null) =>
         new()
         {
             Name = name,
@@ -33,6 +35,7 @@ public sealed class DeclarativeWorkflowTests
             Extract = extract ?? [],
             Checks = checks ?? [],
             Metrics = metrics ?? [],
+            ThinkTime = thinkTime,
         };
 
     /// <summary>
@@ -824,5 +827,83 @@ public sealed class DeclarativeWorkflowTests
         ScenarioDefinition definition = new() { Name = "custom-name", Steps = [Step("ping")] };
 
         Assert.Equal("custom-name", new DeclarativeWorkflow(definition).Name);
+    }
+
+    [Fact]
+    public async Task A_step_with_a_think_time_pauses_before_the_next_step_runs()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps =
+            [
+                Step("browse", thinkTime: new ThinkTimeDefinition { Min = TimeSpan.FromMilliseconds(60) }),
+                Step("checkout", path: "/api/second"),
+            ],
+        };
+
+        (DeclarativeWorkflow workflow, VirtualUserContext context, _, StubHttpMessageHandler handler, _) = CreateHarness(definition);
+        handler
+            .On(HttpMethod.Get, "/api/ping", HttpStatusCode.OK)
+            .On(HttpMethod.Get, "/api/second", HttpStatusCode.OK);
+
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        await RunIterationAsync(workflow, context);
+        stopwatch.Stop();
+
+        Assert.Equal(2, handler.Requests.Count);
+        Assert.True(
+            stopwatch.ElapsedMilliseconds >= 50,
+            $"L'iteration a dure {stopwatch.ElapsedMilliseconds}ms, moins que le temps de reflexion configure (60ms).");
+    }
+
+    [Fact]
+    public async Task Without_a_think_time_the_next_step_runs_immediately()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps = [Step("browse"), Step("checkout", path: "/api/second")],
+        };
+
+        (DeclarativeWorkflow workflow, VirtualUserContext context, _, StubHttpMessageHandler handler, _) = CreateHarness(definition);
+        handler
+            .On(HttpMethod.Get, "/api/ping", HttpStatusCode.OK)
+            .On(HttpMethod.Get, "/api/second", HttpStatusCode.OK);
+
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        await RunIterationAsync(workflow, context);
+        stopwatch.Stop();
+
+        Assert.True(
+            stopwatch.ElapsedMilliseconds < 500,
+            $"L'iteration a dure {stopwatch.ElapsedMilliseconds}ms sans aucun temps de reflexion configure.");
+    }
+
+    [Fact]
+    public async Task Think_time_applies_after_every_step_that_declares_one()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps =
+            [
+                Step("first", thinkTime: new ThinkTimeDefinition { Min = TimeSpan.FromMilliseconds(40) }),
+                Step("second", path: "/api/second", thinkTime: new ThinkTimeDefinition { Min = TimeSpan.FromMilliseconds(40) }),
+            ],
+        };
+
+        (DeclarativeWorkflow workflow, VirtualUserContext context, _, StubHttpMessageHandler handler, _) = CreateHarness(definition);
+        handler
+            .On(HttpMethod.Get, "/api/ping", HttpStatusCode.OK)
+            .On(HttpMethod.Get, "/api/second", HttpStatusCode.OK);
+
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        await RunIterationAsync(workflow, context);
+        stopwatch.Stop();
+
+        Assert.True(
+            stopwatch.ElapsedMilliseconds >= 70,
+            $"L'iteration a dure {stopwatch.ElapsedMilliseconds}ms, moins que les deux temps de reflexion cumules (2x40ms).");
     }
 }

@@ -68,6 +68,12 @@ public sealed record HttpStepDefinition
     /// </summary>
     public IReadOnlyList<MetricRule> Metrics { get; init; } = [];
 
+    /// <summary>
+    /// Pause apres cette etape, avant la suivante (voir <see cref="ThinkTimeDefinition"/>).
+    /// <see langword="null"/> par defaut : aucune pause n'a lieu.
+    /// </summary>
+    public ThinkTimeDefinition? ThinkTime { get; init; }
+
     /// <summary>Valide la coherence de l'etape et de chacune de ses regles d'extraction et de ses checks.</summary>
     /// <exception cref="ArgumentException">L'etape est incoherente.</exception>
     public void Validate()
@@ -116,5 +122,7 @@ public sealed record HttpStepDefinition
         {
             metric.Validate();
         }
+
+        ThinkTime?.Validate(Name);
     }
 }

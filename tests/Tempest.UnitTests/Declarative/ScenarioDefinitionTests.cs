@@ -349,6 +349,20 @@ public sealed class HttpStepDefinitionTests
 
         Assert.Throws<ArgumentException>(step.Validate);
     }
+
+    [Fact]
+    public void No_think_time_by_default() => Assert.Null(CreateStep().ThinkTime);
+
+    [Fact]
+    public void An_invalid_think_time_makes_the_whole_step_invalid()
+    {
+        HttpStepDefinition step = CreateStep() with
+        {
+            ThinkTime = new ThinkTimeDefinition { Min = TimeSpan.FromSeconds(-1) },
+        };
+
+        Assert.Throws<ArgumentException>(step.Validate);
+    }
 }
 
 public sealed class CheckRuleTests
@@ -558,5 +572,52 @@ public sealed class MetricRuleTests
         Assert.Equal(1d, metric.Evaluate("""{"status":"ok"}"""));
         Assert.Equal(0d, metric.Evaluate("""{"status":"degraded"}"""));
         Assert.Equal(0d, metric.Evaluate("""{"other":"x"}"""));
+    }
+}
+
+public sealed class ThinkTimeDefinitionTests
+{
+    [Fact]
+    public void A_non_negative_fixed_duration_is_valid() =>
+        (new ThinkTimeDefinition { Min = TimeSpan.FromSeconds(1) }).Validate("browse");
+
+    [Fact]
+    public void A_negative_minimum_is_rejected() =>
+        Assert.Throws<ArgumentException>(() =>
+            (new ThinkTimeDefinition { Min = TimeSpan.FromMilliseconds(-1) }).Validate("browse"));
+
+    [Fact]
+    public void A_maximum_below_the_minimum_is_rejected() =>
+        Assert.Throws<ArgumentException>(() =>
+            (new ThinkTimeDefinition { Min = TimeSpan.FromSeconds(2), Max = TimeSpan.FromSeconds(1) }).Validate("browse"));
+
+    [Fact]
+    public void A_maximum_equal_to_the_minimum_is_valid() =>
+        (new ThinkTimeDefinition { Min = TimeSpan.FromSeconds(1), Max = TimeSpan.FromSeconds(1) }).Validate("browse");
+
+    [Fact]
+    public void No_maximum_by_default() => Assert.Null(new ThinkTimeDefinition { Min = TimeSpan.FromSeconds(1) }.Max);
+
+    [Fact]
+    public void Sample_returns_exactly_the_minimum_when_no_maximum_is_set()
+    {
+        ThinkTimeDefinition thinkTime = new() { Min = TimeSpan.FromMilliseconds(250) };
+
+        for (int i = 0; i < 10; i++)
+        {
+            Assert.Equal(TimeSpan.FromMilliseconds(250), thinkTime.Sample());
+        }
+    }
+
+    [Fact]
+    public void Sample_stays_within_the_range_when_a_maximum_is_set()
+    {
+        ThinkTimeDefinition thinkTime = new() { Min = TimeSpan.FromMilliseconds(100), Max = TimeSpan.FromMilliseconds(200) };
+
+        for (int i = 0; i < 100; i++)
+        {
+            TimeSpan sample = thinkTime.Sample();
+            Assert.InRange(sample, thinkTime.Min, thinkTime.Max.Value);
+        }
     }
 }
