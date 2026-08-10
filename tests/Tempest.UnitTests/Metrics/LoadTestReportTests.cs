@@ -94,6 +94,30 @@ public sealed class LoadTestReportTests
     }
 
     [Fact]
+    public void ToHtml_warns_when_the_closed_model_was_used()
+    {
+        LoadTestReport closed = CreateReport([CreateStep("login", 10L, 10_000L)]) with { ClosedModel = true };
+        LoadTestReport open = CreateReport([CreateStep("login", 10L, 10_000L)]);
+
+        Assert.Contains("Modele ferme", closed.ToHtml());
+        Assert.DoesNotContain("Modele ferme", open.ToHtml());
+    }
+
+    [Fact]
+    public void ToTable_warns_when_the_closed_model_was_used()
+    {
+        LoadTestReport closed = CreateReport([CreateStep("login", 10L, 10_000L)]) with { ClosedModel = true };
+        LoadTestReport open = CreateReport([CreateStep("login", 10L, 10_000L)]);
+
+        Assert.Contains("Modele ferme", closed.ToTable());
+        Assert.DoesNotContain("Modele ferme", open.ToTable());
+    }
+
+    [Fact]
+    public void ClosedModel_is_false_by_default() =>
+        Assert.False(CreateReport([CreateStep("login", 10L, 10_000L)]).ClosedModel);
+
+    [Fact]
     public void ToHtml_escapes_step_names_to_prevent_html_injection()
     {
         const string maliciousStepName = "<script>alert(1)</script>";

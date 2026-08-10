@@ -18,12 +18,19 @@ public sealed class LoadTestOptions
     public const int MINIMUM_TOKEN_QUEUE_CAPACITY = 64;
 
     /// <summary>
-    /// Plafond d'iterations concurrentes.
+    /// Nombre d'utilisateurs virtuels : un plafond en modele <i>ouvert</i>, un effectif exact en
+    /// modele <i>ferme</i>.
     /// <para>
-    /// Modele <i>ouvert</i> : le debit vise ne depend pas de la latence de la cible, mais
-    /// il faut bien une borne, sinon une cible qui ralentit ferait exploser la memoire de
-    /// l'injecteur. Quand le plafond est atteint, les jetons s'accumulent et la dette
-    /// d'ordonnancement grimpe — c'est precisement le signal de saturation qu'on veut voir.
+    /// Modele ouvert (<see cref="CoordinatedRateLimiter"/>) : le debit vise ne depend pas de la
+    /// latence de la cible, mais il faut bien une borne, sinon une cible qui ralentit ferait
+    /// exploser la memoire de l'injecteur. Quand le plafond est atteint, les jetons s'accumulent
+    /// et la dette d'ordonnancement grimpe — c'est precisement le signal de saturation qu'on veut
+    /// voir.
+    /// </para>
+    /// <para>
+    /// Modele ferme (<see cref="ClosedModelScheduler"/>) : il n'existe pas de plafond distinct de
+    /// l'effectif — le nombre de travailleurs crees par le moteur <b>est</b> le nombre
+    /// d'utilisateurs virtuels simultanes du tir.
     /// </para>
     /// </summary>
     public int MaxVirtualUsers { get; init; } = DEFAULT_MAX_VIRTUAL_USERS;

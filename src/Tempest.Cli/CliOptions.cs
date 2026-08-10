@@ -30,6 +30,8 @@ internal sealed class CliOptions
 
     public int? MaxVirtualUsers { get; private init; }
 
+    public int? Vus { get; private init; }
+
     public string? ReportHtmlPath { get; private init; }
 
     public string? ReportJsonPath { get; private init; }
@@ -49,6 +51,7 @@ internal sealed class CliOptions
         double? toRps = null;
         TimeSpan? duration = null;
         int? maxVirtualUsers = null;
+        int? vus = null;
         string? reportHtmlPath = null;
         string? reportJsonPath = null;
         List<ThresholdRule> thresholds = [];
@@ -84,6 +87,10 @@ internal sealed class CliOptions
 
                 case "--max-vus" when i + 1 < args.Length:
                     maxVirtualUsers = ParseInt(args[++i], "--max-vus");
+                    break;
+
+                case "--vus" when i + 1 < args.Length:
+                    vus = ParseInt(args[++i], "--vus");
                     break;
 
                 case "--report-html" when i + 1 < args.Length:
@@ -122,6 +129,18 @@ internal sealed class CliOptions
             throw new FormatException("--rps et --from-rps/--to-rps sont mutuellement exclusifs.");
         }
 
+        if (vus.HasValue && (rps.HasValue || fromRps.HasValue))
+        {
+            throw new FormatException(
+                "--vus (modele ferme) est mutuellement exclusif avec --rps/--from-rps/--to-rps (modele ouvert).");
+        }
+
+        if (vus.HasValue && maxVirtualUsers.HasValue)
+        {
+            throw new FormatException(
+                "--vus et --max-vus sont mutuellement exclusifs : --vus fixe deja l'effectif exact du modele ferme.");
+        }
+
         return new CliOptions
         {
             ScenarioPath = scenarioPath,
@@ -132,6 +151,7 @@ internal sealed class CliOptions
             ToRps = toRps,
             Duration = duration,
             MaxVirtualUsers = maxVirtualUsers,
+            Vus = vus,
             ReportHtmlPath = reportHtmlPath,
             ReportJsonPath = reportJsonPath,
             Thresholds = thresholds,

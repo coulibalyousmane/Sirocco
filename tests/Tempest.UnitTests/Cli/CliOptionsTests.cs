@@ -54,6 +54,28 @@ public sealed class CliOptionsTests
         Assert.Throws<FormatException>(() => CliOptions.Parse(["--rps", "50", "--from-rps", "0", "--to-rps", "100"]));
 
     [Fact]
+    public void A_vus_flag_is_captured()
+    {
+        CliOptions options = CliOptions.Parse(["--vus", "50", "--duration", "30s"]);
+
+        Assert.Equal(50, options.Vus);
+        Assert.Equal(TimeSpan.FromSeconds(30), options.Duration);
+    }
+
+    [Fact]
+    public void Vus_and_rps_together_are_mutually_exclusive() =>
+        Assert.Throws<FormatException>(() => CliOptions.Parse(["--vus", "50", "--rps", "100", "--duration", "10s"]));
+
+    [Fact]
+    public void Vus_and_ramp_together_are_mutually_exclusive() =>
+        Assert.Throws<FormatException>(() =>
+            CliOptions.Parse(["--vus", "50", "--from-rps", "0", "--to-rps", "100", "--duration", "10s"]));
+
+    [Fact]
+    public void Vus_and_max_vus_together_are_mutually_exclusive() =>
+        Assert.Throws<FormatException>(() => CliOptions.Parse(["--vus", "50", "--max-vus", "100", "--duration", "10s"]));
+
+    [Fact]
     public void A_second_positional_argument_is_rejected() =>
         Assert.Throws<FormatException>(() => CliOptions.Parse(["scenario.yaml", "other.yaml"]));
 

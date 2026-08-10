@@ -26,31 +26,39 @@ public static class TempestServiceCollectionExtensions
     /// </para>
     /// </summary>
     /// <param name="services">Collection de services a completer.</param>
-    /// <param name="profile">Profil de charge a derouler.</param>
+    /// <param name="profile">
+    /// Profil de charge a derouler (modele ouvert). <see langword="null"/> pour le modele ferme
+    /// (<see cref="ClosedModelScheduler"/>) ou tout autre <see cref="ILoadScheduler"/> personnalise :
+    /// dans ce cas, enregistrer ce <see cref="ILoadScheduler"/> <b>avant</b> d'appeler cette
+    /// methode (voir la remarque de classe) — sans quoi la resolution de
+    /// <see cref="TargetRpsLoadEngine"/> echouera, faute d'ordonnanceur enregistre.
+    /// </param>
     /// <param name="options">Reglages de l'injecteur ; valeurs par defaut si omis.</param>
     /// <param name="metricQueueCapacity">Profondeur du canal de metriques.</param>
-    /// <param name="schedulerSpinThreshold">Marge de rotation active de l'ordonnanceur.</param>
+    /// <param name="schedulerSpinThreshold">Marge de rotation active de l'ordonnanceur, si <paramref name="profile"/> est fourni.</param>
     /// <param name="customMetricQueueCapacity">Profondeur du canal de metriques personnalisees.</param>
     public static IServiceCollection AddTempestEngine(
         this IServiceCollection services,
-        LoadProfile profile,
+        LoadProfile? profile,
         LoadTestOptions? options = null,
         int metricQueueCapacity = ChannelMetricSink.DEFAULT_CAPACITY,
         TimeSpan? schedulerSpinThreshold = null,
         int customMetricQueueCapacity = ChannelCustomMetricSink.DEFAULT_CAPACITY)
     {
         ArgumentNullException.ThrowIfNull(services);
-        ArgumentNullException.ThrowIfNull(profile);
 
         LoadTestOptions effectiveOptions = options ?? new LoadTestOptions();
         effectiveOptions.Validate();
 
-        services.TryAddSingleton(profile);
         services.TryAddSingleton(effectiveOptions);
         services.TryAddSingleton<StepRegistry>();
         services.TryAddSingleton<CustomMetricRegistry>();
 
-        services.TryAddSingleton<ILoadScheduler>(_ => new CoordinatedRateLimiter(profile, schedulerSpinThreshold));
+        if (profile is not null)
+        {
+            services.TryAddSingleton(profile);
+            services.TryAddSingleton<ILoadScheduler>(_ => new CoordinatedRateLimiter(profile, schedulerSpinThreshold));
+        }
 
         // Le puits est enregistre sous son type concret *et* sous son abstraction : l'agregateur
         // de metriques a besoin du ChannelReader, que l'interface n'expose deliberement pas.

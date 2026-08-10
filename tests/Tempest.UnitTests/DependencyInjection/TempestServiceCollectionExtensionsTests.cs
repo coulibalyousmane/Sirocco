@@ -89,11 +89,34 @@ public sealed class TempestServiceCollectionExtensionsTests
             new LoadTestOptions { MaxVirtualUsers = 0 }));
     }
 
+    /// <summary>
+    /// Le seam du modele ferme : un profil absent est valide tant qu'un
+    /// <see cref="ILoadScheduler"/> a ete enregistre en amont — <c>AddTempestEngine</c> ne doit
+    /// alors pas essayer d'en construire un par defaut, faute de profil pour le faire.
+    /// </summary>
     [Fact]
-    public void A_missing_profile_is_rejected()
+    public void A_null_profile_is_allowed_when_a_scheduler_is_already_registered()
     {
         ServiceCollection services = CreateServices();
+        ImmediateScheduler custom = new(tokenCount: 5);
+        services.AddSingleton<ILoadScheduler>(custom);
 
-        Assert.Throws<ArgumentNullException>(() => services.AddTempestEngine(null!));
+        services.AddTempestEngine(null);
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        Assert.Same(custom, provider.GetRequiredService<ILoadScheduler>());
+        Assert.NotNull(provider.GetRequiredService<TargetRpsLoadEngine>());
+    }
+
+    [Fact]
+    public void A_null_profile_without_a_registered_scheduler_leaves_the_engine_unresolvable()
+    {
+        ServiceCollection services = CreateServices();
+        services.AddTempestEngine(null);
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<TargetRpsLoadEngine>());
     }
 }

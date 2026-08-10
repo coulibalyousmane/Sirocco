@@ -19,11 +19,19 @@ const string USAGE = """
       --target-url <url>        Adresse de base de la cible. Requis, sauf si deja fourni via
                                  Tempest:TargetBaseUrl dans un appsettings.json du repertoire courant.
       --rps <n>                 Debit cible constant, en requetes par seconde (avec --duration).
+                                 Modele ouvert, mutuellement exclusif avec --vus.
       --from-rps <n>            Debit cible au debut de la rampe (avec --to-rps et --duration).
       --to-rps <n>               Debit cible a la fin de la rampe (avec --from-rps et --duration).
       --duration <duree>        Duree du palier de charge : '30s', '5m', '1h', '500ms', ou un
                                  nombre de secondes.
-      --max-vus <n>              Plafond d'utilisateurs virtuels concurrents (par defaut 200).
+      --max-vus <n>              Plafond d'utilisateurs virtuels concurrents en modele ouvert
+                                 (par defaut 200). Mutuellement exclusif avec --vus.
+      --vus <n>                  Modele ferme : exactement n utilisateurs virtuels enchainent les
+                                 iterations sans pause pendant --duration (obligatoire), sans
+                                 aucune notion de debit cible. Le rapport porte alors une mise en
+                                 garde explicite : ces chiffres ne corrigent pas le coordinated
+                                 omission et ne sont pas comparables a un tir en modele ouvert.
+                                 Mutuellement exclusif avec --rps/--from-rps/--to-rps/--max-vus.
       --threshold <regle>       Seuil de succes/echec, repetable :
                                  'etape:grandeur:comparaison:limite[:nom]', ex.
                                  '__iteration:ResponseP95Milliseconds:LessThan:200'.
@@ -76,38 +84,66 @@ if (string.IsNullOrWhiteSpace(targetUrl))
     return 1;
 }
 
-IReadOnlyList<LoadStageOptions> profile;
-try
+TempestHostOptions tempestOptions;
+if (options.Vus is int vus)
 {
-    profile = BuildProfile(options, builder.Configuration);
-}
-catch (FormatException ex)
-{
-    Console.Error.WriteLine(ex.Message);
-    return 1;
-}
+    // Modele ferme : --vus fixe l'effectif exact, pas un plafond, et --duration devient
+    // obligatoire faute de profil de debit dont deriver une duree de tir.
+    if (options.Duration is not { } closedModelDuration)
+    {
+        Console.Error.WriteLine("--vus exige --duration.");
+        return 1;
+    }
 
-if (profile.Count == 0)
-{
-    Console.Error.WriteLine(
-        "Profil de charge requis : --rps <n> --duration <d>, --from-rps <n> --to-rps <n> --duration <d>, " +
-        "ou une section Tempest:Profile dans un appsettings.json du repertoire courant.");
-    return 1;
+    tempestOptions = new TempestHostOptions
+    {
+        TargetBaseUrl = targetUrl,
+        MaxVirtualUsers = vus,
+        ClosedModelDuration = closedModelDuration,
+        ScenarioFile = options.ScenarioPath ?? builder.Configuration["Tempest:ScenarioFile"],
+        Workflow = options.Workflow ?? builder.Configuration["Tempest:Workflow"] ?? TempestHostOptions.DYNAMIC_CHECKOUT_WORKFLOW,
+        Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
+        ExitAfterRun = true,
+        ReportHtmlPath = options.ReportHtmlPath,
+        ReportJsonPath = options.ReportJsonPath,
+    };
 }
-
-TempestHostOptions tempestOptions = new()
+else
 {
-    TargetBaseUrl = targetUrl,
-    MaxVirtualUsers = options.MaxVirtualUsers
-        ?? builder.Configuration.GetValue("Tempest:MaxVirtualUsers", TempestHostOptions.DEFAULT_MAX_VIRTUAL_USERS),
-    Profile = profile,
-    ScenarioFile = options.ScenarioPath ?? builder.Configuration["Tempest:ScenarioFile"],
-    Workflow = options.Workflow ?? builder.Configuration["Tempest:Workflow"] ?? TempestHostOptions.DYNAMIC_CHECKOUT_WORKFLOW,
-    Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
-    ExitAfterRun = true,
-    ReportHtmlPath = options.ReportHtmlPath,
-    ReportJsonPath = options.ReportJsonPath,
-};
+    IReadOnlyList<LoadStageOptions> profile;
+    try
+    {
+        profile = BuildProfile(options, builder.Configuration);
+    }
+    catch (FormatException ex)
+    {
+        Console.Error.WriteLine(ex.Message);
+        return 1;
+    }
+
+    if (profile.Count == 0)
+    {
+        Console.Error.WriteLine(
+            "Profil de charge requis : --rps <n> --duration <d>, --from-rps <n> --to-rps <n> --duration <d>, " +
+            "--vus <n> --duration <d> (modele ferme), ou une section Tempest:Profile dans un appsettings.json du " +
+            "repertoire courant.");
+        return 1;
+    }
+
+    tempestOptions = new TempestHostOptions
+    {
+        TargetBaseUrl = targetUrl,
+        MaxVirtualUsers = options.MaxVirtualUsers
+            ?? builder.Configuration.GetValue("Tempest:MaxVirtualUsers", TempestHostOptions.DEFAULT_MAX_VIRTUAL_USERS),
+        Profile = profile,
+        ScenarioFile = options.ScenarioPath ?? builder.Configuration["Tempest:ScenarioFile"],
+        Workflow = options.Workflow ?? builder.Configuration["Tempest:Workflow"] ?? TempestHostOptions.DYNAMIC_CHECKOUT_WORKFLOW,
+        Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
+        ExitAfterRun = true,
+        ReportHtmlPath = options.ReportHtmlPath,
+        ReportJsonPath = options.ReportJsonPath,
+    };
+}
 
 try
 {

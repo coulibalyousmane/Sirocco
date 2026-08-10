@@ -47,11 +47,15 @@ public sealed class TempestHostOptions
     /// <summary>Adresse de base de la cible a tester.</summary>
     public required string TargetBaseUrl { get; init; }
 
-    /// <summary>Plafond d'utilisateurs virtuels concurrents.</summary>
+    /// <summary>
+    /// Nombre d'utilisateurs virtuels : un plafond en modele ouvert, un effectif exact en modele
+    /// ferme (voir <see cref="ClosedModelDuration"/>).
+    /// </summary>
     public int MaxVirtualUsers { get; init; } = DEFAULT_MAX_VIRTUAL_USERS;
 
     /// <summary>
-    /// Paliers du profil de charge, dans l'ordre d'execution.
+    /// Paliers du profil de charge (modele ouvert), dans l'ordre d'execution. Sans effet si
+    /// <see cref="ClosedModelDuration"/> est renseigne.
     /// <para>
     /// Reste deliberement minimal : composer un profil a partir de quelques paliers dans
     /// <c>appsettings.json</c> suffit, et c'est deja declaratif (aucune recompilation requise
@@ -60,6 +64,17 @@ public sealed class TempestHostOptions
     /// </para>
     /// </summary>
     public IReadOnlyList<LoadStageOptions> Profile { get; init; } = [];
+
+    /// <summary>
+    /// Duree du modele <b>ferme</b> : si renseigne, ce tir ignore <see cref="Profile"/> et fait
+    /// tourner exactement <see cref="MaxVirtualUsers"/> utilisateurs virtuels sans aucune pause
+    /// imposee jusqu'a expiration de cette duree, plutot que de viser un debit cible.
+    /// <see langword="null"/> par defaut : le modele ouvert reste le comportement inchange.
+    /// </summary>
+    public TimeSpan? ClosedModelDuration { get; init; }
+
+    /// <summary>Vrai si ce tir utilise le modele ferme plutot que le modele ouvert.</summary>
+    public bool IsClosedModel => ClosedModelDuration is not null;
 
     /// <summary>
     /// Chemin d'un fichier de scenario declaratif (<c>.yaml</c>, <c>.yml</c> ou <c>.json</c>).

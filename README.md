@@ -243,6 +243,43 @@ en l'absence de `--rps`/`--target-url`.
 autonome — pas de mode distribué (Master/Workers) depuis la CLI, qui reste l'affaire de
 `Tempest.Host`.
 
+### Modèle fermé
+
+Tempest ne sait piloter qu'un débit cible (modèle *ouvert*) : « exactement N utilisateurs
+simultanés » — le besoin le plus courant dans les outils historiques — n'avait pas d'équivalent.
+`--vus <n>` couvre ce cas, à côté du modèle ouvert plutôt qu'à sa place :
+
+```bash
+tempest run --target-url http://localhost:5281 --vus 50 --duration 30s
+```
+
+Exactement 50 utilisateurs virtuels enchaînent les itérations sans aucune pause imposée, jusqu'à
+expiration de la durée — le débit résultant dépend entièrement de la latence de la cible, à
+l'opposé du modèle ouvert. `--vus` est mutuellement exclusif avec `--rps`/`--from-rps`/`--to-rps`
+(un seul modèle par tir) et avec `--max-vus` (`--vus` fixe déjà l'effectif exact, ce n'est pas un
+plafond) ; il exige `--duration`, faute de profil de débit dont dériver une durée de tir.
+
+**La mise en garde n'est pas cosmétique.** En modèle fermé, chaque jeton porte l'instant de sa
+propre émission plutôt qu'un instant planifié à l'avance : il n'existe rien à comparer, donc pas
+de correction du *coordinated omission* — précisément le biais que le modèle ouvert existe pour
+éviter (voir [Décisions structurantes](#décisions-structurantes)). `LoadTestReport.ClosedModel`
+porte ce fait jusque dans le rapport JSON, et `ToTable()`/`ToHtml()` l'affichent dans le même
+emplacement que l'avertissement « mesures perdues » : un opérateur qui compare deux tirs sans
+relire les options de la CLI doit encore voir que l'un des deux n'est pas comparable à l'autre.
+
+Le nombre d'utilisateurs virtuels n'est pas un paramètre du nouvel ordonnanceur
+(`ClosedModelScheduler`) : il vient du nombre de travailleurs déjà créés par le moteur
+(`LoadTestOptions.MaxVirtualUsers`), qui borne également la concurrence en modèle ouvert.
+`ClosedModelScheduler` se contente d'émettre en continu dans le canal borné existant ; c'est la
+contre-pression du canal — un nouveau jeton n'est écrit que lorsqu'un utilisateur virtuel vient de
+se libérer — qui fait émerger le modèle fermé, sans aucun mécanisme de synchronisation dédié.
+
+Limite : mode distribué non pris en charge pour ce modèle — `WorkerCoordinator` reste câblé sur
+`CoordinatedRateLimiter`/`LoadProfile` (modèle ouvert) seul, comme le format scripté l'était déjà
+pour d'autres raisons. Vérifié par un vrai tir (`--vus 10 --duration 5s` contre
+`Tempest.SampleTarget`) : effectif exact, avertissement présent dans le rapport texte et le JSON,
+modèle ouvert inchangé en régression.
+
 ### Installation
 
 `Tempest.Cli` s'empaquette comme un [outil global
@@ -1351,6 +1388,7 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 31** — [Groupes et étiquettes](#groupes-et-étiquettes) : `HttpStepDefinition.Group` (préfixé au nom pour former `QualifiedName`, le nom effectivement enregistré — `checkout/pay` reste une `StepId` comme une autre, collision vérifiée sur le nom qualifié) et `ScenarioDefinition.Tags` (métadonnée de tir, reportée via `IWorkflow.Tags` jusqu'à l'en-tête du rapport texte/HTML, jamais dans l'agrégation). Troisième bullet de la roadmap phase 2. Rendu délibérément plat : le rapport affiche le nom qualifié tel quel sans tenter d'en déduire une arborescence visuelle — une première version qui découpait l'affichage sur le dernier `/` cassait tout nom d'étape contenant un `/` sans intention de groupe (démontré par un test d'échappement HTML existant, dont le nom malicieux contient `</script>`), corrigée avant de committer. Limite documentée : étiquettes non propagées au rapport fusionné en mode distribué. Vérifié par un vrai tir : `checkout/login`, `checkout/pay` et `browse` (sans groupe) dans la même table, en-tête `etiquettes : region=eu-west, version=v2` présent en texte et en HTML
 - [x] **Étape 32** — [Métriques personnalisées](#métriques-personnalisées) : `CustomMetricKind` (compteur/jauge/taux/tendance), `CustomMetricRegistry`/`CustomMetricId` (`Tempest.Domain.Metrics`, même discipline que `StepRegistry`/`StepId`) et `MetricRule` (`Tempest.Domain.Declarative`, même vocabulaire Regex/XPath/JsonPath que l'extraction et les checks), section `metrics` par étape du format déclaratif. Première fonctionnalité de la phase 2 à ne pas pouvoir réutiliser `StepId`/`StepAccumulator` tels quels (une valeur métier arbitraire n'est pas une durée de requête) : chaîne d'agrégation parallèle complète (`ChannelCustomMetricSink`, `CustomMetricAccumulator`, `CustomMetricsAggregator`), même discipline « canal borné, consommateur unique » que la chaîne native, `VirtualUserContext`/`TargetRpsLoadEngine`/`MetricsProcessor` étendus avec des paramètres additifs par défaut (aucun site d'appel existant cassé). Rendue dans le rapport texte/HTML et dans Prometheus (`tempest.custom.counter`/`.gauge`/`.rate`/`.trend`). Limites documentées : pas de centiles pour la tendance, pas de fenêtre glissante, pas de fusion inter-workers en mode distribué. Vérifié par un vrai tir contre `Tempest.SampleTarget` : compteur, tendance, jauge et taux tous corrects dans le rapport texte et dans `/metrics`
 - [x] **Étape 33** — [Temps de réflexion et rythme](#temps-de-réflexion-et-rythme) : `ThinkTimeDefinition` (`Tempest.Domain.Declarative`, durée fixe ou plage tirée uniformément), propriété `HttpStepDefinition.ThinkTime`, `thinkTime`/`thinkTimeMax` par étape du format déclaratif — parsés au même format que `--duration` en CLI (`500ms`, `1s`, `2m`, `1h`). Dernier bullet de la roadmap phase 2 : aucun changement dans le moteur, une pause n'est qu'un `Task.Delay` après que l'étape a publié sa mesure, jamais comptée comme latence de requête — le modèle ouvert de `TargetRpsLoadEngine` l'absorbe nativement en dette d'ordonnancement, exactement comme une réponse HTTP lente. Sans effet sur les scénarios scriptés, qui pouvaient déjà faire une pause via `Task.Delay` directement. Vérifié par de vrais tirs contre `Tempest.SampleTarget` : une pause fixe de 500 ms avec un seul utilisateur virtuel fait tomber le débit effectif à ~2 itérations/s pour un débit cible de 20/s (dette d'ordonnancement en conséquence), latence brute de l'étape HTTP inchangée dans les deux cas — et une plage 100–300 ms sur 4 utilisateurs virtuels montre un p50/p95 d'itération cohérent avec la plage configurée. **Clôt entièrement le contenu de la roadmap phase 2**
+- [x] **Étape 34** — [Modèle fermé](#modèle-fermé) : `ClosedModelScheduler` (`Tempest.Application.Execution`, implémente `ILoadScheduler` comme `CoordinatedRateLimiter`), `--vus <n>` en CLI (`TempestHostOptions.ClosedModelDuration`), `LoadTestReport.ClosedModel` avec mise en garde explicite dans `ToTable`/`ToHtml`. Premier bullet de la roadmap phase 3. `AddTempestEngine` accepte désormais un `LoadProfile?` nul, pour laisser un `ILoadScheduler` personnalisé déjà enregistré prendre la place du `CoordinatedRateLimiter` par défaut — le seam d'extension que sa propre documentation promettait depuis le début. Aucune notion de concurrence dédiée à ce nouvel ordonnanceur : elle vient du nombre de travailleurs déjà créés par le moteur (`LoadTestOptions.MaxVirtualUsers`), la contre-pression du canal de jetons suffisant à faire émerger le modèle fermé. Limite documentée : mode distribué non pris en charge pour ce modèle. Vérifié par un vrai tir (`--vus 10 --duration 5s`) : effectif exact, avertissement présent en texte et en JSON, modèle ouvert inchangé en régression
 
 ## Roadmap initiale — close
 

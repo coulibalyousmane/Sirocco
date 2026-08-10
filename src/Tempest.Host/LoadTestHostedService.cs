@@ -57,7 +57,7 @@ internal sealed class LoadTestHostedService(
             logger.LogInformation("Tir termine. {Summary}", summary);
         }
 
-        LoadTestReport report = metricsProcessor.Aggregator.Snapshot(StatisticsScope.Cumulative) with { Tags = workflow.Tags };
+        LoadTestReport report = metricsProcessor.Aggregator.Snapshot(StatisticsScope.Cumulative) with { Tags = workflow.Tags, ClosedModel = options.IsClosedModel };
         if (logger.IsEnabled(LogLevel.Information))
         {
             logger.LogInformation("{Report}", report.ToTable());

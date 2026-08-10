@@ -40,6 +40,18 @@ public sealed record LoadTestReport
     /// </summary>
     public IReadOnlyList<CustomMetricSnapshot> CustomMetrics { get; init; } = [];
 
+    /// <summary>
+    /// Ce tir a utilise le modele ferme (nombre fixe d'utilisateurs virtuels) plutot que le
+    /// modele ouvert (debit cible). <see langword="false"/> par defaut.
+    /// <para>
+    /// En modele ferme, chaque jeton porte l'instant de sa propre emission, pas un instant
+    /// planifie a l'avance : il n'y a donc pas de correction du <i>coordinated omission</i>, et
+    /// les chiffres de ce rapport ne sont pas comparables a un tir en modele ouvert — d'ou la
+    /// mise en garde explicite rendue par <see cref="ToTable"/> et <see cref="ToHtml"/>.
+    /// </para>
+    /// </summary>
+    public bool ClosedModel { get; init; }
+
     /// <summary>Debit moyen sur la periode, iterations par seconde.</summary>
     public double IterationsPerSecond =>
         Duration > TimeSpan.Zero ? Iteration.Count / Duration.TotalSeconds : 0d;
@@ -67,6 +79,12 @@ public sealed record LoadTestReport
         {
             builder.AppendLine(
                 $"  /!\\ {MetricsDropped} mesures perdues : les centiles ci-dessous sont incomplets.");
+        }
+
+        if (ClosedModel)
+        {
+            builder.AppendLine(
+                "  /!\\ Modele ferme : pas de correction du coordinated omission, chiffres non comparables a un tir en modele ouvert.");
         }
 
         builder.AppendLine(
@@ -181,6 +199,12 @@ public sealed record LoadTestReport
         {
             html.AppendLine(
                 $"<div class=\"warning\">/!\\ {MetricsDropped:N0} mesures perdues : les centiles ci-dessous sont incomplets.</div>");
+        }
+
+        if (ClosedModel)
+        {
+            html.AppendLine(
+                "<div class=\"warning\">/!\\ Modele ferme : pas de correction du coordinated omission, chiffres non comparables a un tir en modele ouvert.</div>");
         }
 
         html.AppendLine("<table>");

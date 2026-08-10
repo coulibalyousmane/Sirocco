@@ -84,7 +84,7 @@ public sealed class CoordinatedRateLimiter : ILoadScheduler
                 }
 
                 ExecutionToken token = new(issued, startTicks + TempestClock.FromSeconds(scheduledSeconds));
-                if (!Emit(tokens, in token, cancellationToken))
+                if (!BlockingTokenWriter.TryEmit(tokens, in token, cancellationToken))
                 {
                     Interlocked.Exchange(ref _issued, issued);
                     return;
@@ -106,56 +106,5 @@ public sealed class CoordinatedRateLimiter : ILoadScheduler
         }
 
         Interlocked.Exchange(ref _issued, issued);
-    }
-
-    /// <summary>
-    /// Depose un jeton, en attendant si la file est pleine.
-    /// <para>
-    /// L'attente est <b>voulue</b> : elle signifie que tous les utilisateurs virtuels sont
-    /// occupes. Le jeton conserve son instant theorique, donc le retard subi ici sera
-    /// integralement visible dans la dette d'ordonnancement de la mesure. Jeter le jeton
-    /// a la place effacerait le probleme des statistiques — c'est exactement le biais
-    /// que Tempest existe pour eviter.
-    /// </para>
-    /// </summary>
-    /// <returns><see langword="false"/> si le tir a ete annule ou la file close.</returns>
-    private static bool Emit(
-        ChannelWriter<ExecutionToken> tokens,
-        in ExecutionToken token,
-        CancellationToken cancellationToken)
-    {
-        if (tokens.TryWrite(token))
-        {
-            return true;
-        }
-
-        ExecutionToken pending = token;
-
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            try
-            {
-                // Blocage synchrone assume : on est sur le thread dedie a l'ordonnancement.
-                if (!tokens.WaitToWriteAsync(cancellationToken).AsTask().GetAwaiter().GetResult())
-                {
-                    return false;
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                return false;
-            }
-            catch (ChannelClosedException)
-            {
-                return false;
-            }
-
-            if (tokens.TryWrite(pending))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

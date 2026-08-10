@@ -32,7 +32,19 @@ public static class StandaloneHost
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(tempestOptions);
 
-        LoadProfile profile = LoadProfileFactory.FromOptions(tempestOptions);
+        // Modele ferme : aucun profil de debit, un ordonnanceur different enregistre en amont —
+        // AddTempestEngine garde celui-la (voir sa remarque de classe) plutot que d'en construire
+        // un par defaut a partir d'un profil qui n'existe pas dans ce mode.
+        LoadProfile? profile;
+        if (tempestOptions.IsClosedModel)
+        {
+            profile = null;
+            builder.Services.AddSingleton<ILoadScheduler>(new ClosedModelScheduler(tempestOptions.ClosedModelDuration!.Value));
+        }
+        else
+        {
+            profile = LoadProfileFactory.FromOptions(tempestOptions);
+        }
 
         // Le scenario code en dur reste le comportement par defaut : un fichier de scenario
         // n'entre en jeu que si l'operateur le renseigne explicitement, et garde la priorite sur
@@ -115,17 +127,17 @@ public static class StandaloneHost
         app.MapPrometheusScrapingEndpoint();
 
         app.MapGet("/report", (MetricsAggregator aggregator) =>
-            Results.Ok(aggregator.Snapshot(StatisticsScope.Cumulative) with { Tags = workflow.Tags }));
+            Results.Ok(aggregator.Snapshot(StatisticsScope.Cumulative) with { Tags = workflow.Tags, ClosedModel = tempestOptions.IsClosedModel }));
 
         app.MapGet("/report/live", (MetricsAggregator aggregator) =>
-            Results.Ok(aggregator.Snapshot(StatisticsScope.Sliding) with { Tags = workflow.Tags }));
+            Results.Ok(aggregator.Snapshot(StatisticsScope.Sliding) with { Tags = workflow.Tags, ClosedModel = tempestOptions.IsClosedModel }));
 
         app.MapGet("/thresholds", (MetricsAggregator aggregator, TempestHostOptions options) =>
             Results.Ok(ThresholdReport.Evaluate(options.Thresholds, aggregator.Snapshot(StatisticsScope.Cumulative))));
 
         app.MapGet("/report.html", (MetricsAggregator aggregator, TempestHostOptions options) =>
         {
-            LoadTestReport report = aggregator.Snapshot(StatisticsScope.Cumulative) with { Tags = workflow.Tags };
+            LoadTestReport report = aggregator.Snapshot(StatisticsScope.Cumulative) with { Tags = workflow.Tags, ClosedModel = options.IsClosedModel };
             ThresholdReport thresholds = ThresholdReport.Evaluate(options.Thresholds, report);
             return Results.Content(report.ToHtml(thresholds), "text/html");
         });
