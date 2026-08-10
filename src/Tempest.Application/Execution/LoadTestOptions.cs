@@ -1,4 +1,6 @@
-﻿namespace Tempest.Application.Execution;
+﻿using Tempest.Domain.Load;
+
+namespace Tempest.Application.Execution;
 
 /// <summary>
 /// Parametres de <b>l'injecteur</b> : combien d'iterations peuvent tourner de front, quelle
@@ -34,6 +36,15 @@ public sealed class LoadTestOptions
     /// </para>
     /// </summary>
     public int MaxVirtualUsers { get; init; } = DEFAULT_MAX_VIRTUAL_USERS;
+
+    /// <summary>
+    /// Profil de montee d'utilisateurs : si renseigne, l'effectif concurrent suit ses paliers
+    /// au lieu de rester fixe a <see cref="MaxVirtualUsers"/> pendant tout le tir
+    /// (<see cref="RampingVirtualUserPool"/> remplace alors la creation statique de travailleurs
+    /// du moteur). <see langword="null"/> par defaut : le comportement a effectif fixe, ouvert ou
+    /// ferme, reste inchange tant que ce champ n'est pas explicitement renseigne.
+    /// </summary>
+    public VirtualUserProfile? RampProfile { get; init; }
 
     /// <summary>
     /// Capacite de la file de jetons. Par defaut, deux fois le nombre d'utilisateurs virtuels :

@@ -49,7 +49,8 @@ public sealed class TempestHostOptions
 
     /// <summary>
     /// Nombre d'utilisateurs virtuels : un plafond en modele ouvert, un effectif exact en modele
-    /// ferme (voir <see cref="ClosedModelDuration"/>).
+    /// ferme (voir <see cref="ClosedModelDuration"/>). Sans effet si <see cref="RampVus"/> est
+    /// renseigne : l'effectif suit alors ses paliers, jusqu'a leur pic.
     /// </summary>
     public int MaxVirtualUsers { get; init; } = DEFAULT_MAX_VIRTUAL_USERS;
 
@@ -66,15 +67,36 @@ public sealed class TempestHostOptions
     public IReadOnlyList<LoadStageOptions> Profile { get; init; } = [];
 
     /// <summary>
-    /// Duree du modele <b>ferme</b> : si renseigne, ce tir ignore <see cref="Profile"/> et fait
-    /// tourner exactement <see cref="MaxVirtualUsers"/> utilisateurs virtuels sans aucune pause
-    /// imposee jusqu'a expiration de cette duree, plutot que de viser un debit cible.
-    /// <see langword="null"/> par defaut : le modele ouvert reste le comportement inchange.
+    /// Duree du modele <b>ferme</b> a effectif fixe : si renseigne, ce tir ignore
+    /// <see cref="Profile"/> et fait tourner exactement <see cref="MaxVirtualUsers"/>
+    /// utilisateurs virtuels sans aucune pause imposee jusqu'a expiration de cette duree, plutot
+    /// que de viser un debit cible. <see langword="null"/> par defaut : le modele ouvert reste le
+    /// comportement inchange. Sans effet si <see cref="RampVus"/> est renseigne, qui garde la
+    /// priorite.
     /// </summary>
     public TimeSpan? ClosedModelDuration { get; init; }
 
-    /// <summary>Vrai si ce tir utilise le modele ferme plutot que le modele ouvert.</summary>
-    public bool IsClosedModel => ClosedModelDuration is not null;
+    /// <summary>
+    /// Paliers du modele <b>ferme</b> a effectif <b>variable</b> (montee/descente d'utilisateurs) :
+    /// si renseigne, ce tir ignore <see cref="ClosedModelDuration"/> et <see cref="Profile"/>, et
+    /// l'effectif concurrent suit ces paliers au lieu de rester fixe. Vide par defaut.
+    /// <para>
+    /// Meme mise en garde de rapport que l'effectif fixe (<see cref="Domain.Metrics.LoadTestReport.ClosedModel"/>) :
+    /// sans echeancier theorique, il n'y a pas de correction du <i>coordinated omission</i> ici
+    /// non plus, les chiffres ne sont jamais comparables a un tir en modele ouvert.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<VirtualUserStageOptions> RampVus { get; init; } = [];
+
+    /// <summary>Vrai si ce tir utilise une montee d'utilisateurs plutot qu'un effectif fixe.</summary>
+    public bool IsRampingVus => RampVus.Count > 0;
+
+    /// <summary>
+    /// Vrai si ce tir utilise un modele ferme, a effectif fixe (<see cref="ClosedModelDuration"/>)
+    /// ou en montee d'utilisateurs (<see cref="RampVus"/>) — les deux partagent la meme mise en
+    /// garde de rapport, faute d'echeancier theorique a comparer.
+    /// </summary>
+    public bool IsClosedModel => ClosedModelDuration is not null || IsRampingVus;
 
     /// <summary>
     /// Chemin d'un fichier de scenario declaratif (<c>.yaml</c>, <c>.yml</c> ou <c>.json</c>).

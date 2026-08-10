@@ -112,21 +112,33 @@ public sealed class TargetRpsLoadEngine
     private async Task<LoadTestSummary> RunCoreAsync(StepId iterationStep, CancellationToken cancellationToken)
     {
         Channel<ExecutionToken> tokens = CreateTokenChannel();
-        VirtualUserWorker[] workers = CreateWorkers(iterationStep);
 
         SchedulerThreadHost schedulerHost = new(_scheduler, tokens.Writer);
         schedulerHost.Start(cancellationToken);
 
-        Task[] running = new Task[workers.Length];
-        for (int i = 0; i < workers.Length; i++)
+        IReadOnlyList<VirtualUserWorker> workers;
+        if (_options.RampProfile is { } rampProfile)
         {
-            VirtualUserWorker worker = workers[i];
-            running[i] = Task.Run(
-                () => worker.RunAsync(tokens.Reader, cancellationToken),
-                CancellationToken.None);
+            RampingVirtualUserPool pool = new(rampProfile, index => CreateWorker(index, iterationStep));
+            await pool.RunAsync(tokens.Reader, cancellationToken).ConfigureAwait(false);
+            workers = pool.Workers;
+        }
+        else
+        {
+            VirtualUserWorker[] fixedWorkers = CreateWorkers(iterationStep);
+            Task[] running = new Task[fixedWorkers.Length];
+            for (int i = 0; i < fixedWorkers.Length; i++)
+            {
+                VirtualUserWorker worker = fixedWorkers[i];
+                running[i] = Task.Run(
+                    () => worker.RunAsync(tokens.Reader, cancellationToken),
+                    CancellationToken.None);
+            }
+
+            await Task.WhenAll(running).ConfigureAwait(false);
+            workers = fixedWorkers;
         }
 
-        await Task.WhenAll(running).ConfigureAwait(false);
         schedulerHost.WaitForCompletion();
 
         return Summarize(workers, TempestClock.Now - _scheduler.StartTicks);
@@ -144,21 +156,26 @@ public sealed class TargetRpsLoadEngine
 
     private VirtualUserWorker[] CreateWorkers(StepId iterationStep)
     {
-        long maxDelayTicks = _options.MaxSchedulingDelay is { } delay
-            ? TempestClock.FromTimeSpan(delay)
-            : 0L;
-
         VirtualUserWorker[] workers = new VirtualUserWorker[_options.MaxVirtualUsers];
         for (int i = 0; i < workers.Length; i++)
         {
-            VirtualUserContext context = new(i, _httpClient, _sink, iterationStep, _customMetricSink);
-            workers[i] = new VirtualUserWorker(context, _workflow, maxDelayTicks);
+            workers[i] = CreateWorker(i, iterationStep);
         }
 
         return workers;
     }
 
-    private LoadTestSummary Summarize(VirtualUserWorker[] workers, long durationTicks)
+    private VirtualUserWorker CreateWorker(int index, StepId iterationStep)
+    {
+        long maxDelayTicks = _options.MaxSchedulingDelay is { } delay
+            ? TempestClock.FromTimeSpan(delay)
+            : 0L;
+
+        VirtualUserContext context = new(index, _httpClient, _sink, iterationStep, _customMetricSink);
+        return new VirtualUserWorker(context, _workflow, maxDelayTicks);
+    }
+
+    private LoadTestSummary Summarize(IReadOnlyList<VirtualUserWorker> workers, long durationTicks)
     {
         long started = 0L;
         long completed = 0L;

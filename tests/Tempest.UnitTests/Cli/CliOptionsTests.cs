@@ -76,6 +76,35 @@ public sealed class CliOptionsTests
         Assert.Throws<FormatException>(() => CliOptions.Parse(["--vus", "50", "--max-vus", "100", "--duration", "10s"]));
 
     [Fact]
+    public void A_vus_ramp_is_captured()
+    {
+        CliOptions options = CliOptions.Parse(["--vus-from", "0", "--vus-to", "50", "--duration", "30s"]);
+
+        Assert.Equal(0, options.VusFrom);
+        Assert.Equal(50, options.VusTo);
+        Assert.Equal(TimeSpan.FromSeconds(30), options.Duration);
+    }
+
+    [Fact]
+    public void Vus_from_without_vus_to_is_rejected() =>
+        Assert.Throws<FormatException>(() => CliOptions.Parse(["--vus-from", "0", "--duration", "10s"]));
+
+    [Fact]
+    public void Vus_ramp_and_vus_together_are_mutually_exclusive() =>
+        Assert.Throws<FormatException>(() =>
+            CliOptions.Parse(["--vus-from", "0", "--vus-to", "50", "--vus", "10", "--duration", "10s"]));
+
+    [Fact]
+    public void Vus_ramp_and_rps_together_are_mutually_exclusive() =>
+        Assert.Throws<FormatException>(() =>
+            CliOptions.Parse(["--vus-from", "0", "--vus-to", "50", "--rps", "100", "--duration", "10s"]));
+
+    [Fact]
+    public void Vus_ramp_and_max_vus_together_are_mutually_exclusive() =>
+        Assert.Throws<FormatException>(() =>
+            CliOptions.Parse(["--vus-from", "0", "--vus-to", "50", "--max-vus", "100", "--duration", "10s"]));
+
+    [Fact]
     public void A_second_positional_argument_is_rejected() =>
         Assert.Throws<FormatException>(() => CliOptions.Parse(["scenario.yaml", "other.yaml"]));
 

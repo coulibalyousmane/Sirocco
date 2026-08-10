@@ -32,6 +32,10 @@ internal sealed class CliOptions
 
     public int? Vus { get; private init; }
 
+    public int? VusFrom { get; private init; }
+
+    public int? VusTo { get; private init; }
+
     public string? ReportHtmlPath { get; private init; }
 
     public string? ReportJsonPath { get; private init; }
@@ -52,6 +56,8 @@ internal sealed class CliOptions
         TimeSpan? duration = null;
         int? maxVirtualUsers = null;
         int? vus = null;
+        int? vusFrom = null;
+        int? vusTo = null;
         string? reportHtmlPath = null;
         string? reportJsonPath = null;
         List<ThresholdRule> thresholds = [];
@@ -91,6 +97,14 @@ internal sealed class CliOptions
 
                 case "--vus" when i + 1 < args.Length:
                     vus = ParseInt(args[++i], "--vus");
+                    break;
+
+                case "--vus-from" when i + 1 < args.Length:
+                    vusFrom = ParseInt(args[++i], "--vus-from");
+                    break;
+
+                case "--vus-to" when i + 1 < args.Length:
+                    vusTo = ParseInt(args[++i], "--vus-to");
                     break;
 
                 case "--report-html" when i + 1 < args.Length:
@@ -141,6 +155,30 @@ internal sealed class CliOptions
                 "--vus et --max-vus sont mutuellement exclusifs : --vus fixe deja l'effectif exact du modele ferme.");
         }
 
+        if (vusFrom.HasValue != vusTo.HasValue)
+        {
+            throw new FormatException("--vus-from et --vus-to doivent etre fournis ensemble.");
+        }
+
+        if (vusFrom.HasValue && vus.HasValue)
+        {
+            throw new FormatException(
+                "--vus-from/--vus-to (montee d'utilisateurs) et --vus (effectif fixe) sont mutuellement exclusifs.");
+        }
+
+        if (vusFrom.HasValue && (rps.HasValue || fromRps.HasValue))
+        {
+            throw new FormatException(
+                "--vus-from/--vus-to (modele ferme) est mutuellement exclusif avec --rps/--from-rps/--to-rps (modele ouvert).");
+        }
+
+        if (vusFrom.HasValue && maxVirtualUsers.HasValue)
+        {
+            throw new FormatException(
+                "--vus-from/--vus-to et --max-vus sont mutuellement exclusifs : l'effectif suit deja les paliers, " +
+                "jusqu'a leur pic.");
+        }
+
         return new CliOptions
         {
             ScenarioPath = scenarioPath,
@@ -152,6 +190,8 @@ internal sealed class CliOptions
             Duration = duration,
             MaxVirtualUsers = maxVirtualUsers,
             Vus = vus,
+            VusFrom = vusFrom,
+            VusTo = vusTo,
             ReportHtmlPath = reportHtmlPath,
             ReportJsonPath = reportJsonPath,
             Thresholds = thresholds,

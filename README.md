@@ -280,6 +280,39 @@ pour d'autres raisons. Vérifié par un vrai tir (`--vus 10 --duration 5s` contr
 `Tempest.SampleTarget`) : effectif exact, avertissement présent dans le rapport texte et le JSON,
 modèle ouvert inchangé en régression.
 
+### Montée d'utilisateurs
+
+Le modèle fermé ci-dessus fixe un effectif *constant*. Beaucoup de tirs réels veulent au contraire
+observer une dégradation progressive — « monter à 50 utilisateurs sur 2 minutes » — sans jamais
+viser un débit. `--vus-from`/`--vus-to` couvre ce cas :
+
+```bash
+tempest run --target-url http://localhost:5281 --vus-from 0 --vus-to 50 --duration 2m
+```
+
+L'effectif concurrent passe linéairement de 0 à 50 sur la durée donnée (une rampe descendante,
+`--vus-from 50 --vus-to 0`, fonctionne symétriquement). Mêmes règles d'exclusion mutuelle que
+`--vus` : incompatible avec `--rps`/`--from-rps`/`--to-rps` (modèle ouvert) et avec `--max-vus`
+(l'effectif suit déjà les paliers, jusqu'à leur pic) ; `--duration` est obligatoire. Une rampe
+« montée, plateau, descente » à plusieurs paliers reste possible via un `appsettings.json`, section
+`Tempest:RampVus` — la CLI n'exprime qu'un seul palier, comme elle ne le fait déjà que pour un seul
+palier de débit (`--from-rps`/`--to-rps`).
+
+Techniquement, `RampingVirtualUserPool` (`Tempest.Application.Execution`) remplace la création
+statique de travailleurs du moteur : il en crée de nouveaux quand l'effectif cible monte et en
+arrête individuellement quand il descend — chaque travailleur reçoit son propre jeton d'annulation
+plutôt que celui du tir, ce qui permet d'arrêter un utilisateur virtuel sans fermer la file de
+jetons partagée par les autres. L'émission des jetons elle-même reste inchangée : un
+`ClosedModelScheduler` configuré sur la durée totale du profil continue d'alimenter la file en
+continu, exactement comme pour un effectif fixe. Même mise en garde de rapport que le modèle fermé
+à effectif fixe (`LoadTestReport.ClosedModel`) : la montée d'utilisateurs n'a pas plus
+d'échéancier théorique à comparer que l'effectif constant.
+
+Limite : mode distribué non pris en charge, comme pour l'effectif fixe. Vérifié par un vrai tir
+(`--vus-from 0 --vus-to 20 --duration 8s` contre `Tempest.SampleTarget`) : débit croissant au fil
+de la rampe, avertissement présent dans le rapport texte et le JSON, modèles ouvert et fermé à
+effectif fixe inchangés en régression.
+
 ### Installation
 
 `Tempest.Cli` s'empaquette comme un [outil global
@@ -1389,6 +1422,7 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 32** — [Métriques personnalisées](#métriques-personnalisées) : `CustomMetricKind` (compteur/jauge/taux/tendance), `CustomMetricRegistry`/`CustomMetricId` (`Tempest.Domain.Metrics`, même discipline que `StepRegistry`/`StepId`) et `MetricRule` (`Tempest.Domain.Declarative`, même vocabulaire Regex/XPath/JsonPath que l'extraction et les checks), section `metrics` par étape du format déclaratif. Première fonctionnalité de la phase 2 à ne pas pouvoir réutiliser `StepId`/`StepAccumulator` tels quels (une valeur métier arbitraire n'est pas une durée de requête) : chaîne d'agrégation parallèle complète (`ChannelCustomMetricSink`, `CustomMetricAccumulator`, `CustomMetricsAggregator`), même discipline « canal borné, consommateur unique » que la chaîne native, `VirtualUserContext`/`TargetRpsLoadEngine`/`MetricsProcessor` étendus avec des paramètres additifs par défaut (aucun site d'appel existant cassé). Rendue dans le rapport texte/HTML et dans Prometheus (`tempest.custom.counter`/`.gauge`/`.rate`/`.trend`). Limites documentées : pas de centiles pour la tendance, pas de fenêtre glissante, pas de fusion inter-workers en mode distribué. Vérifié par un vrai tir contre `Tempest.SampleTarget` : compteur, tendance, jauge et taux tous corrects dans le rapport texte et dans `/metrics`
 - [x] **Étape 33** — [Temps de réflexion et rythme](#temps-de-réflexion-et-rythme) : `ThinkTimeDefinition` (`Tempest.Domain.Declarative`, durée fixe ou plage tirée uniformément), propriété `HttpStepDefinition.ThinkTime`, `thinkTime`/`thinkTimeMax` par étape du format déclaratif — parsés au même format que `--duration` en CLI (`500ms`, `1s`, `2m`, `1h`). Dernier bullet de la roadmap phase 2 : aucun changement dans le moteur, une pause n'est qu'un `Task.Delay` après que l'étape a publié sa mesure, jamais comptée comme latence de requête — le modèle ouvert de `TargetRpsLoadEngine` l'absorbe nativement en dette d'ordonnancement, exactement comme une réponse HTTP lente. Sans effet sur les scénarios scriptés, qui pouvaient déjà faire une pause via `Task.Delay` directement. Vérifié par de vrais tirs contre `Tempest.SampleTarget` : une pause fixe de 500 ms avec un seul utilisateur virtuel fait tomber le débit effectif à ~2 itérations/s pour un débit cible de 20/s (dette d'ordonnancement en conséquence), latence brute de l'étape HTTP inchangée dans les deux cas — et une plage 100–300 ms sur 4 utilisateurs virtuels montre un p50/p95 d'itération cohérent avec la plage configurée. **Clôt entièrement le contenu de la roadmap phase 2**
 - [x] **Étape 34** — [Modèle fermé](#modèle-fermé) : `ClosedModelScheduler` (`Tempest.Application.Execution`, implémente `ILoadScheduler` comme `CoordinatedRateLimiter`), `--vus <n>` en CLI (`TempestHostOptions.ClosedModelDuration`), `LoadTestReport.ClosedModel` avec mise en garde explicite dans `ToTable`/`ToHtml`. Premier bullet de la roadmap phase 3. `AddTempestEngine` accepte désormais un `LoadProfile?` nul, pour laisser un `ILoadScheduler` personnalisé déjà enregistré prendre la place du `CoordinatedRateLimiter` par défaut — le seam d'extension que sa propre documentation promettait depuis le début. Aucune notion de concurrence dédiée à ce nouvel ordonnanceur : elle vient du nombre de travailleurs déjà créés par le moteur (`LoadTestOptions.MaxVirtualUsers`), la contre-pression du canal de jetons suffisant à faire émerger le modèle fermé. Limite documentée : mode distribué non pris en charge pour ce modèle. Vérifié par un vrai tir (`--vus 10 --duration 5s`) : effectif exact, avertissement présent en texte et en JSON, modèle ouvert inchangé en régression
+- [x] **Étape 35** — [Montée d'utilisateurs](#montée-dutilisateurs) : `VirtualUserStage`/`VirtualUserProfile` (`Tempest.Domain.Load`, même rampe linéaire que `LoadStage`/`LoadProfile` mais sur un effectif plutôt qu'un débit), `RampingVirtualUserPool` (`Tempest.Application.Execution`) qui remplace la création statique de travailleurs de `TargetRpsLoadEngine` quand `LoadTestOptions.RampProfile` est renseigné, `--vus-from`/`--vus-to` en CLI (`TempestHostOptions.RampVus`). Deuxième bullet « exécuteurs multiples » de la roadmap phase 3 (montée/descente d'utilisateurs ; itérations partagées et par utilisateur restent à faire). Chaque travailleur reçoit son propre jeton d'annulation lié à celui du tir, ce qui permet d'en arrêter un individuellement sans fermer le canal de jetons partagé par les autres — l'émission des jetons elle-même reste un `ClosedModelScheduler` inchangé, configuré sur la durée totale du profil. `TempestHostOptions.IsClosedModel` couvre désormais aussi ce mode (même mise en garde de rapport, aucun échéancier théorique à comparer). Limite documentée : mode distribué non pris en charge, comme pour l'effectif fixe. Vérifié par un vrai tir (`--vus-from 0 --vus-to 20 --duration 8s`) : débit croissant au fil de la rampe, avertissement présent en texte et en JSON, modèles ouvert et fermé à effectif fixe inchangés en régression
 
 ## Roadmap initiale — close
 

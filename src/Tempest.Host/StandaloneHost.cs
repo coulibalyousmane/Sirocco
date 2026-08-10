@@ -32,11 +32,23 @@ public static class StandaloneHost
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(tempestOptions);
 
-        // Modele ferme : aucun profil de debit, un ordonnanceur different enregistre en amont —
-        // AddTempestEngine garde celui-la (voir sa remarque de classe) plutot que d'en construire
-        // un par defaut a partir d'un profil qui n'existe pas dans ce mode.
+        // Modele ferme (effectif fixe ou en montee) : aucun profil de debit, un ordonnanceur
+        // different enregistre en amont — AddTempestEngine garde celui-la (voir sa remarque de
+        // classe) plutot que d'en construire un par defaut a partir d'un profil qui n'existe pas
+        // dans ce mode. La montee d'utilisateurs est prioritaire sur l'effectif fixe, lui-meme
+        // prioritaire sur le profil de debit (voir TempestHostOptions).
         LoadProfile? profile;
-        if (tempestOptions.IsClosedModel)
+        VirtualUserProfile? rampProfile = null;
+        int effectiveMaxVirtualUsers = tempestOptions.MaxVirtualUsers;
+
+        if (tempestOptions.IsRampingVus)
+        {
+            profile = null;
+            rampProfile = VirtualUserProfileFactory.FromOptions(tempestOptions);
+            effectiveMaxVirtualUsers = rampProfile.PeakVus;
+            builder.Services.AddSingleton<ILoadScheduler>(new ClosedModelScheduler(rampProfile.TotalDuration));
+        }
+        else if (tempestOptions.IsClosedModel)
         {
             profile = null;
             builder.Services.AddSingleton<ILoadScheduler>(new ClosedModelScheduler(tempestOptions.ClosedModelDuration!.Value));
@@ -116,7 +128,9 @@ public static class StandaloneHost
         builder.Services.AddSingleton(tempestOptions);
         builder.Services.AddSingleton(workflow);
 
-        builder.Services.AddTempestEngine(profile, new LoadTestOptions { MaxVirtualUsers = tempestOptions.MaxVirtualUsers });
+        builder.Services.AddTempestEngine(
+            profile,
+            new LoadTestOptions { MaxVirtualUsers = effectiveMaxVirtualUsers, RampProfile = rampProfile });
         builder.Services.AddTempestMetrics();
         builder.Services.AddTempestOpenTelemetry(otel => otel.AddPrometheusExporter());
 

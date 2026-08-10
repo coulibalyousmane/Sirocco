@@ -23,7 +23,7 @@ Légende : ● solide · ◐ partiel · ○ absent
 | Capacité | Tempest | k6 | Gatling | NBomber |
 |---|---|---|---|---|
 | Modèle de charge ouvert (*arrival rate*) | ● natif, seul modèle | ● executors dédiés | ● `injectOpen` | ● |
-| Modèle fermé (utilisateurs concurrents) | ● `--vus`, mise en garde explicite | ● | ● `injectClosed` | ● |
+| Modèle fermé (utilisateurs concurrents) | ● `--vus`/`--vus-from`/`--vus-to`, mise en garde explicite | ● | ● `injectClosed` | ● |
 | Dette d'ordonnancement mesurée et publiée | ● `Response` + `Service` | ○ | ○ | ○ |
 | Scénarios programmables (branchement, boucle) | ◐ C# recompilé, ou YAML linéaire | ● JavaScript/TS | ● DSL Scala/Java/Kotlin | ● C#/F# |
 | Jeux de données (CSV, JSON, SQL) | ◐ CSV/JSON, pas SQL | ● `SharedArray` | ● *feeders* | ● *data feed* |
@@ -187,8 +187,10 @@ par purisme coûterait des utilisateurs.
   échéancier théorique, il n'y a pas de correction du *coordinated omission* en modèle fermé — les
   chiffres ne sont jamais comparables à un tir en modèle ouvert. Limite : mode distribué non pris
   en charge pour ce modèle. Vérifié par un vrai tir.
-- **Exécuteurs multiples** — utilisateurs constants, montée d'utilisateurs, itérations partagées,
-  itérations par utilisateur.
+- **Exécuteurs multiples** — utilisateurs constants (fait, voir ci-dessus), montée d'utilisateurs
+  (fait, voir [Montée d'utilisateurs](README.md#montée-dutilisateurs) : `--vus-from`/`--vus-to`,
+  `RampingVirtualUserPool`), itérations partagées, itérations par utilisateur (ces deux derniers
+  restent à faire).
 - **Scénarios concurrents** dans un même tir, chacun avec son profil, ses étiquettes et ses seuils.
 - **Bridage** — plafond de débit global indépendant du profil.
 
@@ -298,11 +300,12 @@ temps de réflexion sont faits, voir [Jeux de données](README.md#jeux-de-donné
 [Métriques personnalisées](README.md#métriques-personnalisées) et
 [Temps de réflexion et rythme](README.md#temps-de-réflexion-et-rythme).
 
-**La phase 3 est engagée** : le modèle fermé est fait, voir [Modèle
-fermé](README.md#modèle-fermé) — `--vus <n> --duration <d>`, `ClosedModelScheduler`, mise en garde
-explicite dans le rapport. Restent les exécuteurs multiples (montée d'utilisateurs, itérations
-partagées/par utilisateur), les scénarios concurrents dans un même tir et le bridage de débit
-global.
+**La phase 3 avance** : l'effectif fixe et la montée d'utilisateurs sont faits, voir [Modèle
+fermé](README.md#modèle-fermé) (`--vus <n> --duration <d>`, `ClosedModelScheduler`) et [Montée
+d'utilisateurs](README.md#montée-dutilisateurs) (`--vus-from <n> --vus-to <n> --duration <d>`,
+`RampingVirtualUserPool`), mise en garde explicite dans le rapport pour les deux. Restent les
+itérations partagées/par utilisateur, les scénarios concurrents dans un même tir et le bridage de
+débit global.
 
 Le reste peut attendre des retours d'utilisateurs réels. Construire les phases 4 à 8 sans eux,
 c'est deviner.

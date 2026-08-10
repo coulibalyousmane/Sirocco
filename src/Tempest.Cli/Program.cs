@@ -32,6 +32,10 @@ const string USAGE = """
                                  garde explicite : ces chiffres ne corrigent pas le coordinated
                                  omission et ne sont pas comparables a un tir en modele ouvert.
                                  Mutuellement exclusif avec --rps/--from-rps/--to-rps/--max-vus.
+      --vus-from <n>             Montee (ou descente) d'utilisateurs : l'effectif concurrent
+      --vus-to <n>                passe lineairement de --vus-from a --vus-to sur --duration
+                                 (obligatoire). Meme mise en garde de rapport que --vus.
+                                 Mutuellement exclusif avec --vus/--rps/--from-rps/--to-rps/--max-vus.
       --threshold <regle>       Seuil de succes/echec, repetable :
                                  'etape:grandeur:comparaison:limite[:nom]', ex.
                                  '__iteration:ResponseP95Milliseconds:LessThan:200'.
@@ -108,6 +112,29 @@ if (options.Vus is int vus)
         ReportJsonPath = options.ReportJsonPath,
     };
 }
+else if (options.VusFrom is int vusFrom && options.VusTo is int vusTo)
+{
+    // Montee d'utilisateurs : meme contrainte que --vus, --duration derive la duree du seul
+    // palier que la CLI sait exprimer (un profil multi-paliers reste l'affaire d'un
+    // appsettings.json, section Tempest:RampVus).
+    if (options.Duration is not { } rampVusDuration)
+    {
+        Console.Error.WriteLine("--vus-from/--vus-to exigent --duration.");
+        return 1;
+    }
+
+    tempestOptions = new TempestHostOptions
+    {
+        TargetBaseUrl = targetUrl,
+        RampVus = [new VirtualUserStageOptions { FromVus = vusFrom, ToVus = vusTo, DurationSeconds = rampVusDuration.TotalSeconds }],
+        ScenarioFile = options.ScenarioPath ?? builder.Configuration["Tempest:ScenarioFile"],
+        Workflow = options.Workflow ?? builder.Configuration["Tempest:Workflow"] ?? TempestHostOptions.DYNAMIC_CHECKOUT_WORKFLOW,
+        Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
+        ExitAfterRun = true,
+        ReportHtmlPath = options.ReportHtmlPath,
+        ReportJsonPath = options.ReportJsonPath,
+    };
+}
 else
 {
     IReadOnlyList<LoadStageOptions> profile;
@@ -125,8 +152,8 @@ else
     {
         Console.Error.WriteLine(
             "Profil de charge requis : --rps <n> --duration <d>, --from-rps <n> --to-rps <n> --duration <d>, " +
-            "--vus <n> --duration <d> (modele ferme), ou une section Tempest:Profile dans un appsettings.json du " +
-            "repertoire courant.");
+            "--vus <n> --duration <d> (modele ferme), --vus-from <n> --vus-to <n> --duration <d> (montee " +
+            "d'utilisateurs), ou une section Tempest:Profile dans un appsettings.json du repertoire courant.");
         return 1;
     }
 
