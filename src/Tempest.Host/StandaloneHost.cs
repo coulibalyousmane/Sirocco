@@ -14,7 +14,8 @@ namespace Tempest.Host;
 
 /// <summary>
 /// Cable et demarre l'hote en mode autonome (aucun role distribue) : un seul workflow, un seul
-/// profil de charge, un seul processus.
+/// profil de charge, un seul processus — ou, si <see cref="TempestHostOptions.Scenarios"/> est
+/// renseigne, delegue a <see cref="MultiScenarioHost"/> (voir sa remarque de classe).
 /// <para>
 /// Extrait de <c>Program.cs</c> pour etre reutilise par <c>Tempest.Cli</c>, qui construit le
 /// meme <see cref="TempestHostOptions"/> a partir d'arguments de ligne de commande plutot que
@@ -32,123 +33,50 @@ public static class StandaloneHost
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(tempestOptions);
 
+        // Scenarios concurrents : un cablage entierement different (N workflows/ordonnanceurs
+        // isoles plutot qu'un singleton de chaque), voir la remarque de classe de MultiScenarioHost.
+        if (tempestOptions.Scenarios.Count > 0)
+        {
+            MultiScenarioHost.Run(builder, tempestOptions);
+            return;
+        }
+
         // Modele ferme, sous une de ses quatre formes : aucun profil de debit, un ordonnanceur
         // different enregistre en amont — AddTempestEngine garde celui-la (voir sa remarque de
         // classe) plutot que d'en construire un par defaut a partir d'un profil qui n'existe pas
         // dans ces modes. Ordre de priorite documente sur TempestHostOptions : montee
         // d'utilisateurs, puis effectif fixe a duree, puis iterations par utilisateur, puis
         // iterations partagees, puis enfin le profil de debit (modele ouvert).
-        LoadProfile? profile;
-        VirtualUserProfile? rampProfile = null;
-        int effectiveMaxVirtualUsers = tempestOptions.MaxVirtualUsers;
-        long? iterationsPerVirtualUser = null;
+        LoadModelPlan plan = BuildLoadModel(
+            tempestOptions.MaxVirtualUsers,
+            tempestOptions.Profile,
+            tempestOptions.ClosedModelDuration,
+            tempestOptions.RampVus,
+            tempestOptions.SharedIterations,
+            tempestOptions.IterationsPerVirtualUser);
 
-        if (tempestOptions.IsRampingVus)
-        {
-            profile = null;
-            rampProfile = VirtualUserProfileFactory.FromOptions(tempestOptions);
-            effectiveMaxVirtualUsers = rampProfile.PeakVus;
-            builder.Services.AddSingleton<ILoadScheduler>(new ClosedModelScheduler(rampProfile.TotalDuration));
-        }
-        else if (tempestOptions.ClosedModelDuration is { } closedModelDuration)
-        {
-            profile = null;
-            builder.Services.AddSingleton<ILoadScheduler>(new ClosedModelScheduler(closedModelDuration));
-        }
-        else if (tempestOptions.IterationsPerVirtualUser is { } configuredIterationsPerVirtualUser)
-        {
-            profile = null;
-            iterationsPerVirtualUser = configuredIterationsPerVirtualUser;
-            builder.Services.AddSingleton<ILoadScheduler>(
-                new IterationCountScheduler(effectiveMaxVirtualUsers * configuredIterationsPerVirtualUser));
-        }
-        else if (tempestOptions.SharedIterations is { } sharedIterations)
-        {
-            profile = null;
-            builder.Services.AddSingleton<ILoadScheduler>(new IterationCountScheduler(sharedIterations));
-        }
-        else
-        {
-            profile = LoadProfileFactory.FromOptions(tempestOptions);
-        }
+        builder.Services.AddSingleton(plan.Scheduler);
 
         // Le scenario code en dur reste le comportement par defaut : un fichier de scenario
         // n'entre en jeu que si l'operateur le renseigne explicitement, et garde la priorite sur
         // le choix fait via Workflow.
-        IWorkflow workflow;
-        if (!string.IsNullOrWhiteSpace(tempestOptions.ScenarioFile))
-        {
-            workflow = WorkflowFileLoader.LoadFromFile(tempestOptions.ScenarioFile);
-        }
-        else if (string.Equals(tempestOptions.Workflow, TempestHostOptions.WEBSOCKET_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
-        {
-            WebSocketEchoWorkflowOptions webSocketOptions = builder.Configuration.GetSection("WebSocketEcho")
-                .Get<WebSocketEchoWorkflowOptions>() ?? new WebSocketEchoWorkflowOptions();
-
-            workflow = new WebSocketEchoWorkflow(webSocketOptions);
-        }
-        else if (string.Equals(tempestOptions.Workflow, TempestHostOptions.GRPC_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
-        {
-            GrpcEchoWorkflowOptions grpcOptions = builder.Configuration.GetSection("GrpcEcho")
-                .Get<GrpcEchoWorkflowOptions>() ?? new GrpcEchoWorkflowOptions();
-
-            workflow = new GrpcEchoWorkflow(grpcOptions);
-        }
-        else if (string.Equals(tempestOptions.Workflow, TempestHostOptions.GRPC_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
-        {
-            // Meme section de configuration que GrpcEchoWorkflow (TargetUri) : meme besoin, memes
-            // reglages, pas de raison d'en dupliquer une deuxieme.
-            GrpcEchoWorkflowOptions grpcStreamOptions = builder.Configuration.GetSection("GrpcEcho")
-                .Get<GrpcEchoWorkflowOptions>() ?? new GrpcEchoWorkflowOptions();
-
-            workflow = new GrpcStreamEchoWorkflow(grpcStreamOptions);
-        }
-        else if (string.Equals(tempestOptions.Workflow, TempestHostOptions.GRPC_CLIENT_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
-        {
-            GrpcEchoWorkflowOptions grpcClientStreamOptions = builder.Configuration.GetSection("GrpcEcho")
-                .Get<GrpcEchoWorkflowOptions>() ?? new GrpcEchoWorkflowOptions();
-
-            workflow = new GrpcClientStreamEchoWorkflow(grpcClientStreamOptions);
-        }
-        else if (string.Equals(tempestOptions.Workflow, TempestHostOptions.GRPC_BIDI_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
-        {
-            GrpcEchoWorkflowOptions grpcBidiStreamOptions = builder.Configuration.GetSection("GrpcEcho")
-                .Get<GrpcEchoWorkflowOptions>() ?? new GrpcEchoWorkflowOptions();
-
-            workflow = new GrpcBidiStreamEchoWorkflow(grpcBidiStreamOptions);
-        }
-        else
-        {
-            DynamicCheckoutWorkflowOptions checkoutOptions = builder.Configuration.GetSection("DynamicCheckout")
-                .Get<DynamicCheckoutWorkflowOptions>() ?? new DynamicCheckoutWorkflowOptions();
-
-            workflow = new DynamicCheckoutWorkflow(checkoutOptions);
-        }
+        IWorkflow workflow = BuildWorkflow(builder, tempestOptions.ScenarioFile, tempestOptions.Workflow);
 
         // Client HTTP unique, partage par tous les utilisateurs virtuels : c'est ce partage — pas
         // un client par requete — qui permet au pool de connexions du SocketsHttpHandler de tenir
         // des dizaines de milliers de RPS sans epuiser les ports ephemeres.
-        builder.Services.AddSingleton(_ => new HttpClient(new SocketsHttpHandler
-        {
-            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
-            MaxConnectionsPerServer = 4_096,
-            AutomaticDecompression = DecompressionMethods.None,
-        })
-        {
-            BaseAddress = new Uri(tempestOptions.TargetBaseUrl),
-            Timeout = TimeSpan.FromSeconds(30),
-        });
+        builder.Services.AddSingleton(_ => BuildHttpClient(tempestOptions.TargetBaseUrl));
 
         builder.Services.AddSingleton(tempestOptions);
         builder.Services.AddSingleton(workflow);
 
         builder.Services.AddTempestEngine(
-            profile,
+            plan.Profile,
             new LoadTestOptions
             {
-                MaxVirtualUsers = effectiveMaxVirtualUsers,
-                RampProfile = rampProfile,
-                IterationsPerVirtualUser = iterationsPerVirtualUser,
+                MaxVirtualUsers = plan.EffectiveMaxVirtualUsers,
+                RampProfile = plan.RampProfile,
+                IterationsPerVirtualUser = plan.IterationsPerVirtualUser,
             });
         builder.Services.AddTempestMetrics();
         builder.Services.AddTempestOpenTelemetry(otel => otel.AddPrometheusExporter());
@@ -177,4 +105,140 @@ public static class StandaloneHost
 
         app.Run();
     }
+
+    /// <summary>
+    /// Modele de charge selectionne pour un scenario (le tir entier en mode autonome, un scenario
+    /// parmi d'autres en mode scenarios concurrents) : son ordonnanceur, le profil sous-jacent
+    /// s'il s'agit du modele ouvert (pour <c>AddTempestEngine</c>, voir sa remarque de classe), et
+    /// l'effectif/le nombre d'iterations par utilisateur virtuel effectifs qui en decoulent.
+    /// </summary>
+    internal readonly record struct LoadModelPlan(
+        ILoadScheduler Scheduler,
+        LoadProfile? Profile,
+        VirtualUserProfile? RampProfile,
+        int EffectiveMaxVirtualUsers,
+        long? IterationsPerVirtualUser);
+
+    /// <summary>
+    /// Choisit l'ordonnanceur decrit par ces champs, dans le meme ordre de priorite que documente
+    /// sur <see cref="TempestHostOptions"/> — montee d'utilisateurs, puis effectif fixe a duree,
+    /// puis iterations par utilisateur, puis iterations partagees, puis enfin le profil de debit.
+    /// Factorise hors de <see cref="Run"/> pour etre reutilise, un scenario a la fois, par
+    /// <see cref="MultiScenarioHost"/>.
+    /// </summary>
+    internal static LoadModelPlan BuildLoadModel(
+        int maxVirtualUsers,
+        IReadOnlyList<LoadStageOptions> profileStages,
+        TimeSpan? closedModelDuration,
+        IReadOnlyList<VirtualUserStageOptions> rampStages,
+        long? sharedIterations,
+        long? iterationsPerVirtualUser)
+    {
+        if (rampStages.Count > 0)
+        {
+            VirtualUserProfile rampProfile = VirtualUserProfileFactory.FromStages(rampStages);
+            return new LoadModelPlan(
+                new ClosedModelScheduler(rampProfile.TotalDuration), null, rampProfile, rampProfile.PeakVus, null);
+        }
+
+        if (closedModelDuration is { } duration)
+        {
+            return new LoadModelPlan(new ClosedModelScheduler(duration), null, null, maxVirtualUsers, null);
+        }
+
+        if (iterationsPerVirtualUser is { } perVirtualUser)
+        {
+            return new LoadModelPlan(
+                new IterationCountScheduler(maxVirtualUsers * perVirtualUser), null, null, maxVirtualUsers, perVirtualUser);
+        }
+
+        if (sharedIterations is { } shared)
+        {
+            return new LoadModelPlan(new IterationCountScheduler(shared), null, null, maxVirtualUsers, null);
+        }
+
+        LoadProfile profile = LoadProfileFactory.FromStages(profileStages);
+        return new LoadModelPlan(new CoordinatedRateLimiter(profile), profile, null, maxVirtualUsers, null);
+    }
+
+    /// <summary>
+    /// Construit le workflow decrit par ces champs : un fichier de scenario declaratif/scripte
+    /// s'il est renseigne (garde la priorite), sinon un des scenarios integres selectionnes par
+    /// nom. Factorise hors de <see cref="Run"/> pour etre reutilise, un scenario a la fois, par
+    /// <see cref="MultiScenarioHost"/>.
+    /// </summary>
+    internal static IWorkflow BuildWorkflow(WebApplicationBuilder builder, string? scenarioFile, string workflowName)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        if (!string.IsNullOrWhiteSpace(scenarioFile))
+        {
+            return WorkflowFileLoader.LoadFromFile(scenarioFile);
+        }
+
+        if (string.Equals(workflowName, TempestHostOptions.WEBSOCKET_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
+        {
+            WebSocketEchoWorkflowOptions webSocketOptions = builder.Configuration.GetSection("WebSocketEcho")
+                .Get<WebSocketEchoWorkflowOptions>() ?? new WebSocketEchoWorkflowOptions();
+
+            return new WebSocketEchoWorkflow(webSocketOptions);
+        }
+
+        if (string.Equals(workflowName, TempestHostOptions.GRPC_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
+        {
+            GrpcEchoWorkflowOptions grpcOptions = builder.Configuration.GetSection("GrpcEcho")
+                .Get<GrpcEchoWorkflowOptions>() ?? new GrpcEchoWorkflowOptions();
+
+            return new GrpcEchoWorkflow(grpcOptions);
+        }
+
+        if (string.Equals(workflowName, TempestHostOptions.GRPC_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
+        {
+            // Meme section de configuration que GrpcEchoWorkflow (TargetUri) : meme besoin, memes
+            // reglages, pas de raison d'en dupliquer une deuxieme.
+            GrpcEchoWorkflowOptions grpcStreamOptions = builder.Configuration.GetSection("GrpcEcho")
+                .Get<GrpcEchoWorkflowOptions>() ?? new GrpcEchoWorkflowOptions();
+
+            return new GrpcStreamEchoWorkflow(grpcStreamOptions);
+        }
+
+        if (string.Equals(workflowName, TempestHostOptions.GRPC_CLIENT_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
+        {
+            GrpcEchoWorkflowOptions grpcClientStreamOptions = builder.Configuration.GetSection("GrpcEcho")
+                .Get<GrpcEchoWorkflowOptions>() ?? new GrpcEchoWorkflowOptions();
+
+            return new GrpcClientStreamEchoWorkflow(grpcClientStreamOptions);
+        }
+
+        if (string.Equals(workflowName, TempestHostOptions.GRPC_BIDI_STREAM_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))
+        {
+            GrpcEchoWorkflowOptions grpcBidiStreamOptions = builder.Configuration.GetSection("GrpcEcho")
+                .Get<GrpcEchoWorkflowOptions>() ?? new GrpcEchoWorkflowOptions();
+
+            return new GrpcBidiStreamEchoWorkflow(grpcBidiStreamOptions);
+        }
+
+        DynamicCheckoutWorkflowOptions checkoutOptions = builder.Configuration.GetSection("DynamicCheckout")
+            .Get<DynamicCheckoutWorkflowOptions>() ?? new DynamicCheckoutWorkflowOptions();
+
+        return new DynamicCheckoutWorkflow(checkoutOptions);
+    }
+
+    /// <summary>
+    /// Construit un client HTTP configure pour tenir des dizaines de milliers de RPS (pool de
+    /// connexions dimensionne, decompression desactivee). Factorise hors de <see cref="Run"/> pour
+    /// etre reutilise, un scenario a la fois — jamais partage entre deux scenarios d'un meme tir
+    /// a scenarios concurrents, contrairement au client unique du tir simple.
+    /// </summary>
+    internal static HttpClient BuildHttpClient(string targetBaseUrl) =>
+        new(new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+            MaxConnectionsPerServer = 4_096,
+            AutomaticDecompression = DecompressionMethods.None,
+        })
+        {
+            BaseAddress = new Uri(targetBaseUrl),
+            Timeout = TimeSpan.FromSeconds(30),
+        };
 }

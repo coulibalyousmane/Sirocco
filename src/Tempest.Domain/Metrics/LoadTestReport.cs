@@ -160,13 +160,30 @@ public sealed record LoadTestReport
     /// <param name="thresholds">Verdict des seuils a inclure, si des seuils ont ete configures.</param>
     public string ToHtml(ThresholdReport? thresholds = null)
     {
-        StringBuilder html = new();
+        string heading = $"Rapport Tempest — {Scope}";
 
+        StringBuilder html = new();
+        AppendHtmlShellStart(html, heading);
+        AppendBodyContent(html, thresholds, heading);
+        html.AppendLine("</body>");
+        html.AppendLine("</html>");
+
+        return html.ToString();
+    }
+
+    /// <summary>
+    /// Ouvre un document HTML autonome (doctype, <c>head</c>, style, balise <c>body</c>) — extrait
+    /// de <see cref="ToHtml"/> pour etre reutilise par <see cref="MultiScenarioReport.ToHtml"/>, qui
+    /// a besoin d'un unique document pour plusieurs rapports plutot que d'un par scenario (des
+    /// <c>&lt;html&gt;</c>/<c>&lt;head&gt;</c> imbriques ne seraient pas un document valide).
+    /// </summary>
+    internal static void AppendHtmlShellStart(StringBuilder html, string titleText)
+    {
         html.AppendLine("<!doctype html>");
         html.AppendLine("<html lang=\"fr\">");
         html.AppendLine("<head>");
         html.AppendLine("<meta charset=\"utf-8\">");
-        html.AppendLine($"<title>Rapport Tempest — {WebUtility.HtmlEncode(Scope.ToString())}</title>");
+        html.AppendLine($"<title>{WebUtility.HtmlEncode(titleText)}</title>");
         html.AppendLine("""
             <style>
               body { font-family: system-ui, sans-serif; margin: 2rem; color: #1a1a1a; background: #fff; }
@@ -181,12 +198,26 @@ public sealed record LoadTestReport
               .pass { color: #1a7f37; font-weight: 600; }
               .fail { color: #cf222e; font-weight: 600; }
               .verdict { font-size: 1.1rem; margin-top: 1.5rem; }
+              section + section { margin-top: 2.5rem; border-top: 1px solid #ddd; padding-top: 1.5rem; }
             </style>
             """);
         html.AppendLine("</head>");
         html.AppendLine("<body>");
+    }
 
-        html.AppendLine($"<h1>Rapport Tempest — {WebUtility.HtmlEncode(Scope.ToString())}</h1>");
+    /// <summary>
+    /// Rend le titre, les etiquettes, les mises en garde, le tableau des etapes, les metriques
+    /// personnalisees et les seuils — tout ce qui, dans <see cref="ToHtml"/>, se trouve entre la
+    /// balise <c>body</c> et sa fermeture. Extrait pour etre imbrique dans une <c>section</c> par
+    /// <see cref="MultiScenarioReport.ToHtml"/>, un scenario a la fois.
+    /// </summary>
+    /// <param name="heading">
+    /// Titre affiche (<c>h1</c>) : le perimetre du rapport pour un tir simple, le nom du scenario
+    /// pour un tir a scenarios concurrents.
+    /// </param>
+    internal void AppendBodyContent(StringBuilder html, ThresholdReport? thresholds, string heading)
+    {
+        html.AppendLine($"<h1>{WebUtility.HtmlEncode(heading)}</h1>");
         html.AppendLine(FormattableString.Invariant(
             $"<p class=\"subtitle\">{Duration.TotalSeconds:F1} s — {IterationsPerSecond:N0} iterations/s</p>"));
 
@@ -256,11 +287,6 @@ public sealed record LoadTestReport
         {
             AppendThresholds(html, thresholds);
         }
-
-        html.AppendLine("</body>");
-        html.AppendLine("</html>");
-
-        return html.ToString();
     }
 
     private static void AppendThresholds(StringBuilder html, ThresholdReport thresholds)

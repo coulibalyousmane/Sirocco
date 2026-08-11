@@ -26,6 +26,7 @@ Légende : ● solide · ◐ partiel · ○ absent
 | Modèle fermé (utilisateurs concurrents, itérations) | ● `--vus`/`--vus-from`/`--vus-to`/`--iterations`/`--iterations-per-vu`, mise en garde explicite | ● | ● `injectClosed` | ● |
 | Dette d'ordonnancement mesurée et publiée | ● `Response` + `Service` | ○ | ○ | ○ |
 | Scénarios programmables (branchement, boucle) | ◐ C# recompilé, ou YAML linéaire | ● JavaScript/TS | ● DSL Scala/Java/Kotlin | ● C#/F# |
+| Scénarios concurrents dans un même tir | ● `Tempest:Scenarios`, isolement complet par scénario | ● plusieurs `scenario` par script | ● plusieurs `scenario()` par simulation | ● |
 | Jeux de données (CSV, JSON, SQL) | ◐ CSV/JSON, pas SQL | ● `SharedArray` | ● *feeders* | ● *data feed* |
 | Checks, groupes, étiquettes, métriques custom, rythme | ● checks, groupes, étiquettes, métriques custom, temps de réflexion | ● | ● | ◐ |
 | Rapport avec séries temporelles | ◐ tableau HTML ; temporel via Prometheus | ● Grafana natif | ● référence du marché | ● HTML + temps réel |
@@ -194,7 +195,15 @@ par purisme coûterait des utilisateurs.
   utilisateur](README.md#itérations-partagées-et-itérations-par-utilisateur) (`--iterations`,
   `--vus <n> --iterations-per-vu <k>`, `IterationCountScheduler`). Les quatre partagent la même
   mise en garde de rapport, faute d'échéancier théorique à comparer.
-- **Scénarios concurrents** dans un même tir, chacun avec son profil, ses étiquettes et ses seuils.
+- ~~**Scénarios concurrents**~~ — fait, voir [Scénarios concurrents](README.md#scénarios-concurrents) :
+  `Tempest:Scenarios` dans un `appsettings.json` (comme `Tempest:RampVus`, pas d'équivalent CLI
+  plat), chaque scénario avec son propre profil/modèle de charge, ses étiquettes et ses seuils.
+  Chaque scénario construit sa propre chaîne de mesure à la main (pas via le conteneur
+  d'injection de dépendances, qui ne loge qu'un singleton par type) : c'est cet isolement complet
+  qui garantit qu'aucune mesure ne se mélange entre deux scénarios, même s'ils partagent un nom
+  d'étape. Limites : mode distribué non pris en charge, `/report/live` et `/metrics` non
+  alimentés — seuls `/report`, `/report.html` et `/thresholds` le sont, une fois le tir terminé.
+  Vérifié par un vrai tir à deux scénarios concurrents.
 - **Bridage** — plafond de débit global indépendant du profil.
 
 ### Phase 4 — Un rapport au niveau de Gatling
@@ -303,14 +312,16 @@ temps de réflexion sont faits, voir [Jeux de données](README.md#jeux-de-donné
 [Métriques personnalisées](README.md#métriques-personnalisées) et
 [Temps de réflexion et rythme](README.md#temps-de-réflexion-et-rythme).
 
-**La phase 3 avance : le bullet « exécuteurs multiples » est entièrement traité.** Effectif fixe,
-montée d'utilisateurs et les deux exécuteurs par itérations sont faits, voir [Modèle
-fermé](README.md#modèle-fermé) (`--vus <n> --duration <d>`), [Montée
+**La phase 3 avance : « exécuteurs multiples » et « scénarios concurrents » sont entièrement
+traités.** Effectif fixe, montée d'utilisateurs et les deux exécuteurs par itérations sont faits,
+voir [Modèle fermé](README.md#modèle-fermé) (`--vus <n> --duration <d>`), [Montée
 d'utilisateurs](README.md#montée-dutilisateurs) (`--vus-from <n> --vus-to <n> --duration <d>`) et
 [Itérations partagées et itérations par
 utilisateur](README.md#itérations-partagées-et-itérations-par-utilisateur) (`--iterations <n>`,
 `--vus <n> --iterations-per-vu <k>`) — mise en garde explicite dans le rapport pour les quatre.
-Restent les scénarios concurrents dans un même tir et le bridage de débit global.
+[Scénarios concurrents](README.md#scénarios-concurrents) (`Tempest:Scenarios`) fait tourner
+plusieurs de ces modèles en parallèle dans le même tir, chacun isolé jusque dans sa propre chaîne
+de mesure. Reste le bridage de débit global.
 
 Le reste peut attendre des retours d'utilisateurs réels. Construire les phases 4 à 8 sans eux,
 c'est deviner.

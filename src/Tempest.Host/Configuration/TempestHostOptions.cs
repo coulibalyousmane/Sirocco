@@ -44,7 +44,11 @@ public sealed class TempestHostOptions
     /// </summary>
     public string Role { get; init; } = ROLE_STANDALONE;
 
-    /// <summary>Adresse de base de la cible a tester.</summary>
+    /// <summary>
+    /// Adresse de base de la cible a tester. Reste obligatoire meme si <see cref="Scenarios"/> est
+    /// renseigne : elle sert alors de valeur par defaut pour tout scenario qui ne precise pas la
+    /// sienne (<see cref="ScenarioOptions.TargetBaseUrl"/>).
+    /// </summary>
     public required string TargetBaseUrl { get; init; }
 
     /// <summary>
@@ -142,8 +146,28 @@ public sealed class TempestHostOptions
     /// <summary>
     /// Regles de succes/echec evaluees en fin de tir. Vide par defaut : sans seuil, il n'y a
     /// pas de gate, et le tir ne peut jamais "echouer" au sens CI du terme.
+    /// <para>
+    /// Sans effet si <see cref="Scenarios"/> est renseigne : chaque scenario porte alors ses
+    /// propres seuils (<see cref="ScenarioOptions.Thresholds"/>).
+    /// </para>
     /// </summary>
     public IReadOnlyList<ThresholdRule> Thresholds { get; init; } = [];
+
+    /// <summary>
+    /// Scenarios <b>concurrents</b> de ce tir : si renseigne, ce tir ignore <see cref="Profile"/>,
+    /// <see cref="ClosedModelDuration"/>, <see cref="RampVus"/>, <see cref="SharedIterations"/>,
+    /// <see cref="IterationsPerVirtualUser"/>, <see cref="ScenarioFile"/>, <see cref="Workflow"/> et
+    /// <see cref="Thresholds"/> — chaque scenario porte les siens, isoles de ceux des autres
+    /// scenarios du meme tir jusque dans son propre registre d'etapes (deux scenarios peuvent
+    /// declarer une etape de meme nom sans que leurs mesures se melangent). Vide par defaut : le
+    /// scenario unique reste le comportement inchange tant que ce champ n'est pas renseigne.
+    /// <para>
+    /// Limites de cette premiere version : mode distribue non pris en charge, <c>/report/live</c>
+    /// et <c>/metrics</c> non alimentes (voir <c>MultiScenarioHost</c>) — seuls <c>/report</c>,
+    /// <c>/report.html</c> et <c>/thresholds</c> le sont, une fois le tir termine.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<ScenarioOptions> Scenarios { get; init; } = [];
 
     /// <summary>
     /// Si vrai, l'hote s'arrete des la fin du tir, avec un code de sortie reflechissant le

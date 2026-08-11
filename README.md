@@ -357,6 +357,63 @@ Vérifié par de vrais tirs (`--iterations 300 --max-vus 20` puis `--vus 10 --it
 contre `Tempest.SampleTarget`) : 300 puis 200 itérations exactement, avertissement présent dans le
 rapport texte et le JSON, modèle ouvert inchangé en régression.
 
+### Scénarios concurrents
+
+Tous les modèles ci-dessus pilotent un seul scénario à la fois. Un tir réaliste veut souvent en
+faire tourner plusieurs *en même temps* dans le même processus — « la navigation à 20 RPS pendant
+que le paiement monte en charge » — chacun avec son propre profil, ses propres étiquettes et ses
+propres seuils, sans que les mesures de l'un se mélangent à celles de l'autre.
+
+Reste, comme un profil de charge à plusieurs paliers (`Tempest:RampVus`), l'affaire d'un
+`appsettings.json` du répertoire courant plutôt que d'une syntaxe `--scenario` à inventer sur la
+ligne de commande — un tableau de scénarios n'a pas d'équivalent plat raisonnable :
+
+```json
+{
+  "Tempest": {
+    "TargetBaseUrl": "http://localhost:5281",
+    "Scenarios": [
+      {
+        "Name": "checkout-open",
+        "MaxVirtualUsers": 10,
+        "Profile": [{ "FromRps": 20, "ToRps": 20, "DurationSeconds": 60 }],
+        "ScenarioFile": "checkout.yaml",
+        "Thresholds": [{ "StepName": "browse", "Metric": "ErrorRate", "Comparison": "LessThanOrEqual", "Limit": 0.0 }]
+      },
+      {
+        "Name": "browse-closed",
+        "MaxVirtualUsers": 5,
+        "ClosedModelDuration": "00:01:00",
+        "ScenarioFile": "browse.yaml"
+      }
+    ]
+  }
+}
+```
+
+Chaque entrée de `Tempest:Scenarios` accepte le même vocabulaire que `TempestHostOptions` lui-même
+(`Profile`, `ClosedModelDuration`, `RampVus`, `SharedIterations`, `IterationsPerVirtualUser`,
+`ScenarioFile`/`Workflow`, `Thresholds`) — chaque scénario choisit son modèle de charge
+indépendamment des autres. `TargetBaseUrl` reste optionnel par scénario : omis, il retombe sur
+celui du tir entier, ce qui couvre le cas courant où tous les scénarios visent la même cible.
+
+Techniquement, `MultiScenarioRunner` (`Tempest.Host.Execution`) construit à la main, pour chaque
+scénario, sa propre chaîne complète — `IWorkflow`, `ILoadScheduler`, `HttpClient`,
+`StepRegistry`/`MetricsAggregator` — plutôt que de passer par le conteneur d'injection de
+dépendances, qui ne sait enregistrer qu'un singleton de chaque type. C'est cet isolement complet,
+pas un simple préfixe de nom, qui garantit que deux scénarios déclarant tous les deux une étape
+`browse` produisent deux lignes indépendantes dans le rapport combiné (`MultiScenarioReport`),
+jamais une seule fusionnée. Les scénarios tournent en parallèle (`Task.WhenAll`) : un scénario plus
+long n'est jamais tronqué par la fin anticipée d'un autre.
+
+Limites de cette première version : mode distribué non pris en charge, `/report/live` et
+`/metrics` (Prometheus) non alimentés — seuls `/report`, `/report.html` et `/thresholds` le sont,
+une fois le tir entièrement terminé. Vérifié par un vrai tir à deux scénarios (l'un en modèle
+ouvert, l'autre en modèle fermé, tous deux avec une étape `browse` de même nom) contre
+`Tempest.SampleTarget` : deux entrées indépendantes dans le rapport (100 puis 943 itérations,
+jamais 1043 fusionnées), étiquettes et seuils propres à chacune, avertissement modèle fermé présent
+sur la seule entrée concernée, code de sortie reflétant le verdict combiné.
+
 ### Installation
 
 `Tempest.Cli` s'empaquette comme un [outil global
@@ -1468,6 +1525,7 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 34** — [Modèle fermé](#modèle-fermé) : `ClosedModelScheduler` (`Tempest.Application.Execution`, implémente `ILoadScheduler` comme `CoordinatedRateLimiter`), `--vus <n>` en CLI (`TempestHostOptions.ClosedModelDuration`), `LoadTestReport.ClosedModel` avec mise en garde explicite dans `ToTable`/`ToHtml`. Premier bullet de la roadmap phase 3. `AddTempestEngine` accepte désormais un `LoadProfile?` nul, pour laisser un `ILoadScheduler` personnalisé déjà enregistré prendre la place du `CoordinatedRateLimiter` par défaut — le seam d'extension que sa propre documentation promettait depuis le début. Aucune notion de concurrence dédiée à ce nouvel ordonnanceur : elle vient du nombre de travailleurs déjà créés par le moteur (`LoadTestOptions.MaxVirtualUsers`), la contre-pression du canal de jetons suffisant à faire émerger le modèle fermé. Limite documentée : mode distribué non pris en charge pour ce modèle. Vérifié par un vrai tir (`--vus 10 --duration 5s`) : effectif exact, avertissement présent en texte et en JSON, modèle ouvert inchangé en régression
 - [x] **Étape 35** — [Montée d'utilisateurs](#montée-dutilisateurs) : `VirtualUserStage`/`VirtualUserProfile` (`Tempest.Domain.Load`, même rampe linéaire que `LoadStage`/`LoadProfile` mais sur un effectif plutôt qu'un débit), `RampingVirtualUserPool` (`Tempest.Application.Execution`) qui remplace la création statique de travailleurs de `TargetRpsLoadEngine` quand `LoadTestOptions.RampProfile` est renseigné, `--vus-from`/`--vus-to` en CLI (`TempestHostOptions.RampVus`). Deuxième bullet « exécuteurs multiples » de la roadmap phase 3 (montée/descente d'utilisateurs ; itérations partagées et par utilisateur restent à faire). Chaque travailleur reçoit son propre jeton d'annulation lié à celui du tir, ce qui permet d'en arrêter un individuellement sans fermer le canal de jetons partagé par les autres — l'émission des jetons elle-même reste un `ClosedModelScheduler` inchangé, configuré sur la durée totale du profil. `TempestHostOptions.IsClosedModel` couvre désormais aussi ce mode (même mise en garde de rapport, aucun échéancier théorique à comparer). Limite documentée : mode distribué non pris en charge, comme pour l'effectif fixe. Vérifié par un vrai tir (`--vus-from 0 --vus-to 20 --duration 8s`) : débit croissant au fil de la rampe, avertissement présent en texte et en JSON, modèles ouvert et fermé à effectif fixe inchangés en régression
 - [x] **Étape 36** — [Itérations partagées et itérations par utilisateur](#itérations-partagées-et-itérations-par-utilisateur) : `IterationCountScheduler` (`Tempest.Application.Execution`, implémente `ILoadScheduler` en s'arrêtant sur un nombre fixe de jetons plutôt qu'une durée), `--iterations <n>` (itérations partagées, `TempestHostOptions.SharedIterations`) et `--vus <n> --iterations-per-vu <k>` (itérations par utilisateur, `TempestHostOptions.IterationsPerVirtualUser`) en CLI. **Clôt entièrement le bullet « exécuteurs multiples » et la roadmap phase 3.** `VirtualUserWorker` accepte désormais un quota personnel optionnel au-delà duquel il s'arrête de lui-même sans fermer la file partagée — combiné à un `IterationCountScheduler` dimensionné à effectif × quota, cet auto-arrêt garantit par construction que chaque utilisateur virtuel en fait exactement sa part, prouvé par un test qui trace `VirtualUserId` par itération et vérifie que les 8 utilisateurs virtuels en ont fait exactement 15 chacun, ni plus ni moins. `TempestHostOptions.IsClosedModel` couvre désormais aussi ces deux modes. Limite documentée : mode distribué non pris en charge, comme pour le reste du modèle fermé. Vérifié par de vrais tirs (`--iterations 300 --max-vus 20` puis `--vus 10 --iterations-per-vu 20`) : 300 puis 200 itérations exactement, avertissement présent en texte et en JSON, modèle ouvert inchangé en régression
+- [x] **Étape 37** — [Scénarios concurrents](#scénarios-concurrents) : `Tempest:Scenarios` (`TempestHostOptions.Scenarios`/`ScenarioOptions`), `MultiScenarioRunner`/`MultiScenarioHost`/`MultiScenarioLoadTestHostedService` (`Tempest.Host`), `ScenarioRunSpec` (`Tempest.Application.Execution`), `ScenarioReport`/`MultiScenarioReport` (`Tempest.Domain.Metrics`). **Clôt le bullet « scénarios concurrents » de la phase 3, ne laissant plus que le bridage.** Chaque scénario construit sa propre chaîne complète à la main plutôt que via le conteneur d'injection de dépendances (qui n'enregistre qu'un singleton de chaque type) — c'est cet isolement complet, pas un préfixe de nom, qui garantit que deux scénarios déclarant la même étape ne voient jamais leurs mesures fusionnées, prouvé par un test qui fait tourner deux scénarios partageant un nom d'étape et vérifie que chacun garde son propre compte. `LoadTestReport.ToHtml` refactorisé (extraction de `AppendHtmlShellStart`/`AppendBodyContent`) pour permettre un document HTML unique avec une section par scénario, sans changement de sortie pour le tir simple (569 tests existants toujours verts après coup). Limites documentées : mode distribué non pris en charge, `/report/live` et `/metrics` non alimentés. Vérifié par un vrai tir à deux scénarios (modèle ouvert + modèle fermé, étape de même nom `browse` dans les deux) contre `Tempest.SampleTarget` : 100 puis 943 itérations indépendantes, jamais fusionnées, étiquettes et seuils propres à chacune, tir simple inchangé en régression
 
 ## Roadmap initiale — close
 

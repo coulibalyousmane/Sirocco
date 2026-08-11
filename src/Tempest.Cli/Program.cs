@@ -56,6 +56,12 @@ const string USAGE = """
     seuils (Tempest:Thresholds) en l'absence de --threshold, et pour les options avancees d'un
     workflow integre (sections WebSocketEcho, GrpcEcho, DynamicCheckout).
 
+    Scenarios concurrents : sans aucun des indicateurs ci-dessus, une section Tempest:Scenarios
+    (tableau) d'un appsettings.json du repertoire courant fait tourner plusieurs scenarios dans le
+    meme tir, chacun avec son propre profil/modele de charge, ses etiquettes et ses seuils — meme
+    convention que Tempest:RampVus pour un profil multi-paliers, pas d'equivalent en ligne de
+    commande. Limites : mode distribue non pris en charge, /report/live et /metrics non alimentes.
+
     Limites de cette premiere version : un seul processus autonome — pas de mode distribue
     (Master/Workers), qui reste l'affaire de Tempest.Host. Le port d'ecoute suit les conventions
     ASP.NET Core habituelles (variable d'environnement ASPNETCORE_URLS).
@@ -165,41 +171,59 @@ else if (options.Iterations is long sharedIterations)
 }
 else
 {
-    IReadOnlyList<LoadStageOptions> profile;
-    try
+    // Scenarios concurrents : comme le profil multi-paliers (Tempest:Profile), reste l'affaire
+    // d'un appsettings.json du repertoire courant plutot que d'une syntaxe --scenario a inventer
+    // sur la ligne de commande — un tableau de scenarios n'a pas d'equivalent plat raisonnable.
+    IReadOnlyList<ScenarioOptions> scenarios = ReadScenarios(builder.Configuration);
+    if (scenarios.Count > 0)
     {
-        profile = BuildProfile(options, builder.Configuration);
+        tempestOptions = new TempestHostOptions
+        {
+            TargetBaseUrl = targetUrl,
+            Scenarios = scenarios,
+            ExitAfterRun = true,
+            ReportHtmlPath = options.ReportHtmlPath,
+            ReportJsonPath = options.ReportJsonPath,
+        };
     }
-    catch (FormatException ex)
+    else
     {
-        Console.Error.WriteLine(ex.Message);
-        return 1;
-    }
+        IReadOnlyList<LoadStageOptions> profile;
+        try
+        {
+            profile = BuildProfile(options, builder.Configuration);
+        }
+        catch (FormatException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
 
-    if (profile.Count == 0)
-    {
-        Console.Error.WriteLine(
-            "Profil de charge requis : --rps <n> --duration <d>, --from-rps <n> --to-rps <n> --duration <d>, " +
-            "--vus <n> --duration <d> (modele ferme), --vus-from <n> --vus-to <n> --duration <d> (montee " +
-            "d'utilisateurs), --vus <n> --iterations-per-vu <k> (iterations par utilisateur), " +
-            "--iterations <n> (iterations partagees), ou une section Tempest:Profile dans un appsettings.json " +
-            "du repertoire courant.");
-        return 1;
-    }
+        if (profile.Count == 0)
+        {
+            Console.Error.WriteLine(
+                "Profil de charge requis : --rps <n> --duration <d>, --from-rps <n> --to-rps <n> --duration <d>, " +
+                "--vus <n> --duration <d> (modele ferme), --vus-from <n> --vus-to <n> --duration <d> (montee " +
+                "d'utilisateurs), --vus <n> --iterations-per-vu <k> (iterations par utilisateur), " +
+                "--iterations <n> (iterations partagees), une section Tempest:Profile, ou une section " +
+                "Tempest:Scenarios (scenarios concurrents) dans un appsettings.json du repertoire courant.");
+            return 1;
+        }
 
-    tempestOptions = new TempestHostOptions
-    {
-        TargetBaseUrl = targetUrl,
-        MaxVirtualUsers = options.MaxVirtualUsers
-            ?? builder.Configuration.GetValue("Tempest:MaxVirtualUsers", TempestHostOptions.DEFAULT_MAX_VIRTUAL_USERS),
-        Profile = profile,
-        ScenarioFile = options.ScenarioPath ?? builder.Configuration["Tempest:ScenarioFile"],
-        Workflow = options.Workflow ?? builder.Configuration["Tempest:Workflow"] ?? TempestHostOptions.DYNAMIC_CHECKOUT_WORKFLOW,
-        Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
-        ExitAfterRun = true,
-        ReportHtmlPath = options.ReportHtmlPath,
-        ReportJsonPath = options.ReportJsonPath,
-    };
+        tempestOptions = new TempestHostOptions
+        {
+            TargetBaseUrl = targetUrl,
+            MaxVirtualUsers = options.MaxVirtualUsers
+                ?? builder.Configuration.GetValue("Tempest:MaxVirtualUsers", TempestHostOptions.DEFAULT_MAX_VIRTUAL_USERS),
+            Profile = profile,
+            ScenarioFile = options.ScenarioPath ?? builder.Configuration["Tempest:ScenarioFile"],
+            Workflow = options.Workflow ?? builder.Configuration["Tempest:Workflow"] ?? TempestHostOptions.DYNAMIC_CHECKOUT_WORKFLOW,
+            Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
+            ExitAfterRun = true,
+            ReportHtmlPath = options.ReportHtmlPath,
+            ReportJsonPath = options.ReportJsonPath,
+        };
+    }
 }
 
 try
@@ -244,3 +268,6 @@ static IReadOnlyList<LoadStageOptions> BuildProfile(CliOptions options, IConfigu
 
 static IReadOnlyList<ThresholdRule> ReadThresholds(IConfiguration configuration) =>
     configuration.GetSection("Tempest:Thresholds").Get<List<ThresholdRule>>() ?? [];
+
+static IReadOnlyList<ScenarioOptions> ReadScenarios(IConfiguration configuration) =>
+    configuration.GetSection("Tempest:Scenarios").Get<List<ScenarioOptions>>() ?? [];
