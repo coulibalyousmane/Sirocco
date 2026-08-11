@@ -313,6 +313,50 @@ Limite : mode distribué non pris en charge, comme pour l'effectif fixe. Vérifi
 de la rampe, avertissement présent dans le rapport texte et le JSON, modèles ouvert et fermé à
 effectif fixe inchangés en régression.
 
+### Itérations partagées et itérations par utilisateur
+
+Ni le modèle fermé ni sa montée ne répondent à « fais tourner ce script 1 000 fois » ou « chaque
+utilisateur en fait exactement 20, peu importe le temps que ça prend » — deux besoins pilotés par
+un nombre d'itérations plutôt qu'une durée. Deux nouveaux exécuteurs couvrent ce cas.
+
+**Itérations partagées** (`--iterations`) : un total dispute par au plus `--max-vus` utilisateurs
+virtuels, premier arrivé premier servi — même convention de plafond que le modèle ouvert.
+
+```bash
+tempest run --target-url http://localhost:5281 --iterations 1000 --max-vus 20
+```
+
+**Itérations par utilisateur** (`--vus`/`--iterations-per-vu`) : chacun des `n` utilisateurs
+virtuels fixés par `--vus` en exécute exactement `k`, indépendamment des autres — contrairement à
+l'exécuteur partagé, un utilisateur virtuel rapide ne « vole » jamais les itérations d'un plus
+lent. `--iterations-per-vu` prend la place de `--duration` comme condition d'arrêt de `--vus` :
+
+```bash
+tempest run --target-url http://localhost:5281 --vus 10 --iterations-per-vu 20
+```
+
+Aucun des deux n'a de notion de débit ni de durée : ni `--rps`/`--from-rps`/`--to-rps`, ni
+`--vus-from`/`--vus-to`, ni `--duration` n'ont de sens ici (mutuellement exclusifs). Même mise en
+garde de rapport que le modèle fermé (`LoadTestReport.ClosedModel`) : sans débit cible, il n'y a
+pas d'échéancier théorique à comparer.
+
+Techniquement, les deux réutilisent un seul nouvel ordonnanceur, `IterationCountScheduler`
+(`Tempest.Application.Execution`) : il émet exactement un nombre fixe de jetons puis s'arrête,
+plutôt que de s'arrêter sur une durée comme `ClosedModelScheduler`. La différence entre les deux
+exécuteurs se joue entièrement côté travailleur : `VirtualUserWorker` accepte désormais un quota
+personnel optionnel (`LoadTestOptions.IterationsPerVirtualUser`) au-delà duquel il s'arrête de
+lui-même, sans jamais fermer la file partagée par les autres. Combiné à un
+`IterationCountScheduler` dimensionné à effectif × quota, cet auto-arrêt garantit — par
+construction, aucun travailleur ne peut en prendre plus que son quota et le total émis égale
+exactement la somme des quotas — que chaque utilisateur virtuel en fait exactement sa part.
+Itérations partagées n'utilise que l'ordonnanceur, sans quota individuel : la répartition inégale
+au gré de qui répond le plus vite au canal partagé est le comportement voulu.
+
+Limite : mode distribué non pris en charge pour les deux, comme pour le reste du modèle fermé.
+Vérifié par de vrais tirs (`--iterations 300 --max-vus 20` puis `--vus 10 --iterations-per-vu 20`
+contre `Tempest.SampleTarget`) : 300 puis 200 itérations exactement, avertissement présent dans le
+rapport texte et le JSON, modèle ouvert inchangé en régression.
+
 ### Installation
 
 `Tempest.Cli` s'empaquette comme un [outil global
@@ -1423,6 +1467,7 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 33** — [Temps de réflexion et rythme](#temps-de-réflexion-et-rythme) : `ThinkTimeDefinition` (`Tempest.Domain.Declarative`, durée fixe ou plage tirée uniformément), propriété `HttpStepDefinition.ThinkTime`, `thinkTime`/`thinkTimeMax` par étape du format déclaratif — parsés au même format que `--duration` en CLI (`500ms`, `1s`, `2m`, `1h`). Dernier bullet de la roadmap phase 2 : aucun changement dans le moteur, une pause n'est qu'un `Task.Delay` après que l'étape a publié sa mesure, jamais comptée comme latence de requête — le modèle ouvert de `TargetRpsLoadEngine` l'absorbe nativement en dette d'ordonnancement, exactement comme une réponse HTTP lente. Sans effet sur les scénarios scriptés, qui pouvaient déjà faire une pause via `Task.Delay` directement. Vérifié par de vrais tirs contre `Tempest.SampleTarget` : une pause fixe de 500 ms avec un seul utilisateur virtuel fait tomber le débit effectif à ~2 itérations/s pour un débit cible de 20/s (dette d'ordonnancement en conséquence), latence brute de l'étape HTTP inchangée dans les deux cas — et une plage 100–300 ms sur 4 utilisateurs virtuels montre un p50/p95 d'itération cohérent avec la plage configurée. **Clôt entièrement le contenu de la roadmap phase 2**
 - [x] **Étape 34** — [Modèle fermé](#modèle-fermé) : `ClosedModelScheduler` (`Tempest.Application.Execution`, implémente `ILoadScheduler` comme `CoordinatedRateLimiter`), `--vus <n>` en CLI (`TempestHostOptions.ClosedModelDuration`), `LoadTestReport.ClosedModel` avec mise en garde explicite dans `ToTable`/`ToHtml`. Premier bullet de la roadmap phase 3. `AddTempestEngine` accepte désormais un `LoadProfile?` nul, pour laisser un `ILoadScheduler` personnalisé déjà enregistré prendre la place du `CoordinatedRateLimiter` par défaut — le seam d'extension que sa propre documentation promettait depuis le début. Aucune notion de concurrence dédiée à ce nouvel ordonnanceur : elle vient du nombre de travailleurs déjà créés par le moteur (`LoadTestOptions.MaxVirtualUsers`), la contre-pression du canal de jetons suffisant à faire émerger le modèle fermé. Limite documentée : mode distribué non pris en charge pour ce modèle. Vérifié par un vrai tir (`--vus 10 --duration 5s`) : effectif exact, avertissement présent en texte et en JSON, modèle ouvert inchangé en régression
 - [x] **Étape 35** — [Montée d'utilisateurs](#montée-dutilisateurs) : `VirtualUserStage`/`VirtualUserProfile` (`Tempest.Domain.Load`, même rampe linéaire que `LoadStage`/`LoadProfile` mais sur un effectif plutôt qu'un débit), `RampingVirtualUserPool` (`Tempest.Application.Execution`) qui remplace la création statique de travailleurs de `TargetRpsLoadEngine` quand `LoadTestOptions.RampProfile` est renseigné, `--vus-from`/`--vus-to` en CLI (`TempestHostOptions.RampVus`). Deuxième bullet « exécuteurs multiples » de la roadmap phase 3 (montée/descente d'utilisateurs ; itérations partagées et par utilisateur restent à faire). Chaque travailleur reçoit son propre jeton d'annulation lié à celui du tir, ce qui permet d'en arrêter un individuellement sans fermer le canal de jetons partagé par les autres — l'émission des jetons elle-même reste un `ClosedModelScheduler` inchangé, configuré sur la durée totale du profil. `TempestHostOptions.IsClosedModel` couvre désormais aussi ce mode (même mise en garde de rapport, aucun échéancier théorique à comparer). Limite documentée : mode distribué non pris en charge, comme pour l'effectif fixe. Vérifié par un vrai tir (`--vus-from 0 --vus-to 20 --duration 8s`) : débit croissant au fil de la rampe, avertissement présent en texte et en JSON, modèles ouvert et fermé à effectif fixe inchangés en régression
+- [x] **Étape 36** — [Itérations partagées et itérations par utilisateur](#itérations-partagées-et-itérations-par-utilisateur) : `IterationCountScheduler` (`Tempest.Application.Execution`, implémente `ILoadScheduler` en s'arrêtant sur un nombre fixe de jetons plutôt qu'une durée), `--iterations <n>` (itérations partagées, `TempestHostOptions.SharedIterations`) et `--vus <n> --iterations-per-vu <k>` (itérations par utilisateur, `TempestHostOptions.IterationsPerVirtualUser`) en CLI. **Clôt entièrement le bullet « exécuteurs multiples » et la roadmap phase 3.** `VirtualUserWorker` accepte désormais un quota personnel optionnel au-delà duquel il s'arrête de lui-même sans fermer la file partagée — combiné à un `IterationCountScheduler` dimensionné à effectif × quota, cet auto-arrêt garantit par construction que chaque utilisateur virtuel en fait exactement sa part, prouvé par un test qui trace `VirtualUserId` par itération et vérifie que les 8 utilisateurs virtuels en ont fait exactement 15 chacun, ni plus ni moins. `TempestHostOptions.IsClosedModel` couvre désormais aussi ces deux modes. Limite documentée : mode distribué non pris en charge, comme pour le reste du modèle fermé. Vérifié par de vrais tirs (`--iterations 300 --max-vus 20` puis `--vus 10 --iterations-per-vu 20`) : 300 puis 200 itérations exactement, avertissement présent en texte et en JSON, modèle ouvert inchangé en régression
 
 ## Roadmap initiale — close
 

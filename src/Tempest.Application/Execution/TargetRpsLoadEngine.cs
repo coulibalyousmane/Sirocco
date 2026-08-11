@@ -172,7 +172,7 @@ public sealed class TargetRpsLoadEngine
             : 0L;
 
         VirtualUserContext context = new(index, _httpClient, _sink, iterationStep, _customMetricSink);
-        return new VirtualUserWorker(context, _workflow, maxDelayTicks);
+        return new VirtualUserWorker(context, _workflow, maxDelayTicks, _options.IterationsPerVirtualUser);
     }
 
     private LoadTestSummary Summarize(IReadOnlyList<VirtualUserWorker> workers, long durationTicks)

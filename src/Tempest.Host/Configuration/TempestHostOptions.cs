@@ -92,11 +92,33 @@ public sealed class TempestHostOptions
     public bool IsRampingVus => RampVus.Count > 0;
 
     /// <summary>
-    /// Vrai si ce tir utilise un modele ferme, a effectif fixe (<see cref="ClosedModelDuration"/>)
-    /// ou en montee d'utilisateurs (<see cref="RampVus"/>) — les deux partagent la meme mise en
-    /// garde de rapport, faute d'echeancier theorique a comparer.
+    /// Nombre total d'iterations a repartir entre tous les utilisateurs virtuels (executeur
+    /// <b>iterations partagees</b>) : premier arrive, premier servi, <see cref="MaxVirtualUsers"/>
+    /// restant un plafond de concurrence comme en modele ouvert. <see langword="null"/> par
+    /// defaut. Prioritaire sur <see cref="Profile"/>, mais c'est <see cref="IterationsPerVirtualUser"/>
+    /// qui garde la priorite si les deux sont renseignes — voir sa remarque.
     /// </summary>
-    public bool IsClosedModel => ClosedModelDuration is not null || IsRampingVus;
+    public long? SharedIterations { get; init; }
+
+    /// <summary>
+    /// Nombre d'iterations que chaque utilisateur virtuel doit executer independamment des autres
+    /// (executeur <b>iterations par utilisateur</b>) : contrairement a <see cref="SharedIterations"/>,
+    /// chaque utilisateur en fait exactement ce nombre, jamais plus, jamais moins — voir la
+    /// remarque de classe de <c>VirtualUserWorker</c>. <see langword="null"/> par defaut.
+    /// Prioritaire sur <see cref="SharedIterations"/> et <see cref="Profile"/> si renseigne, mais
+    /// <see cref="ClosedModelDuration"/> et <see cref="RampVus"/> gardent la priorite sur celui-ci.
+    /// </summary>
+    public long? IterationsPerVirtualUser { get; init; }
+
+    /// <summary>
+    /// Vrai si ce tir utilise un modele sans echeancier theorique — effectif fixe
+    /// (<see cref="ClosedModelDuration"/>), montee d'utilisateurs (<see cref="RampVus"/>) ou un
+    /// des deux executeurs pilotes par un nombre d'iterations (<see cref="SharedIterations"/>,
+    /// <see cref="IterationsPerVirtualUser"/>) — qui partagent tous la meme mise en garde de
+    /// rapport, faute de correction du <i>coordinated omission</i> possible.
+    /// </summary>
+    public bool IsClosedModel =>
+        ClosedModelDuration is not null || IsRampingVus || SharedIterations is not null || IterationsPerVirtualUser is not null;
 
     /// <summary>
     /// Chemin d'un fichier de scenario declaratif (<c>.yaml</c>, <c>.yml</c> ou <c>.json</c>).

@@ -36,6 +36,10 @@ internal sealed class CliOptions
 
     public int? VusTo { get; private init; }
 
+    public long? Iterations { get; private init; }
+
+    public long? IterationsPerVirtualUser { get; private init; }
+
     public string? ReportHtmlPath { get; private init; }
 
     public string? ReportJsonPath { get; private init; }
@@ -58,6 +62,8 @@ internal sealed class CliOptions
         int? vus = null;
         int? vusFrom = null;
         int? vusTo = null;
+        long? iterations = null;
+        long? iterationsPerVirtualUser = null;
         string? reportHtmlPath = null;
         string? reportJsonPath = null;
         List<ThresholdRule> thresholds = [];
@@ -105,6 +111,14 @@ internal sealed class CliOptions
 
                 case "--vus-to" when i + 1 < args.Length:
                     vusTo = ParseInt(args[++i], "--vus-to");
+                    break;
+
+                case "--iterations" when i + 1 < args.Length:
+                    iterations = ParseLong(args[++i], "--iterations");
+                    break;
+
+                case "--iterations-per-vu" when i + 1 < args.Length:
+                    iterationsPerVirtualUser = ParseLong(args[++i], "--iterations-per-vu");
                     break;
 
                 case "--report-html" when i + 1 < args.Length:
@@ -179,6 +193,32 @@ internal sealed class CliOptions
                 "jusqu'a leur pic.");
         }
 
+        if (iterationsPerVirtualUser.HasValue && duration.HasValue)
+        {
+            throw new FormatException(
+                "--iterations-per-vu et --duration sont mutuellement exclusifs : --vus s'arrete sur l'un ou " +
+                "l'autre, jamais les deux.");
+        }
+
+        if (iterationsPerVirtualUser.HasValue && (rps.HasValue || fromRps.HasValue || vusFrom.HasValue))
+        {
+            throw new FormatException(
+                "--iterations-per-vu est mutuellement exclusif avec --rps/--from-rps/--to-rps/--vus-from/--vus-to.");
+        }
+
+        if (iterationsPerVirtualUser.HasValue && iterations.HasValue)
+        {
+            throw new FormatException(
+                "--iterations-per-vu (chaque utilisateur virtuel en fait exactement sa part) et --iterations " +
+                "(un total partage entre tous) sont mutuellement exclusifs.");
+        }
+
+        if (iterations.HasValue && (vus.HasValue || vusFrom.HasValue || rps.HasValue || fromRps.HasValue || duration.HasValue))
+        {
+            throw new FormatException(
+                "--iterations est mutuellement exclusif avec --vus/--vus-from/--vus-to/--rps/--from-rps/--to-rps/--duration.");
+        }
+
         return new CliOptions
         {
             ScenarioPath = scenarioPath,
@@ -192,6 +232,8 @@ internal sealed class CliOptions
             Vus = vus,
             VusFrom = vusFrom,
             VusTo = vusTo,
+            Iterations = iterations,
+            IterationsPerVirtualUser = iterationsPerVirtualUser,
             ReportHtmlPath = reportHtmlPath,
             ReportJsonPath = reportJsonPath,
             Thresholds = thresholds,
@@ -211,6 +253,16 @@ internal sealed class CliOptions
     private static int ParseInt(string value, string optionName)
     {
         if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+        {
+            throw new FormatException($"Valeur entiere invalide pour {optionName} : '{value}'.");
+        }
+
+        return parsed;
+    }
+
+    private static long ParseLong(string value, string optionName)
+    {
+        if (!long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsed))
         {
             throw new FormatException($"Valeur entiere invalide pour {optionName} : '{value}'.");
         }

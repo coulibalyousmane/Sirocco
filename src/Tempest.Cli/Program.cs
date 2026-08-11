@@ -36,6 +36,14 @@ const string USAGE = """
       --vus-to <n>                passe lineairement de --vus-from a --vus-to sur --duration
                                  (obligatoire). Meme mise en garde de rapport que --vus.
                                  Mutuellement exclusif avec --vus/--rps/--from-rps/--to-rps/--max-vus.
+      --iterations-per-vu <k>    Iterations par utilisateur : avec --vus <n> (a la place de
+                                 --duration), chacun des n utilisateurs virtuels execute
+                                 exactement k iterations, independamment des autres, sans notion
+                                 de debit ni de duree. Meme mise en garde de rapport que --vus.
+      --iterations <n>           Iterations partagees : n iterations au total, disputees par au
+                                 plus --max-vus utilisateurs virtuels (premier arrive, premier
+                                 servi). Meme mise en garde de rapport que --vus. Mutuellement
+                                 exclusif avec --vus/--vus-from/--vus-to/--rps/--from-rps/--to-rps/--duration.
       --threshold <regle>       Seuil de succes/echec, repetable :
                                  'etape:grandeur:comparaison:limite[:nom]', ex.
                                  '__iteration:ResponseP95Milliseconds:LessThan:200'.
@@ -91,11 +99,12 @@ if (string.IsNullOrWhiteSpace(targetUrl))
 TempestHostOptions tempestOptions;
 if (options.Vus is int vus)
 {
-    // Modele ferme : --vus fixe l'effectif exact, pas un plafond, et --duration devient
-    // obligatoire faute de profil de debit dont deriver une duree de tir.
-    if (options.Duration is not { } closedModelDuration)
+    // Modele ferme : --vus fixe l'effectif exact, pas un plafond. Il lui faut une condition
+    // d'arret, une duree ou un nombre d'iterations par utilisateur virtuel — jamais les deux
+    // (deja verifie par CliOptions).
+    if (options.Duration is null && options.IterationsPerVirtualUser is null)
     {
-        Console.Error.WriteLine("--vus exige --duration.");
+        Console.Error.WriteLine("--vus exige --duration ou --iterations-per-vu.");
         return 1;
     }
 
@@ -103,7 +112,8 @@ if (options.Vus is int vus)
     {
         TargetBaseUrl = targetUrl,
         MaxVirtualUsers = vus,
-        ClosedModelDuration = closedModelDuration,
+        ClosedModelDuration = options.Duration,
+        IterationsPerVirtualUser = options.IterationsPerVirtualUser,
         ScenarioFile = options.ScenarioPath ?? builder.Configuration["Tempest:ScenarioFile"],
         Workflow = options.Workflow ?? builder.Configuration["Tempest:Workflow"] ?? TempestHostOptions.DYNAMIC_CHECKOUT_WORKFLOW,
         Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
@@ -135,6 +145,24 @@ else if (options.VusFrom is int vusFrom && options.VusTo is int vusTo)
         ReportJsonPath = options.ReportJsonPath,
     };
 }
+else if (options.Iterations is long sharedIterations)
+{
+    // Iterations partagees : un total dispute par --max-vus utilisateurs virtuels au plus, pas
+    // un effectif fixe — meme convention de plafond que le modele ouvert, pas de --duration.
+    tempestOptions = new TempestHostOptions
+    {
+        TargetBaseUrl = targetUrl,
+        MaxVirtualUsers = options.MaxVirtualUsers
+            ?? builder.Configuration.GetValue("Tempest:MaxVirtualUsers", TempestHostOptions.DEFAULT_MAX_VIRTUAL_USERS),
+        SharedIterations = sharedIterations,
+        ScenarioFile = options.ScenarioPath ?? builder.Configuration["Tempest:ScenarioFile"],
+        Workflow = options.Workflow ?? builder.Configuration["Tempest:Workflow"] ?? TempestHostOptions.DYNAMIC_CHECKOUT_WORKFLOW,
+        Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
+        ExitAfterRun = true,
+        ReportHtmlPath = options.ReportHtmlPath,
+        ReportJsonPath = options.ReportJsonPath,
+    };
+}
 else
 {
     IReadOnlyList<LoadStageOptions> profile;
@@ -153,7 +181,9 @@ else
         Console.Error.WriteLine(
             "Profil de charge requis : --rps <n> --duration <d>, --from-rps <n> --to-rps <n> --duration <d>, " +
             "--vus <n> --duration <d> (modele ferme), --vus-from <n> --vus-to <n> --duration <d> (montee " +
-            "d'utilisateurs), ou une section Tempest:Profile dans un appsettings.json du repertoire courant.");
+            "d'utilisateurs), --vus <n> --iterations-per-vu <k> (iterations par utilisateur), " +
+            "--iterations <n> (iterations partagees), ou une section Tempest:Profile dans un appsettings.json " +
+            "du repertoire courant.");
         return 1;
     }
 

@@ -13,17 +13,33 @@ namespace Tempest.Application.Execution;
 /// de travailleurs et <i>quand</i> ils s'arretent, le travailleur decide ce qui se passe pour
 /// une iteration. Les deux evoluent pour des raisons differentes.
 /// </para>
+/// <para>
+/// <b>Iterations par utilisateur.</b> Quand <see cref="LoadTestOptions.IterationsPerVirtualUser"/>
+/// est renseigne, ce travailleur s'arrete de lui-meme apres en avoir personnellement traite
+/// exactement ce nombre, sans jamais fermer la file partagee par les autres. Combine avec un
+/// <see cref="IterationCountScheduler"/> emettant exactement effectif x quota jetons, cet
+/// auto-arret garantit — par construction, aucun travailleur ne peut en prendre plus que son
+/// quota et le total emis egale exactement la somme des quotas — que chaque utilisateur virtuel
+/// en fait exactement sa part, plutot qu'une repartition inegale au gre de qui repond le plus
+/// vite au canal partage.
+/// </para>
 /// </summary>
 internal sealed class VirtualUserWorker
 {
     private readonly IWorkflow _workflow;
     private readonly long _maxSchedulingDelayTicks;
+    private readonly long? _maxIterations;
 
     /// <summary>Cree un travailleur.</summary>
     /// <param name="context">Contexte de l'utilisateur virtuel, reutilise a chaque iteration.</param>
     /// <param name="workflow">Scenario a executer.</param>
     /// <param name="maxSchedulingDelayTicks">Retard au-dela duquel un jeton est abandonne ; 0 pour ne jamais abandonner.</param>
-    public VirtualUserWorker(VirtualUserContext context, IWorkflow workflow, long maxSchedulingDelayTicks)
+    /// <param name="maxIterations">
+    /// Nombre d'iterations personnelles au-dela duquel ce travailleur s'arrete de lui-meme.
+    /// <see langword="null"/> (defaut) : aucune limite propre, seule la fermeture de la file ou
+    /// l'annulation du tir l'arrete.
+    /// </param>
+    public VirtualUserWorker(VirtualUserContext context, IWorkflow workflow, long maxSchedulingDelayTicks, long? maxIterations = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(workflow);
@@ -31,15 +47,18 @@ internal sealed class VirtualUserWorker
         Context = context;
         _workflow = workflow;
         _maxSchedulingDelayTicks = maxSchedulingDelayTicks;
+        _maxIterations = maxIterations;
     }
 
     /// <summary>Contexte de l'utilisateur virtuel, porteur des compteurs du travailleur.</summary>
     public VirtualUserContext Context { get; }
 
-    /// <summary>Consomme des jetons jusqu'a cloture de la file ou annulation du tir.</summary>
+    /// <summary>Consomme des jetons jusqu'a cloture de la file, annulation du tir, ou quota personnel atteint.</summary>
     public async Task RunAsync(ChannelReader<ExecutionToken> tokens, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(tokens);
+
+        long processed = 0L;
 
         while (true)
         {
@@ -67,7 +86,10 @@ internal sealed class VirtualUserWorker
                 }
             }
 
-            if (!await ExecuteIterationAsync(token, cancellationToken).ConfigureAwait(false))
+            bool keepRunning = await ExecuteIterationAsync(token, cancellationToken).ConfigureAwait(false);
+            processed++;
+
+            if (!keepRunning || (_maxIterations is { } max && processed >= max))
             {
                 return;
             }

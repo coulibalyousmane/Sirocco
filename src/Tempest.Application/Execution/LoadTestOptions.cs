@@ -47,6 +47,16 @@ public sealed class LoadTestOptions
     public VirtualUserProfile? RampProfile { get; init; }
 
     /// <summary>
+    /// Nombre d'iterations personnelles au-dela duquel chaque travailleur s'arrete de lui-meme,
+    /// sans jamais fermer la file partagee (executeur <b>iterations par utilisateur</b>).
+    /// <see langword="null"/> par defaut : un travailleur ne s'arrete que sur fermeture de la
+    /// file ou annulation du tir, comme avant l'introduction de ce champ. A combiner avec un
+    /// <see cref="IterationCountScheduler"/> emettant exactement <see cref="MaxVirtualUsers"/> x
+    /// cette valeur au total — voir la remarque de classe de <see cref="VirtualUserWorker"/>.
+    /// </summary>
+    public long? IterationsPerVirtualUser { get; init; }
+
+    /// <summary>
     /// Capacite de la file de jetons. Par defaut, deux fois le nombre d'utilisateurs virtuels :
     /// assez pour absorber une rafale, assez peu pour que le retard se voie vite.
     /// </summary>
@@ -84,6 +94,11 @@ public sealed class LoadTestOptions
         if (MaxSchedulingDelay is { } delay && delay <= TimeSpan.Zero)
         {
             throw new ArgumentException("MaxSchedulingDelay doit etre strictement positif.", nameof(MaxSchedulingDelay));
+        }
+
+        if (IterationsPerVirtualUser is { } iterations && iterations < 1)
+        {
+            throw new ArgumentException("IterationsPerVirtualUser doit valoir au moins 1.", nameof(IterationsPerVirtualUser));
         }
     }
 }

@@ -105,6 +105,51 @@ public sealed class CliOptionsTests
             CliOptions.Parse(["--vus-from", "0", "--vus-to", "50", "--max-vus", "100", "--duration", "10s"]));
 
     [Fact]
+    public void An_iterations_per_vu_flag_is_captured()
+    {
+        CliOptions options = CliOptions.Parse(["--vus", "10", "--iterations-per-vu", "50"]);
+
+        Assert.Equal(10, options.Vus);
+        Assert.Equal(50, options.IterationsPerVirtualUser);
+    }
+
+    [Fact]
+    public void Iterations_per_vu_and_duration_together_are_mutually_exclusive() =>
+        Assert.Throws<FormatException>(() =>
+            CliOptions.Parse(["--vus", "10", "--iterations-per-vu", "50", "--duration", "10s"]));
+
+    [Fact]
+    public void Iterations_per_vu_and_rps_together_are_mutually_exclusive() =>
+        Assert.Throws<FormatException>(() =>
+            CliOptions.Parse(["--iterations-per-vu", "50", "--rps", "100", "--duration", "10s"]));
+
+    [Fact]
+    public void Iterations_per_vu_and_iterations_together_are_mutually_exclusive() =>
+        Assert.Throws<FormatException>(() =>
+            CliOptions.Parse(["--iterations-per-vu", "50", "--iterations", "1000"]));
+
+    [Fact]
+    public void An_iterations_flag_is_captured()
+    {
+        CliOptions options = CliOptions.Parse(["--iterations", "1000", "--max-vus", "20"]);
+
+        Assert.Equal(1000, options.Iterations);
+        Assert.Equal(20, options.MaxVirtualUsers);
+    }
+
+    [Fact]
+    public void Iterations_and_vus_together_are_mutually_exclusive() =>
+        Assert.Throws<FormatException>(() => CliOptions.Parse(["--iterations", "1000", "--vus", "10"]));
+
+    [Fact]
+    public void Iterations_and_duration_together_are_mutually_exclusive() =>
+        Assert.Throws<FormatException>(() => CliOptions.Parse(["--iterations", "1000", "--duration", "10s"]));
+
+    [Fact]
+    public void Iterations_and_rps_together_are_mutually_exclusive() =>
+        Assert.Throws<FormatException>(() => CliOptions.Parse(["--iterations", "1000", "--rps", "50", "--duration", "10s"]));
+
+    [Fact]
     public void A_second_positional_argument_is_rejected() =>
         Assert.Throws<FormatException>(() => CliOptions.Parse(["scenario.yaml", "other.yaml"]));
 

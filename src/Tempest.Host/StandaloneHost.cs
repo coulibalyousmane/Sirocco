@@ -32,14 +32,16 @@ public static class StandaloneHost
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(tempestOptions);
 
-        // Modele ferme (effectif fixe ou en montee) : aucun profil de debit, un ordonnanceur
+        // Modele ferme, sous une de ses quatre formes : aucun profil de debit, un ordonnanceur
         // different enregistre en amont — AddTempestEngine garde celui-la (voir sa remarque de
         // classe) plutot que d'en construire un par defaut a partir d'un profil qui n'existe pas
-        // dans ce mode. La montee d'utilisateurs est prioritaire sur l'effectif fixe, lui-meme
-        // prioritaire sur le profil de debit (voir TempestHostOptions).
+        // dans ces modes. Ordre de priorite documente sur TempestHostOptions : montee
+        // d'utilisateurs, puis effectif fixe a duree, puis iterations par utilisateur, puis
+        // iterations partagees, puis enfin le profil de debit (modele ouvert).
         LoadProfile? profile;
         VirtualUserProfile? rampProfile = null;
         int effectiveMaxVirtualUsers = tempestOptions.MaxVirtualUsers;
+        long? iterationsPerVirtualUser = null;
 
         if (tempestOptions.IsRampingVus)
         {
@@ -48,10 +50,22 @@ public static class StandaloneHost
             effectiveMaxVirtualUsers = rampProfile.PeakVus;
             builder.Services.AddSingleton<ILoadScheduler>(new ClosedModelScheduler(rampProfile.TotalDuration));
         }
-        else if (tempestOptions.IsClosedModel)
+        else if (tempestOptions.ClosedModelDuration is { } closedModelDuration)
         {
             profile = null;
-            builder.Services.AddSingleton<ILoadScheduler>(new ClosedModelScheduler(tempestOptions.ClosedModelDuration!.Value));
+            builder.Services.AddSingleton<ILoadScheduler>(new ClosedModelScheduler(closedModelDuration));
+        }
+        else if (tempestOptions.IterationsPerVirtualUser is { } configuredIterationsPerVirtualUser)
+        {
+            profile = null;
+            iterationsPerVirtualUser = configuredIterationsPerVirtualUser;
+            builder.Services.AddSingleton<ILoadScheduler>(
+                new IterationCountScheduler(effectiveMaxVirtualUsers * configuredIterationsPerVirtualUser));
+        }
+        else if (tempestOptions.SharedIterations is { } sharedIterations)
+        {
+            profile = null;
+            builder.Services.AddSingleton<ILoadScheduler>(new IterationCountScheduler(sharedIterations));
         }
         else
         {
@@ -130,7 +144,12 @@ public static class StandaloneHost
 
         builder.Services.AddTempestEngine(
             profile,
-            new LoadTestOptions { MaxVirtualUsers = effectiveMaxVirtualUsers, RampProfile = rampProfile });
+            new LoadTestOptions
+            {
+                MaxVirtualUsers = effectiveMaxVirtualUsers,
+                RampProfile = rampProfile,
+                IterationsPerVirtualUser = iterationsPerVirtualUser,
+            });
         builder.Services.AddTempestMetrics();
         builder.Services.AddTempestOpenTelemetry(otel => otel.AddPrometheusExporter());
 
