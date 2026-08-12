@@ -204,7 +204,15 @@ par purisme coûterait des utilisateurs.
   d'étape. Limites : mode distribué non pris en charge, `/report/live` et `/metrics` non
   alimentés — seuls `/report`, `/report.html` et `/thresholds` le sont, une fois le tir terminé.
   Vérifié par un vrai tir à deux scénarios concurrents.
-- **Bridage** — plafond de débit global indépendant du profil.
+- ~~**Bridage**~~ — fait, voir [Bridage](README.md#bridage) : `RateCappedScheduler`
+  (`Tempest.Application.Execution`), décorateur d'`ILoadScheduler` qui retarde la transmission des
+  jetons plutôt que de réécrire leur échéance planifiée — le retard qu'il impose se mesure donc
+  comme une dette d'ordonnancement ordinaire, pas comme un cas particulier masqué. `--max-rps`
+  n'est un cinquième modèle mutuellement exclusif avec rien : il compose avec tous les modèles
+  précédents et avec `Tempest:Scenarios` (`ScenarioOptions.MaxRequestsPerSecond`, avec repli sur le
+  plafond global). **Clôt entièrement la phase 3.** Vérifié par de vrais tirs : modèle ouvert à
+  100 RPS ramené à 20, modèle fermé à 176 RPS naturels ramené à 15, plafond par scénario et repli
+  global tous deux respectés dans un tir à deux scénarios concurrents.
 
 ### Phase 4 — Un rapport au niveau de Gatling
 
@@ -312,16 +320,16 @@ temps de réflexion sont faits, voir [Jeux de données](README.md#jeux-de-donné
 [Métriques personnalisées](README.md#métriques-personnalisées) et
 [Temps de réflexion et rythme](README.md#temps-de-réflexion-et-rythme).
 
-**La phase 3 avance : « exécuteurs multiples » et « scénarios concurrents » sont entièrement
-traités.** Effectif fixe, montée d'utilisateurs et les deux exécuteurs par itérations sont faits,
-voir [Modèle fermé](README.md#modèle-fermé) (`--vus <n> --duration <d>`), [Montée
-d'utilisateurs](README.md#montée-dutilisateurs) (`--vus-from <n> --vus-to <n> --duration <d>`) et
-[Itérations partagées et itérations par
+**La phase 3 est entièrement traitée.** Effectif fixe, montée d'utilisateurs et les deux exécuteurs
+par itérations sont faits, voir [Modèle fermé](README.md#modèle-fermé) (`--vus <n> --duration <d>`),
+[Montée d'utilisateurs](README.md#montée-dutilisateurs) (`--vus-from <n> --vus-to <n> --duration <d>`)
+et [Itérations partagées et itérations par
 utilisateur](README.md#itérations-partagées-et-itérations-par-utilisateur) (`--iterations <n>`,
 `--vus <n> --iterations-per-vu <k>`) — mise en garde explicite dans le rapport pour les quatre.
 [Scénarios concurrents](README.md#scénarios-concurrents) (`Tempest:Scenarios`) fait tourner
 plusieurs de ces modèles en parallèle dans le même tir, chacun isolé jusque dans sa propre chaîne
-de mesure. Reste le bridage de débit global.
+de mesure. [Bridage](README.md#bridage) (`--max-rps`) plafonne le débit réel par-dessus n'importe
+lequel de ces modèles, y compris par scénario dans un tir à scénarios concurrents.
 
 Le reste peut attendre des retours d'utilisateurs réels. Construire les phases 4 à 8 sans eux,
 c'est deviner.

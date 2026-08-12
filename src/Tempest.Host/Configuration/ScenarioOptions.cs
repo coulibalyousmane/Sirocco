@@ -49,6 +49,13 @@ public sealed class ScenarioOptions
     /// <summary>Meme role que <see cref="TempestHostOptions.IterationsPerVirtualUser"/>, propre a ce scenario.</summary>
     public long? IterationsPerVirtualUser { get; init; }
 
+    /// <summary>
+    /// Meme role que <see cref="TempestHostOptions.MaxRequestsPerSecond"/>, propre a ce scenario.
+    /// <see langword="null"/> par defaut : le scenario retombe alors sur le plafond du tir entier,
+    /// s'il en a un.
+    /// </summary>
+    public double? MaxRequestsPerSecond { get; init; }
+
     /// <summary>Vrai si ce scenario utilise un modele sans echeancier theorique — voir <see cref="TempestHostOptions.IsClosedModel"/>.</summary>
     public bool IsClosedModel =>
         ClosedModelDuration is not null || IsRampingVus || SharedIterations is not null || IterationsPerVirtualUser is not null;

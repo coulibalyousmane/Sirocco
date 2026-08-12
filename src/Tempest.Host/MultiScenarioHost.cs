@@ -86,7 +86,8 @@ internal static class MultiScenarioHost
             scenario.ClosedModelDuration,
             scenario.RampVus,
             scenario.SharedIterations,
-            scenario.IterationsPerVirtualUser);
+            scenario.IterationsPerVirtualUser,
+            scenario.MaxRequestsPerSecond ?? tempestOptions.MaxRequestsPerSecond);
 
         IWorkflow workflow = StandaloneHost.BuildWorkflow(builder, scenario.ScenarioFile, scenario.Workflow);
 

@@ -53,7 +53,8 @@ public static class StandaloneHost
             tempestOptions.ClosedModelDuration,
             tempestOptions.RampVus,
             tempestOptions.SharedIterations,
-            tempestOptions.IterationsPerVirtualUser);
+            tempestOptions.IterationsPerVirtualUser,
+            tempestOptions.MaxRequestsPerSecond);
 
         builder.Services.AddSingleton(plan.Scheduler);
 
@@ -122,11 +123,30 @@ public static class StandaloneHost
     /// <summary>
     /// Choisit l'ordonnanceur decrit par ces champs, dans le meme ordre de priorite que documente
     /// sur <see cref="TempestHostOptions"/> — montee d'utilisateurs, puis effectif fixe a duree,
-    /// puis iterations par utilisateur, puis iterations partagees, puis enfin le profil de debit.
-    /// Factorise hors de <see cref="Run"/> pour etre reutilise, un scenario a la fois, par
-    /// <see cref="MultiScenarioHost"/>.
+    /// puis iterations par utilisateur, puis iterations partagees, puis enfin le profil de debit
+    /// — puis, si <paramref name="maxRequestsPerSecond"/> est renseigne, enveloppe le resultat
+    /// dans un <see cref="RateCappedScheduler"/> : le bridage s'applique de la meme facon quel que
+    /// soit le modele choisi ci-dessus. Factorise hors de <see cref="Run"/> pour etre reutilise,
+    /// un scenario a la fois, par <see cref="MultiScenarioHost"/>.
     /// </summary>
     internal static LoadModelPlan BuildLoadModel(
+        int maxVirtualUsers,
+        IReadOnlyList<LoadStageOptions> profileStages,
+        TimeSpan? closedModelDuration,
+        IReadOnlyList<VirtualUserStageOptions> rampStages,
+        long? sharedIterations,
+        long? iterationsPerVirtualUser,
+        double? maxRequestsPerSecond = null)
+    {
+        LoadModelPlan plan = SelectScheduler(
+            maxVirtualUsers, profileStages, closedModelDuration, rampStages, sharedIterations, iterationsPerVirtualUser);
+
+        return maxRequestsPerSecond is { } cap
+            ? plan with { Scheduler = new RateCappedScheduler(plan.Scheduler, cap) }
+            : plan;
+    }
+
+    private static LoadModelPlan SelectScheduler(
         int maxVirtualUsers,
         IReadOnlyList<LoadStageOptions> profileStages,
         TimeSpan? closedModelDuration,

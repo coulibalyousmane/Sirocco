@@ -150,6 +150,27 @@ public sealed class CliOptionsTests
         Assert.Throws<FormatException>(() => CliOptions.Parse(["--iterations", "1000", "--rps", "50", "--duration", "10s"]));
 
     [Fact]
+    public void A_max_rps_flag_is_captured()
+    {
+        CliOptions options = CliOptions.Parse(["--rps", "50", "--duration", "10s", "--max-rps", "20"]);
+
+        Assert.Equal(20, options.MaxRequestsPerSecond);
+    }
+
+    [Fact]
+    public void A_max_rps_flag_composes_with_the_closed_model() =>
+        // Le bridage est un overlay independant du modele, pas un cinquieme modele mutuellement
+        // exclusif : il doit rester accepte avec --vus.
+        Assert.Equal(5, CliOptions.Parse(["--vus", "10", "--duration", "10s", "--max-rps", "5"]).MaxRequestsPerSecond);
+
+    [Fact]
+    public void A_zero_or_negative_max_rps_is_rejected()
+    {
+        Assert.Throws<FormatException>(() => CliOptions.Parse(["--max-rps", "0"]));
+        Assert.Throws<FormatException>(() => CliOptions.Parse(["--max-rps", "-1"]));
+    }
+
+    [Fact]
     public void A_second_positional_argument_is_rejected() =>
         Assert.Throws<FormatException>(() => CliOptions.Parse(["scenario.yaml", "other.yaml"]));
 

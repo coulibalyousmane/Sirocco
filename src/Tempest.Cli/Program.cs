@@ -44,6 +44,12 @@ const string USAGE = """
                                  plus --max-vus utilisateurs virtuels (premier arrive, premier
                                  servi). Meme mise en garde de rapport que --vus. Mutuellement
                                  exclusif avec --vus/--vus-from/--vus-to/--rps/--from-rps/--to-rps/--duration.
+      --max-rps <n>              Plafond de debit global, en requetes par seconde, applique par-
+                                 dessus n'importe lequel des modeles ci-dessus (bridage) : le debit
+                                 reellement transmis ne depasse jamais cette valeur, meme si le
+                                 modele choisi en produirait davantage. Compatible avec tout le
+                                 reste, y compris Tempest:Scenarios. Le retard ainsi impose se
+                                 mesure comme une dette d'ordonnancement.
       --threshold <regle>       Seuil de succes/echec, repetable :
                                  'etape:grandeur:comparaison:limite[:nom]', ex.
                                  '__iteration:ResponseP95Milliseconds:LessThan:200'.
@@ -53,8 +59,9 @@ const string USAGE = """
 
     Sans --rps ni --from-rps/--to-rps, le profil de charge est lu depuis la section
     Tempest:Profile d'un appsettings.json du repertoire courant, s'il existe — de meme pour les
-    seuils (Tempest:Thresholds) en l'absence de --threshold, et pour les options avancees d'un
-    workflow integre (sections WebSocketEcho, GrpcEcho, DynamicCheckout).
+    seuils (Tempest:Thresholds) en l'absence de --threshold, pour les options avancees d'un
+    workflow integre (sections WebSocketEcho, GrpcEcho, DynamicCheckout), et pour le plafond de
+    debit global (Tempest:MaxRequestsPerSecond) en l'absence de --max-rps.
 
     Scenarios concurrents : sans aucun des indicateurs ci-dessus, une section Tempest:Scenarios
     (tableau) d'un appsettings.json du repertoire courant fait tourner plusieurs scenarios dans le
@@ -102,6 +109,11 @@ if (string.IsNullOrWhiteSpace(targetUrl))
     return 1;
 }
 
+// Plafond de debit global (bridage) : un overlay independant du modele choisi ci-dessous,
+// jamais un cinquieme modele — s'applique donc identiquement dans toutes les branches.
+double? maxRequestsPerSecond = options.MaxRequestsPerSecond
+    ?? builder.Configuration.GetValue<double?>("Tempest:MaxRequestsPerSecond");
+
 TempestHostOptions tempestOptions;
 if (options.Vus is int vus)
 {
@@ -120,6 +132,7 @@ if (options.Vus is int vus)
         MaxVirtualUsers = vus,
         ClosedModelDuration = options.Duration,
         IterationsPerVirtualUser = options.IterationsPerVirtualUser,
+        MaxRequestsPerSecond = maxRequestsPerSecond,
         ScenarioFile = options.ScenarioPath ?? builder.Configuration["Tempest:ScenarioFile"],
         Workflow = options.Workflow ?? builder.Configuration["Tempest:Workflow"] ?? TempestHostOptions.DYNAMIC_CHECKOUT_WORKFLOW,
         Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
@@ -143,6 +156,7 @@ else if (options.VusFrom is int vusFrom && options.VusTo is int vusTo)
     {
         TargetBaseUrl = targetUrl,
         RampVus = [new VirtualUserStageOptions { FromVus = vusFrom, ToVus = vusTo, DurationSeconds = rampVusDuration.TotalSeconds }],
+        MaxRequestsPerSecond = maxRequestsPerSecond,
         ScenarioFile = options.ScenarioPath ?? builder.Configuration["Tempest:ScenarioFile"],
         Workflow = options.Workflow ?? builder.Configuration["Tempest:Workflow"] ?? TempestHostOptions.DYNAMIC_CHECKOUT_WORKFLOW,
         Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
@@ -161,6 +175,7 @@ else if (options.Iterations is long sharedIterations)
         MaxVirtualUsers = options.MaxVirtualUsers
             ?? builder.Configuration.GetValue("Tempest:MaxVirtualUsers", TempestHostOptions.DEFAULT_MAX_VIRTUAL_USERS),
         SharedIterations = sharedIterations,
+        MaxRequestsPerSecond = maxRequestsPerSecond,
         ScenarioFile = options.ScenarioPath ?? builder.Configuration["Tempest:ScenarioFile"],
         Workflow = options.Workflow ?? builder.Configuration["Tempest:Workflow"] ?? TempestHostOptions.DYNAMIC_CHECKOUT_WORKFLOW,
         Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
@@ -181,6 +196,7 @@ else
         {
             TargetBaseUrl = targetUrl,
             Scenarios = scenarios,
+            MaxRequestsPerSecond = maxRequestsPerSecond,
             ExitAfterRun = true,
             ReportHtmlPath = options.ReportHtmlPath,
             ReportJsonPath = options.ReportJsonPath,
@@ -216,6 +232,7 @@ else
             MaxVirtualUsers = options.MaxVirtualUsers
                 ?? builder.Configuration.GetValue("Tempest:MaxVirtualUsers", TempestHostOptions.DEFAULT_MAX_VIRTUAL_USERS),
             Profile = profile,
+            MaxRequestsPerSecond = maxRequestsPerSecond,
             ScenarioFile = options.ScenarioPath ?? builder.Configuration["Tempest:ScenarioFile"],
             Workflow = options.Workflow ?? builder.Configuration["Tempest:Workflow"] ?? TempestHostOptions.DYNAMIC_CHECKOUT_WORKFLOW,
             Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),

@@ -40,6 +40,8 @@ internal sealed class CliOptions
 
     public long? IterationsPerVirtualUser { get; private init; }
 
+    public double? MaxRequestsPerSecond { get; private init; }
+
     public string? ReportHtmlPath { get; private init; }
 
     public string? ReportJsonPath { get; private init; }
@@ -64,6 +66,7 @@ internal sealed class CliOptions
         int? vusTo = null;
         long? iterations = null;
         long? iterationsPerVirtualUser = null;
+        double? maxRequestsPerSecond = null;
         string? reportHtmlPath = null;
         string? reportJsonPath = null;
         List<ThresholdRule> thresholds = [];
@@ -119,6 +122,10 @@ internal sealed class CliOptions
 
                 case "--iterations-per-vu" when i + 1 < args.Length:
                     iterationsPerVirtualUser = ParseLong(args[++i], "--iterations-per-vu");
+                    break;
+
+                case "--max-rps" when i + 1 < args.Length:
+                    maxRequestsPerSecond = ParseDouble(args[++i], "--max-rps");
                     break;
 
                 case "--report-html" when i + 1 < args.Length:
@@ -219,6 +226,11 @@ internal sealed class CliOptions
                 "--iterations est mutuellement exclusif avec --vus/--vus-from/--vus-to/--rps/--from-rps/--to-rps/--duration.");
         }
 
+        if (maxRequestsPerSecond is <= 0d)
+        {
+            throw new FormatException("--max-rps doit etre strictement positif.");
+        }
+
         return new CliOptions
         {
             ScenarioPath = scenarioPath,
@@ -234,6 +246,7 @@ internal sealed class CliOptions
             VusTo = vusTo,
             Iterations = iterations,
             IterationsPerVirtualUser = iterationsPerVirtualUser,
+            MaxRequestsPerSecond = maxRequestsPerSecond,
             ReportHtmlPath = reportHtmlPath,
             ReportJsonPath = reportJsonPath,
             Thresholds = thresholds,

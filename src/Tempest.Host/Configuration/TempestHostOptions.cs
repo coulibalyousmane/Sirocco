@@ -154,6 +154,24 @@ public sealed class TempestHostOptions
     public IReadOnlyList<ThresholdRule> Thresholds { get; init; } = [];
 
     /// <summary>
+    /// Plafond de debit global, en requetes par seconde, applique <b>par-dessus</b> le modele de
+    /// charge choisi — ouvert ou ferme, sous n'importe laquelle de ses formes.
+    /// <para>
+    /// <see langword="null"/> par defaut : aucun plafond, comportement inchange. Une fois
+    /// renseigne, le debit reellement transmis aux utilisateurs virtuels ne peut jamais depasser
+    /// cette valeur, meme si le profil ou l'effectif configure en produirait davantage. Le retard
+    /// ainsi impose se mesure comme n'importe quelle dette d'ordonnancement — voir
+    /// <see cref="Tempest.Application.Execution.RateCappedScheduler"/> pour le detail du mecanisme.
+    /// </para>
+    /// <para>
+    /// Si <see cref="Scenarios"/> est renseigne, cette valeur sert de plafond par defaut pour tout
+    /// scenario qui ne precise pas le sien (<see cref="ScenarioOptions.MaxRequestsPerSecond"/>) —
+    /// meme convention que <see cref="TargetBaseUrl"/>.
+    /// </para>
+    /// </summary>
+    public double? MaxRequestsPerSecond { get; init; }
+
+    /// <summary>
     /// Scenarios <b>concurrents</b> de ce tir : si renseigne, ce tir ignore <see cref="Profile"/>,
     /// <see cref="ClosedModelDuration"/>, <see cref="RampVus"/>, <see cref="SharedIterations"/>,
     /// <see cref="IterationsPerVirtualUser"/>, <see cref="ScenarioFile"/>, <see cref="Workflow"/> et

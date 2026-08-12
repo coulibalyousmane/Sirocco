@@ -393,9 +393,10 @@ ligne de commande — un tableau de scénarios n'a pas d'équivalent plat raison
 
 Chaque entrée de `Tempest:Scenarios` accepte le même vocabulaire que `TempestHostOptions` lui-même
 (`Profile`, `ClosedModelDuration`, `RampVus`, `SharedIterations`, `IterationsPerVirtualUser`,
-`ScenarioFile`/`Workflow`, `Thresholds`) — chaque scénario choisit son modèle de charge
-indépendamment des autres. `TargetBaseUrl` reste optionnel par scénario : omis, il retombe sur
-celui du tir entier, ce qui couvre le cas courant où tous les scénarios visent la même cible.
+`MaxRequestsPerSecond`, `ScenarioFile`/`Workflow`, `Thresholds`) — chaque scénario choisit son
+modèle de charge indépendamment des autres. `TargetBaseUrl` reste optionnel par scénario : omis, il
+retombe sur celui du tir entier, ce qui couvre le cas courant où tous les scénarios visent la même
+cible — `MaxRequestsPerSecond` suit la même convention de repli (voir [Bridage](#bridage)).
 
 Techniquement, `MultiScenarioRunner` (`Tempest.Host.Execution`) construit à la main, pour chaque
 scénario, sa propre chaîne complète — `IWorkflow`, `ILoadScheduler`, `HttpClient`,
@@ -413,6 +414,47 @@ ouvert, l'autre en modèle fermé, tous deux avec une étape `browse` de même n
 `Tempest.SampleTarget` : deux entrées indépendantes dans le rapport (100 puis 943 itérations,
 jamais 1043 fusionnées), étiquettes et seuils propres à chacune, avertissement modèle fermé présent
 sur la seule entrée concernée, code de sortie reflétant le verdict combiné.
+
+### Bridage
+
+Tous les modèles ci-dessus décrivent *ce que le tir doit produire* — un débit cible, un effectif,
+un nombre d'itérations. Aucun ne répond à « quoi que produise ce profil, ne dépasse jamais X
+requêtes par seconde », utile pour respecter un quota côté cible ou reproduire un plafond
+d'infrastructure réel. `--max-rps` couvre ce cas, en s'appliquant *par-dessus* le modèle choisi,
+jamais à sa place :
+
+```bash
+tempest run --target-url http://localhost:5281 --rps 100 --duration 30s --max-rps 20
+```
+
+À la différence de tous les indicateurs précédents, `--max-rps` n'est mutuellement exclusif avec
+rien : il compose avec `--rps`/`--from-rps`/`--to-rps` (modèle ouvert), `--vus`/`--vus-from`/
+`--vus-to` (modèle fermé), `--iterations`/`--iterations-per-vu`, et avec `Tempest:Scenarios`, où il
+sert de plafond par défaut pour tout scénario qui ne précise pas le sien (`MaxRequestsPerSecond`)
+— même convention que `TargetBaseUrl`. Sans équivalent `--max-vus` distinct par scénario avant
+cette fonctionnalité, un scénario concurrent peut désormais aussi porter son propre plafond,
+indépendant de celui du tir entier.
+
+Techniquement, `RateCappedScheduler` (`Tempest.Application.Execution`) est un décorateur
+d'`ILoadScheduler` : il enveloppe le `ChannelWriter` remis à l'ordonnanceur choisi (modèle ouvert,
+fermé, montée d'utilisateurs ou itérations) et retarde la transmission de chaque jeton jusqu'à ce
+que l'intégrale du plafond l'autorise — même principe que `CoordinatedRateLimiter` (comparer prévu
+et émis, jamais un délai par jeton, pour ne pas laisser la cadence dériver). Aucun des quatre
+ordonnanceurs existants n'a besoin de savoir qu'il est bridé.
+
+**Le retard ainsi imposé se mesure comme une dette d'ordonnancement ordinaire**, pas comme un cas
+particulier à masquer : `ExecutionToken.ScheduledTicks` reste celui que l'ordonnanceur enveloppé
+avait prévu, jamais réécrit par le décorateur, donc l'écart entre ce qui était prévu et l'instant où
+la requête part réellement apparaît dans `Response` exactement comme un injecteur saturé — cohérent
+avec le reste de Tempest, qui existe pour montrer ce genre d'écart, pas pour le cacher.
+
+Vérifié par de vrais tirs contre `Tempest.SampleTarget` : `--rps 100 --duration 5s --max-rps 20`
+a produit 500 itérations (le total planifié par le profil à 100 RPS) étalées sur 25s pour ne
+jamais dépasser 20 RPS, avec une dette maximale d'environ 20s reflétant fidèlement le retard
+imposé ; `--vus 10 --duration 5s --max-rps 15` (modèle fermé, qui produit naturellement 176 RPS
+avec ces 10 utilisateurs virtuels contre cette cible) a été ramené à 15 RPS exactement ; et un tir
+à deux scénarios concurrents a confirmé le plafond propre à un scénario (5 RPS) et le repli sur le
+plafond global (8 RPS) pour celui qui n'en précise pas.
 
 ### Installation
 
@@ -1526,6 +1568,7 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 35** — [Montée d'utilisateurs](#montée-dutilisateurs) : `VirtualUserStage`/`VirtualUserProfile` (`Tempest.Domain.Load`, même rampe linéaire que `LoadStage`/`LoadProfile` mais sur un effectif plutôt qu'un débit), `RampingVirtualUserPool` (`Tempest.Application.Execution`) qui remplace la création statique de travailleurs de `TargetRpsLoadEngine` quand `LoadTestOptions.RampProfile` est renseigné, `--vus-from`/`--vus-to` en CLI (`TempestHostOptions.RampVus`). Deuxième bullet « exécuteurs multiples » de la roadmap phase 3 (montée/descente d'utilisateurs ; itérations partagées et par utilisateur restent à faire). Chaque travailleur reçoit son propre jeton d'annulation lié à celui du tir, ce qui permet d'en arrêter un individuellement sans fermer le canal de jetons partagé par les autres — l'émission des jetons elle-même reste un `ClosedModelScheduler` inchangé, configuré sur la durée totale du profil. `TempestHostOptions.IsClosedModel` couvre désormais aussi ce mode (même mise en garde de rapport, aucun échéancier théorique à comparer). Limite documentée : mode distribué non pris en charge, comme pour l'effectif fixe. Vérifié par un vrai tir (`--vus-from 0 --vus-to 20 --duration 8s`) : débit croissant au fil de la rampe, avertissement présent en texte et en JSON, modèles ouvert et fermé à effectif fixe inchangés en régression
 - [x] **Étape 36** — [Itérations partagées et itérations par utilisateur](#itérations-partagées-et-itérations-par-utilisateur) : `IterationCountScheduler` (`Tempest.Application.Execution`, implémente `ILoadScheduler` en s'arrêtant sur un nombre fixe de jetons plutôt qu'une durée), `--iterations <n>` (itérations partagées, `TempestHostOptions.SharedIterations`) et `--vus <n> --iterations-per-vu <k>` (itérations par utilisateur, `TempestHostOptions.IterationsPerVirtualUser`) en CLI. **Clôt entièrement le bullet « exécuteurs multiples » et la roadmap phase 3.** `VirtualUserWorker` accepte désormais un quota personnel optionnel au-delà duquel il s'arrête de lui-même sans fermer la file partagée — combiné à un `IterationCountScheduler` dimensionné à effectif × quota, cet auto-arrêt garantit par construction que chaque utilisateur virtuel en fait exactement sa part, prouvé par un test qui trace `VirtualUserId` par itération et vérifie que les 8 utilisateurs virtuels en ont fait exactement 15 chacun, ni plus ni moins. `TempestHostOptions.IsClosedModel` couvre désormais aussi ces deux modes. Limite documentée : mode distribué non pris en charge, comme pour le reste du modèle fermé. Vérifié par de vrais tirs (`--iterations 300 --max-vus 20` puis `--vus 10 --iterations-per-vu 20`) : 300 puis 200 itérations exactement, avertissement présent en texte et en JSON, modèle ouvert inchangé en régression
 - [x] **Étape 37** — [Scénarios concurrents](#scénarios-concurrents) : `Tempest:Scenarios` (`TempestHostOptions.Scenarios`/`ScenarioOptions`), `MultiScenarioRunner`/`MultiScenarioHost`/`MultiScenarioLoadTestHostedService` (`Tempest.Host`), `ScenarioRunSpec` (`Tempest.Application.Execution`), `ScenarioReport`/`MultiScenarioReport` (`Tempest.Domain.Metrics`). **Clôt le bullet « scénarios concurrents » de la phase 3, ne laissant plus que le bridage.** Chaque scénario construit sa propre chaîne complète à la main plutôt que via le conteneur d'injection de dépendances (qui n'enregistre qu'un singleton de chaque type) — c'est cet isolement complet, pas un préfixe de nom, qui garantit que deux scénarios déclarant la même étape ne voient jamais leurs mesures fusionnées, prouvé par un test qui fait tourner deux scénarios partageant un nom d'étape et vérifie que chacun garde son propre compte. `LoadTestReport.ToHtml` refactorisé (extraction de `AppendHtmlShellStart`/`AppendBodyContent`) pour permettre un document HTML unique avec une section par scénario, sans changement de sortie pour le tir simple (569 tests existants toujours verts après coup). Limites documentées : mode distribué non pris en charge, `/report/live` et `/metrics` non alimentés. Vérifié par un vrai tir à deux scénarios (modèle ouvert + modèle fermé, étape de même nom `browse` dans les deux) contre `Tempest.SampleTarget` : 100 puis 943 itérations indépendantes, jamais fusionnées, étiquettes et seuils propres à chacune, tir simple inchangé en régression
+- [x] **Étape 38** — [Bridage](#bridage) : `RateCappedScheduler` (`Tempest.Application.Execution`, décorateur d'`ILoadScheduler`), `TempestHostOptions.MaxRequestsPerSecond`/`ScenarioOptions.MaxRequestsPerSecond`, `--max-rps` en CLI. **Clôt entièrement la phase 3 de la roadmap.** Le décorateur enveloppe le `ChannelWriter` remis à l'ordonnanceur choisi plutôt que son `Run` lui-même, ce qui le fait composer identiquement avec les quatre ordonnanceurs existants sans en modifier aucun ; le retard qu'il impose porte sur la transmission, jamais sur `ExecutionToken.ScheduledTicks` déjà fixé par l'ordonnanceur enveloppé, donc il se mesure côté rapport exactement comme une dette d'ordonnancement plutôt que d'être masqué. `--max-rps` n'est mutuellement exclusif avec rien (overlay, pas un cinquième modèle) et compose avec `Tempest:Scenarios`, où `ScenarioOptions.MaxRequestsPerSecond` retombe sur le plafond global si absent — même convention que `TargetBaseUrl`. Vérifié par de vrais tirs contre `Tempest.SampleTarget` : `--rps 100 --duration 5s --max-rps 20` ramené à 20 RPS exactement (dette ~20s, cohérente avec le retard imposé) ; `--vus 10 --duration 5s --max-rps 15` (176 RPS naturels avec ces 10 utilisateurs virtuels) ramené à 15 RPS exactement ; scénarios concurrents avec plafond propre (5 RPS) et repli sur le plafond global (8 RPS) tous deux respectés
 
 ## Roadmap initiale — close
 
