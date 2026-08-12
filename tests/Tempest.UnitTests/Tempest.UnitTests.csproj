@@ -40,6 +40,9 @@
     <!-- Idem pour le parseur d'arguments de Tempest.Cli (CliOptions, CliDuration) : logique pure,
          sans dependance ASP.NET, testable directement sans lancer de processus. -->
     <ProjectReference Include="..\..\src\Tempest.Cli\Tempest.Cli.csproj" />
+    <!-- Idem pour HarConverter (Tempest.HarConvert) : logique pure (parsing HAR, generation de
+         source C#), sans dependance ASP.NET, testable directement sans lancer de processus. -->
+    <ProjectReference Include="..\..\tools\Tempest.HarConvert\Tempest.HarConvert.csproj" />
   </ItemGroup>
 
 </Project>

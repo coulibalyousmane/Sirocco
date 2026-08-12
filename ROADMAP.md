@@ -33,7 +33,7 @@ Légende : ● solide · ◐ partiel · ○ absent
 | Mode distribué | ● fusion d'histogrammes exacte | ● `k6-operator` | ◐ Enterprise | ● Studio / K8s |
 | Installation en une commande | ○ cloner et compiler | ● brew, apt, docker | ● bundle, maven | ● NuGet |
 | Écosystème d'extensions communautaire | ○ | ● `xk6` | ◐ | ◐ plugins officiels |
-| Conversion HAR / OpenAPI / Postman | ○ | ● | ● *recorder* proxy | ○ |
+| Conversion HAR / OpenAPI / Postman | ◐ HAR seul | ● | ● *recorder* proxy | ○ |
 | Test navigateur (Web Vitals) | ○ | ● k6 browser | ◐ Enterprise | ○ |
 
 ## Le différenciateur réel n'est pas celui qu'on croit
@@ -247,7 +247,16 @@ trajectoire — le moment où les centiles décrochent — qui explique une dég
 sont le levier d'adoption le moins cher du marché : on part d'un trafic déjà capturé plutôt que
 d'une page blanche.
 
-- **HAR vers scénario** — un export du navigateur devient un tir jouable.
+- ~~**HAR vers scénario**~~ — fait, voir [Convertisseur HAR](README.md#convertisseur-har) :
+  `tools/Tempest.HarConvert` traduit un export du navigateur en scénario **scripté** C# (`.csx`),
+  conformément à la décision structurante ci-dessus — jouable sans aucun câblage supplémentaire.
+  Actifs statiques ignorés par extension, hôte cible retenu par fréquence (pas par ordre
+  d'apparition — un bug réel de la première version, trouvé et corrigé en vérifiant un vrai HAR
+  où un appel tiers sans extension reconnue precédait le premier appel à la cible). Limite
+  documentée : authentification/cookies capturés à revoir manuellement (valeurs de session
+  probablement expirées), corps multipart non pris en charge. Vérifié par un vrai tir : HAR
+  reconstitué d'un aller-retour réel login/catalogue/checkout contre `Tempest.SampleTarget`,
+  mêlé à un actif statique et un hôte secondaire, converti puis exécuté par `tempest run`.
 - **OpenAPI vers scénario** — squelette généré à partir de la spécification d'une API.
 - **Collection Postman vers scénario.**
 - **Proxy enregistreur** à la Gatling, si les convertisseurs rencontrent leur public.
@@ -347,7 +356,13 @@ périodiquement la trajectoire du tir, gardée dans `LoadTestReport.TimeSeries` 
 désormais en graphe (débit et dette d'ordonnancement superposés) et ajoute un histogramme par
 étape à partir des paniers déjà détenus par `LatencyHistogram` ; `/report/live.html` transforme la
 fenêtre glissante déjà servie en JSON par `/report/live` en tableau de bord HTML qui se recharge
-seul pendant le tir. Les phases 5 à 8 peuvent toujours attendre des retours d'utilisateurs réels.
+seul pendant le tir.
+
+**La phase 5 est engagée : le convertisseur HAR est fait.** Voir [Convertisseur
+HAR](README.md#convertisseur-har) : `tools/Tempest.HarConvert` traduit un export du navigateur en
+scénario scripté C# (`.csx`), conformément à la décision structurante prise en phase 2 — pas de
+YAML/JSON généré. Restent OpenAPI vers scénario, collection Postman vers scénario et le proxy
+enregistreur — les phases 6 à 8 peuvent toujours attendre des retours d'utilisateurs réels.
 
 ## Sources
 
