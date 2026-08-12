@@ -21,4 +21,8 @@ public sealed record HistogramSnapshot(
     long TotalCount,
     long SumMicroseconds,
     long MinMicroseconds,
-    long MaxMicroseconds);
+    long MaxMicroseconds)
+{
+    /// <summary>Distribution vide, pour une etape sans aucune mesure.</summary>
+    public static readonly HistogramSnapshot Empty = new([], 0L, 0L, 0L, 0L);
+}

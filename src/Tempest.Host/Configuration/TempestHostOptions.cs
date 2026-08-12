@@ -11,6 +11,12 @@ public sealed class TempestHostOptions
     /// <summary>Valeur par defaut du plafond d'utilisateurs virtuels.</summary>
     public const int DEFAULT_MAX_VIRTUAL_USERS = 200;
 
+    /// <summary>Valeur par defaut de <see cref="TimeSeriesIntervalSeconds"/>.</summary>
+    public const double DEFAULT_TIME_SERIES_INTERVAL_SECONDS = 2d;
+
+    /// <summary>Valeur par defaut de <see cref="LiveDashboardRefreshSeconds"/>.</summary>
+    public const int DEFAULT_LIVE_DASHBOARD_REFRESH_SECONDS = 3;
+
     /// <summary>Valeur de <see cref="Workflow"/> selectionnant <c>DynamicCheckoutWorkflow</c>.</summary>
     public const string DYNAMIC_CHECKOUT_WORKFLOW = "dynamic-checkout";
 
@@ -125,6 +131,23 @@ public sealed class TempestHostOptions
         ClosedModelDuration is not null || IsRampingVus || SharedIterations is not null || IterationsPerVirtualUser is not null;
 
     /// <summary>
+    /// Ecart entre deux releves de la trajectoire du tir (<see cref="Tempest.Domain.Metrics.LoadTestReport.TimeSeries"/>),
+    /// en secondes. <see cref="DEFAULT_TIME_SERIES_INTERVAL_SECONDS"/> par defaut : assez fin pour
+    /// une trajectoire lisible, assez large pour qu'un tir de plusieurs heures ne produise pas des
+    /// dizaines de milliers de points. Sans effet si <see cref="Scenarios"/> est renseigne : voir
+    /// la limite documentee sur ce champ.
+    /// </summary>
+    public double TimeSeriesIntervalSeconds { get; init; } = DEFAULT_TIME_SERIES_INTERVAL_SECONDS;
+
+    /// <summary>
+    /// Intervalle d'auto-rechargement de <c>/report/live.html</c>, en secondes.
+    /// <see cref="DEFAULT_LIVE_DASHBOARD_REFRESH_SECONDS"/> par defaut. Sans effet si
+    /// <see cref="Scenarios"/> est renseigne, pour la meme raison que <c>/report/live</c> n'est
+    /// pas alimente en mode scenarios concurrents (voir la limite documentee sur ce champ).
+    /// </summary>
+    public int LiveDashboardRefreshSeconds { get; init; } = DEFAULT_LIVE_DASHBOARD_REFRESH_SECONDS;
+
+    /// <summary>
     /// Chemin d'un fichier de scenario declaratif (<c>.yaml</c>, <c>.yml</c> ou <c>.json</c>).
     /// <para>
     /// Si renseigne, l'hote construit un <c>DeclarativeWorkflow</c> a partir de ce fichier
@@ -182,7 +205,10 @@ public sealed class TempestHostOptions
     /// <para>
     /// Limites de cette premiere version : mode distribue non pris en charge, <c>/report/live</c>
     /// et <c>/metrics</c> non alimentes (voir <c>MultiScenarioHost</c>) — seuls <c>/report</c>,
-    /// <c>/report.html</c> et <c>/thresholds</c> le sont, une fois le tir termine.
+    /// <c>/report.html</c> et <c>/thresholds</c> le sont, une fois le tir termine. La trajectoire
+    /// (<see cref="TimeSeriesIntervalSeconds"/>) n'est pas non plus relevee pour ce mode : chaque
+    /// scenario tourne dans <c>MultiScenarioRunner</c>, qui construit sa chaine de mesure sans
+    /// enregistreur de serie temporelle.
     /// </para>
     /// </summary>
     public IReadOnlyList<ScenarioOptions> Scenarios { get; init; } = [];

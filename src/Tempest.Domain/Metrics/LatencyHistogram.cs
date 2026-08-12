@@ -257,8 +257,12 @@ public sealed class LatencyHistogram
         return ((shift + 1) << PRECISION_BITS) + subBucket;
     }
 
-    /// <summary>Borne haute incluse du panier d'index donne.</summary>
-    private static long UpperBoundOf(int index)
+    /// <summary>
+    /// Borne haute incluse du panier d'index donne — publique pour permettre a un rendu
+    /// (histogramme du rapport) de savoir a quelle duree correspond chaque panier de
+    /// <see cref="HistogramSnapshot.Buckets"/>, sans dupliquer ce calcul.
+    /// </summary>
+    public static long UpperBoundOf(int index)
     {
         if (index < SUB_BUCKET_COUNT)
         {

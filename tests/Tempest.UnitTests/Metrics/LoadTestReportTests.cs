@@ -30,6 +30,7 @@ public sealed class LoadTestReportTests
             MaxSchedulingDelayMicroseconds = 500L,
             Response = latency,
             Service = latency,
+            ResponseHistogram = HistogramSnapshot.Empty,
         };
     }
 
@@ -112,6 +113,139 @@ public sealed class LoadTestReportTests
         Assert.Contains("Modele ferme", closed.ToTable());
         Assert.DoesNotContain("Modele ferme", open.ToTable());
     }
+
+    private static StepStatistics CreateStepWithHistogram(string name, params long[] responseMicroseconds)
+    {
+        LatencyHistogram histogram = new();
+        foreach (long value in responseMicroseconds)
+        {
+            histogram.Record(value);
+        }
+
+        return CreateStep(name, responseMicroseconds.Length, responseMicroseconds.Length > 0 ? responseMicroseconds[^1] : 0L)
+            with
+        { ResponseHistogram = histogram.Export() };
+    }
+
+    [Fact]
+    public void ToHtml_renders_a_histogram_section_when_a_step_has_measurements()
+    {
+        LoadTestReport report = CreateReport([CreateStepWithHistogram("login", 1_000L, 2_000L, 3_000L, 50_000L)]);
+
+        string html = report.ToHtml();
+
+        Assert.Contains("Distribution des temps de reponse", html);
+        Assert.Contains("<svg", html);
+        Assert.Contains("<rect", html);
+    }
+
+    [Fact]
+    public void ToHtml_omits_the_histogram_section_when_no_step_has_measurements()
+    {
+        LoadTestReport report = CreateReport([CreateStep("login", 0L, 0L)]);
+
+        Assert.DoesNotContain("Distribution des temps de reponse", report.ToHtml());
+    }
+
+    [Fact]
+    public void ToHtml_renders_a_debt_curve_chart_when_at_least_two_samples_exist()
+    {
+        LoadTestReport report = CreateReport([CreateStep("login", 10L, 10_000L)])
+            with
+        { TimeSeries = [CreateSample(2d, 50d, 8), CreateSample(4d, 60d, 8)] };
+
+        string html = report.ToHtml();
+
+        Assert.Contains("<polyline", html);
+        Assert.Contains("#cf222e", html);
+    }
+
+    [Fact]
+    public void ToHtml_omits_the_debt_curve_chart_when_there_is_only_one_sample()
+    {
+        LoadTestReport report = CreateReport([CreateStep("login", 10L, 10_000L)])
+            with
+        { TimeSeries = [CreateSample(2d, 50d, 8)] };
+
+        Assert.DoesNotContain("<polyline", report.ToHtml());
+    }
+
+    [Fact]
+    public void ToHtml_adds_a_refresh_meta_tag_when_requested()
+    {
+        LoadTestReport report = CreateReport([CreateStep("login", 10L, 10_000L)]);
+
+        string html = report.ToHtml(autoRefreshSeconds: 5);
+
+        Assert.Contains("""<meta http-equiv="refresh" content="5">""", html);
+    }
+
+    [Fact]
+    public void ToHtml_omits_the_refresh_meta_tag_by_default()
+    {
+        LoadTestReport report = CreateReport([CreateStep("login", 10L, 10_000L)]);
+
+        Assert.DoesNotContain("http-equiv=\"refresh\"", report.ToHtml());
+    }
+
+    private static TimeSeriesSample CreateSample(double elapsedSeconds, double iterationsPerSecond, int activeVirtualUsers) => new()
+    {
+        ElapsedSeconds = elapsedSeconds,
+        IterationsPerSecond = iterationsPerSecond,
+        ActiveVirtualUsers = activeVirtualUsers,
+        ErrorRate = 0d,
+        ResponseP50Milliseconds = 10d,
+        ResponseP95Milliseconds = 20d,
+        ResponseP99Milliseconds = 30d,
+        MaxSchedulingDelayMilliseconds = 5d,
+    };
+
+    [Fact]
+    public void ToHtml_renders_a_time_series_section_when_samples_exist()
+    {
+        LoadTestReport report = CreateReport([CreateStep("login", 10L, 10_000L)])
+            with
+        { TimeSeries = [CreateSample(2d, 50d, 8)] };
+
+        string html = report.ToHtml();
+
+        Assert.Contains("Serie temporelle", html);
+        Assert.Contains("2.0 s", html);
+        Assert.Contains("<td>8</td>", html);
+    }
+
+    [Fact]
+    public void ToHtml_omits_the_time_series_section_when_there_are_no_samples()
+    {
+        LoadTestReport report = CreateReport([CreateStep("login", 10L, 10_000L)]);
+
+        Assert.DoesNotContain("Serie temporelle", report.ToHtml());
+    }
+
+    [Fact]
+    public void ToTable_renders_a_time_series_section_when_samples_exist()
+    {
+        LoadTestReport report = CreateReport([CreateStep("login", 10L, 10_000L)])
+            with
+        { TimeSeries = [CreateSample(4d, 12d, 3)] };
+
+        string table = report.ToTable();
+
+        Assert.Contains("serie temporelle", table);
+        Assert.Contains("it/s", table);
+    }
+
+    [Fact]
+    public void ToTable_omits_the_time_series_section_when_there_are_no_samples()
+    {
+        LoadTestReport report = CreateReport([CreateStep("login", 10L, 10_000L)]);
+
+        Assert.DoesNotContain("serie temporelle", report.ToTable());
+    }
+
+    [Fact]
+    public void TimeSeries_is_empty_by_default() =>
+        Assert.Empty(CreateReport([CreateStep("login", 10L, 10_000L)]).TimeSeries);
 
     [Fact]
     public void ClosedModel_is_false_by_default() =>

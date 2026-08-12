@@ -74,6 +74,14 @@ public sealed class TargetRpsLoadEngine
     /// <summary>Registre des metriques personnalisees, scelle des le demarrage du tir.</summary>
     public CustomMetricRegistry CustomMetrics { get; }
 
+    /// <summary>
+    /// Nombre d'utilisateurs virtuels actuellement actifs, mis a jour par chaque
+    /// <see cref="VirtualUserWorker"/>. Disponible avant meme le demarrage du tir (comme
+    /// <see cref="Steps"/>/<see cref="CustomMetrics"/>) pour qu'un appelant puisse le relever
+    /// periodiquement en parallele de <see cref="RunAsync"/>.
+    /// </summary>
+    public ActiveVirtualUserGauge ActiveVirtualUsers { get; } = new();
+
     /// <summary>Deroule le tir complet et renvoie son bilan.</summary>
     /// <param name="cancellationToken">Interrompt le tir avant la fin du profil.</param>
     public async Task<LoadTestSummary> RunAsync(CancellationToken cancellationToken = default)
@@ -172,7 +180,7 @@ public sealed class TargetRpsLoadEngine
             : 0L;
 
         VirtualUserContext context = new(index, _httpClient, _sink, iterationStep, _customMetricSink);
-        return new VirtualUserWorker(context, _workflow, maxDelayTicks, _options.IterationsPerVirtualUser);
+        return new VirtualUserWorker(context, _workflow, maxDelayTicks, _options.IterationsPerVirtualUser, ActiveVirtualUsers);
     }
 
     private LoadTestSummary Summarize(IReadOnlyList<VirtualUserWorker> workers, long durationTicks)

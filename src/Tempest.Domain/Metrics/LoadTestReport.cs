@@ -52,6 +52,14 @@ public sealed record LoadTestReport
     /// </summary>
     public bool ClosedModel { get; init; }
 
+    /// <summary>
+    /// Trajectoire du tir : un <see cref="TimeSeriesSample"/> par intervalle de releve, du debut a
+    /// la fin — la difference entre un rapport qui ne dit que l'etat final et un qui montre
+    /// comment on y est arrive. Vide par defaut : seul <c>Tempest.Host.LoadTestHostedService</c>
+    /// la remplit aujourd'hui, pas <c>MultiScenarioRunner</c> (voir sa remarque de classe).
+    /// </summary>
+    public IReadOnlyList<TimeSeriesSample> TimeSeries { get; init; } = [];
+
     /// <summary>Debit moyen sur la periode, iterations par seconde.</summary>
     public double IterationsPerSecond =>
         Duration > TimeSpan.Zero ? Iteration.Count / Duration.TotalSeconds : 0d;
@@ -96,6 +104,22 @@ public sealed record LoadTestReport
                 $"  {step.Name,-24} {step.Count,8:N0} {step.ErrorRate,7:P1} " +
                 $"{step.Response.P50Milliseconds,9:F2}ms {step.Response.P95Milliseconds,9:F2}ms " +
                 $"{step.Response.P99Milliseconds,9:F2}ms {step.Service.P99Milliseconds,9:F2}ms");
+        }
+
+        if (TimeSeries.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("  serie temporelle (fenetre glissante)");
+            builder.AppendLine(
+                $"  {"t",7} {"it/s",8} {"vus actifs",10} {"echecs",8} {"p50",9} {"p95",9} {"p99",9} {"dette max",10}");
+
+            foreach (TimeSeriesSample sample in TimeSeries)
+            {
+                builder.AppendLine(
+                    $"  {sample.ElapsedSeconds,6:F1}s {sample.IterationsPerSecond,8:N0} {sample.ActiveVirtualUsers,10:N0} " +
+                    $"{sample.ErrorRate,7:P1} {sample.ResponseP50Milliseconds,7:F2}ms {sample.ResponseP95Milliseconds,7:F2}ms " +
+                    $"{sample.ResponseP99Milliseconds,7:F2}ms {sample.MaxSchedulingDelayMilliseconds,8:F2}ms");
+            }
         }
 
         if (CustomMetrics.Count > 0)
@@ -158,12 +182,18 @@ public sealed record LoadTestReport
     /// </para>
     /// </summary>
     /// <param name="thresholds">Verdict des seuils a inclure, si des seuils ont ete configures.</param>
-    public string ToHtml(ThresholdReport? thresholds = null)
+    /// <param name="autoRefreshSeconds">
+    /// Si renseigne, la page se recharge elle-meme a cet intervalle — c'est ce qui transforme ce
+    /// rapport statique en tableau de bord temps reel (voir <c>StandaloneHost</c>,
+    /// <c>/report/live.html</c>). <see langword="null"/> par defaut : comportement inchange, la
+    /// page ne se rafraichit jamais seule.
+    /// </param>
+    public string ToHtml(ThresholdReport? thresholds = null, int? autoRefreshSeconds = null)
     {
         string heading = $"Rapport Tempest — {Scope}";
 
         StringBuilder html = new();
-        AppendHtmlShellStart(html, heading);
+        AppendHtmlShellStart(html, heading, autoRefreshSeconds);
         AppendBodyContent(html, thresholds, heading);
         html.AppendLine("</body>");
         html.AppendLine("</html>");
@@ -177,12 +207,18 @@ public sealed record LoadTestReport
     /// a besoin d'un unique document pour plusieurs rapports plutot que d'un par scenario (des
     /// <c>&lt;html&gt;</c>/<c>&lt;head&gt;</c> imbriques ne seraient pas un document valide).
     /// </summary>
-    internal static void AppendHtmlShellStart(StringBuilder html, string titleText)
+    internal static void AppendHtmlShellStart(StringBuilder html, string titleText, int? autoRefreshSeconds = null)
     {
         html.AppendLine("<!doctype html>");
         html.AppendLine("<html lang=\"fr\">");
         html.AppendLine("<head>");
         html.AppendLine("<meta charset=\"utf-8\">");
+
+        if (autoRefreshSeconds is { } seconds)
+        {
+            html.AppendLine(FormattableString.Invariant($"<meta http-equiv=\"refresh\" content=\"{seconds}\">"));
+        }
+
         html.AppendLine($"<title>{WebUtility.HtmlEncode(titleText)}</title>");
         html.AppendLine("""
             <style>
@@ -260,6 +296,43 @@ public sealed record LoadTestReport
         html.AppendLine("</tbody>");
         html.AppendLine("</table>");
 
+        AppendHistograms(html);
+
+        if (TimeSeries.Count > 0)
+        {
+            html.AppendLine("<h2>Serie temporelle</h2>");
+
+            string chart = BuildTimeSeriesChart(TimeSeries);
+            if (chart.Length > 0)
+            {
+                html.AppendLine(chart);
+            }
+
+            html.AppendLine("<table>");
+            html.AppendLine(
+                "<thead><tr><th>t</th><th>it/s</th><th>VUs actifs</th><th>Echecs</th><th>p50</th><th>p95</th><th>p99</th><th>Dette max</th></tr></thead>");
+            html.AppendLine("<tbody>");
+
+            foreach (TimeSeriesSample sample in TimeSeries)
+            {
+                html.AppendLine(FormattableString.Invariant($"""
+                    <tr>
+                      <td>{sample.ElapsedSeconds:F1} s</td>
+                      <td>{sample.IterationsPerSecond:N0}</td>
+                      <td>{sample.ActiveVirtualUsers:N0}</td>
+                      <td>{sample.ErrorRate:P1}</td>
+                      <td>{sample.ResponseP50Milliseconds:F2} ms</td>
+                      <td>{sample.ResponseP95Milliseconds:F2} ms</td>
+                      <td>{sample.ResponseP99Milliseconds:F2} ms</td>
+                      <td>{sample.MaxSchedulingDelayMilliseconds:F2} ms</td>
+                    </tr>
+                    """));
+            }
+
+            html.AppendLine("</tbody>");
+            html.AppendLine("</table>");
+        }
+
         if (CustomMetrics.Count > 0)
         {
             html.AppendLine("<h2>Metriques personnalisees</h2>");
@@ -287,6 +360,173 @@ public sealed record LoadTestReport
         {
             AppendThresholds(html, thresholds);
         }
+    }
+
+    // Dimensions fixes du graphe : coherentes avec la largeur des tableaux ci-dessus (viewBox
+    // SVG, donc redimensionne proprement par le navigateur quel que soit l'ecran).
+    private const int HISTOGRAM_CHART_WIDTH = 700;
+    private const int HISTOGRAM_CHART_HEIGHT = 140;
+
+    /// <summary>
+    /// Rend, pour chaque etape ayant au moins une mesure, la distribution de son temps de
+    /// reponse corrige — le graphe que <c>ToTable</c> ne peut pas offrir, et que les seuls
+    /// centiles du tableau ci-dessus ne montrent pas : une distribution bimodale et un p95 propre
+    /// se ressemblent en centiles, jamais en histogramme.
+    /// </summary>
+    private void AppendHistograms(StringBuilder html)
+    {
+        List<(string Name, string Svg)> charts = [];
+        foreach (StepStatistics step in Steps)
+        {
+            string svg = BuildHistogramChart(step.ResponseHistogram);
+            if (svg.Length > 0)
+            {
+                charts.Add((step.Name, svg));
+            }
+        }
+
+        if (charts.Count == 0)
+        {
+            return;
+        }
+
+        html.AppendLine("<h2>Distribution des temps de reponse</h2>");
+        foreach ((string name, string svg) in charts)
+        {
+            html.AppendLine($"<h3>{WebUtility.HtmlEncode(name)}</h3>");
+            html.AppendLine(svg);
+        }
+    }
+
+    /// <summary>
+    /// Rend un histogramme en barres a partir des paniers bruts d'un <see cref="HistogramSnapshot"/>.
+    /// <para>
+    /// Les 3072 paniers de <see cref="LatencyHistogram"/> sont bien trop fins pour un graphe
+    /// lisible : on les regroupe par octave (<see cref="LatencyHistogram.PRECISION_BITS"/> bits,
+    /// soit le decoupage natif de l'histogramme lui-meme, pas une resolution inventee ici), puis
+    /// on ne garde que les octaves qui couvrent reellement la distribution observee — le reste du
+    /// tableau resterait a zero et n'ajouterait que du vide au graphe.
+    /// </para>
+    /// </summary>
+    private static string BuildHistogramChart(HistogramSnapshot histogram)
+    {
+        if (histogram.TotalCount == 0L)
+        {
+            return string.Empty;
+        }
+
+        const int groupBits = LatencyHistogram.PRECISION_BITS;
+        int groupCount = LatencyHistogram.BucketCount >> groupBits;
+        long[] groupCounts = new long[groupCount];
+
+        for (int i = 0; i < histogram.Buckets.Length; i++)
+        {
+            groupCounts[i >> groupBits] += histogram.Buckets[i];
+        }
+
+        int first = 0;
+        while (first < groupCount && groupCounts[first] == 0L)
+        {
+            first++;
+        }
+
+        int last = groupCount - 1;
+        while (last > first && groupCounts[last] == 0L)
+        {
+            last--;
+        }
+
+        int visibleCount = last - first + 1;
+        long maxCount = 0L;
+        for (int i = first; i <= last; i++)
+        {
+            maxCount = Math.Max(maxCount, groupCounts[i]);
+        }
+
+        double barWidth = HISTOGRAM_CHART_WIDTH / (double)visibleCount;
+
+        StringBuilder svg = new();
+        svg.Append(FormattableString.Invariant(
+            $"""<svg viewBox="0 0 {HISTOGRAM_CHART_WIDTH} {HISTOGRAM_CHART_HEIGHT + 22}" width="100%">"""));
+
+        for (int i = 0; i < visibleCount; i++)
+        {
+            int group = first + i;
+            long count = groupCounts[group];
+            double height = count / (double)maxCount * HISTOGRAM_CHART_HEIGHT;
+            double x = i * barWidth;
+            double y = HISTOGRAM_CHART_HEIGHT - height;
+            double upperBoundMs = LatencyHistogram.UpperBoundOf(((group + 1) << groupBits) - 1) / 1_000d;
+
+            svg.Append(FormattableString.Invariant($"""
+                <rect x="{x:F1}" y="{y:F1}" width="{Math.Max(barWidth - 1d, 0.5d):F1}" height="{Math.Max(height, 0.5d):F1}" fill="#0969da"><title>jusqu'a {upperBoundMs:F1} ms : {count:N0}</title></rect>
+                """));
+        }
+
+        svg.Append(FormattableString.Invariant($"""
+            <text x="0" y="{HISTOGRAM_CHART_HEIGHT + 16}" font-size="11" fill="#555">{histogram.MinMicroseconds / 1_000d:F1} ms</text>
+            <text x="{HISTOGRAM_CHART_WIDTH}" y="{HISTOGRAM_CHART_HEIGHT + 16}" text-anchor="end" font-size="11" fill="#555">{histogram.MaxMicroseconds / 1_000d:F1} ms</text>
+            """));
+
+        svg.Append("</svg>");
+        return svg.ToString();
+    }
+
+    private const int TIME_SERIES_CHART_WIDTH = 700;
+    private const int TIME_SERIES_CHART_HEIGHT = 160;
+
+    /// <summary>
+    /// Rend la trajectoire du tir en graphe : debit et dette d'ordonnancement superposes sur le
+    /// meme axe des temps, chacun mis a l'echelle de son propre maximum (leurs unites n'ont rien
+    /// de comparable).
+    /// <para>
+    /// C'est le graphe que ni <c>ToTable</c> ni un outil qui ne corrige pas le
+    /// <i>coordinated omission</i> ne peuvent produire : une dette qui grimpe pendant que le
+    /// debit stagne ou chute est la signature visuelle d'un injecteur ou d'une cible saturee —
+    /// invisible dans un simple tableau de centiles.
+    /// </para>
+    /// </summary>
+    private static string BuildTimeSeriesChart(IReadOnlyList<TimeSeriesSample> series)
+    {
+        if (series.Count < 2)
+        {
+            return string.Empty;
+        }
+
+        double maxElapsed = series[^1].ElapsedSeconds;
+        double maxThroughput = 0d;
+        double maxDebt = 0d;
+        foreach (TimeSeriesSample sample in series)
+        {
+            maxThroughput = Math.Max(maxThroughput, sample.IterationsPerSecond);
+            maxDebt = Math.Max(maxDebt, sample.MaxSchedulingDelayMilliseconds);
+        }
+
+        StringBuilder throughputPoints = new();
+        StringBuilder debtPoints = new();
+
+        foreach (TimeSeriesSample sample in series)
+        {
+            double x = maxElapsed <= 0d ? 0d : sample.ElapsedSeconds / maxElapsed * TIME_SERIES_CHART_WIDTH;
+            double throughputY = maxThroughput <= 0d
+                ? TIME_SERIES_CHART_HEIGHT
+                : TIME_SERIES_CHART_HEIGHT - (sample.IterationsPerSecond / maxThroughput * TIME_SERIES_CHART_HEIGHT);
+            double debtY = maxDebt <= 0d
+                ? TIME_SERIES_CHART_HEIGHT
+                : TIME_SERIES_CHART_HEIGHT - (sample.MaxSchedulingDelayMilliseconds / maxDebt * TIME_SERIES_CHART_HEIGHT);
+
+            throughputPoints.Append(FormattableString.Invariant($"{x:F1},{throughputY:F1} "));
+            debtPoints.Append(FormattableString.Invariant($"{x:F1},{debtY:F1} "));
+        }
+
+        return FormattableString.Invariant($"""
+            <svg viewBox="0 0 {TIME_SERIES_CHART_WIDTH} {TIME_SERIES_CHART_HEIGHT + 26}" width="100%">
+              <polyline points="{throughputPoints}" fill="none" stroke="#0969da" stroke-width="2" />
+              <polyline points="{debtPoints}" fill="none" stroke="#cf222e" stroke-width="2" />
+              <text x="0" y="{TIME_SERIES_CHART_HEIGHT + 20}" font-size="11" fill="#0969da">— debit (max {maxThroughput:F0} it/s)</text>
+              <text x="{TIME_SERIES_CHART_WIDTH}" y="{TIME_SERIES_CHART_HEIGHT + 20}" text-anchor="end" font-size="11" fill="#cf222e">— dette d'ordonnancement (max {maxDebt:F1} ms)</text>
+            </svg>
+            """);
     }
 
     private static void AppendThresholds(StringBuilder html, ThresholdReport thresholds)

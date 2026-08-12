@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using Tempest.Application.Execution;
+using Tempest.Application.Metrics;
 using Tempest.Domain.Execution;
 using Tempest.Domain.Metrics;
 using Tempest.Host.Configuration;
@@ -40,6 +41,17 @@ internal sealed class LoadTestHostedService(
 
         logger.LogInformation("Demarrage du tir de charge.");
 
+        // Jeton distinct de celui du tir : stoppingToken ne se declenche qu'a l'arret de l'hote,
+        // jamais a la seule fin naturelle du tir — sans ce jeton separe, le releve periodique
+        // tournerait indefiniment apres un tir termine normalement (duree ou nombre d'iterations
+        // atteint sans jamais annuler stoppingToken).
+        using CancellationTokenSource timeSeriesCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        TimeSeriesRecorder timeSeries = new(
+            metricsProcessor.Aggregator,
+            engine.ActiveVirtualUsers,
+            TimeSpan.FromSeconds(options.TimeSeriesIntervalSeconds));
+        Task timeSeriesTask = timeSeries.RunAsync(timeSeriesCts.Token);
+
         LoadTestSummary summary;
         try
         {
@@ -50,6 +62,10 @@ internal sealed class LoadTestHostedService(
             // Toujours drainer, meme si le tir a ete annule : sans ce drainage, la queue du
             // tir — les mesures les plus recentes — resterait perdue dans le canal.
             await metricsProcessor.StopAsync().ConfigureAwait(false);
+
+            // Arrete le releve periodique des que le tir se termine, quelle qu'en soit la raison.
+            await timeSeriesCts.CancelAsync().ConfigureAwait(false);
+            await timeSeriesTask.ConfigureAwait(false);
         }
 
         if (logger.IsEnabled(LogLevel.Information))
@@ -57,7 +73,12 @@ internal sealed class LoadTestHostedService(
             logger.LogInformation("Tir termine. {Summary}", summary);
         }
 
-        LoadTestReport report = metricsProcessor.Aggregator.Snapshot(StatisticsScope.Cumulative) with { Tags = workflow.Tags, ClosedModel = options.IsClosedModel };
+        LoadTestReport report = metricsProcessor.Aggregator.Snapshot(StatisticsScope.Cumulative) with
+        {
+            Tags = workflow.Tags,
+            ClosedModel = options.IsClosedModel,
+            TimeSeries = timeSeries.Samples,
+        };
         if (logger.IsEnabled(LogLevel.Information))
         {
             logger.LogInformation("{Report}", report.ToTable());

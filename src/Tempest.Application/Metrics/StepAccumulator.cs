@@ -176,6 +176,7 @@ internal sealed class StepAccumulator
             MaxSchedulingDelayMicroseconds = ToMicroseconds(_maxSchedulingDelayTicks),
             Response = response.Snapshot(),
             Service = service.Snapshot(),
+            ResponseHistogram = response.Export(),
         };
     }
 

@@ -182,8 +182,9 @@ dotnet run --project src/Tempest.Host -c Release                # tire, écoute 
 
 Pendant et après le tir : `http://localhost:5280/report/live` (fenêtre glissante),
 `.../report` (cumulé), `.../report.html` (le même rapport cumulé, en page HTML autonome —
-lisible directement dans un navigateur, sans serveur ni JSON à interpréter), `.../metrics`
-(Prometheus).
+lisible directement dans un navigateur, sans serveur ni JSON à interpréter), `.../report/live.html`
+(la fenêtre glissante en page HTML, qui se recharge seule pendant le tir — voir
+[Tableau de bord temps réel](#tableau-de-bord-temps-réel)), `.../metrics` (Prometheus).
 
 `/report.html` (`LoadTestReport.ToHtml`) reprend les mêmes chiffres que `/report`, plus le
 verdict des seuils configurés s'il y en a (même contenu que `/thresholds`, en couleur) — CSS et
@@ -635,6 +636,110 @@ dans le verdict, pas disparaître dans un pipeline qui continue de passer au ver
 Vérifié par un vrai tir : seuil trop strict → code de sortie 1, seuil desserré → code de sortie
 0, `ExitAfterRun` absent → l'hôte reste actif comme à l'étape précédente. `/thresholds` expose
 le même verdict en JSON, à tout moment du tir.
+
+## Série temporelle
+
+Un rapport `/report` classique ne dit que l'état final : le débit moyen sur tout le tir, jamais
+le moment où les centiles ont décroché. `LoadTestReport.TimeSeries` ajoute la trajectoire — un
+point relevé à intervalle régulier (`Tempest:TimeSeriesIntervalSeconds`, 2 s par défaut), du
+début à la fin du tir, chacun portant le débit, le nombre d'utilisateurs virtuels actifs, le
+taux d'erreur, les centiles p50/p95/p99 et la dette d'ordonnancement maximale — tous relevés sur
+la fenêtre glissante, exactement comme `/report/live`.
+
+```
+serie temporelle (fenetre glissante)
+      t     it/s vus actifs   echecs       p50       p95       p99  dette max
+   2,0s        0          3   0,0 %    0,00ms    0,00ms    0,00ms     0,00ms
+   4,1s       12          7   0,0 % 1384,45ms 2080,77ms 2118,87ms  2043,32ms
+   6,1s       38         10   0,0 %  626,69ms 1941,50ms 2118,87ms  2043,32ms
+   8,1s       76         14   0,0 %  532,48ms 1736,70ms 2080,77ms  2043,32ms
+  10,1s      121         18   0,0 %  434,18ms 1384,45ms 2023,42ms  2043,32ms
+```
+
+Ce relevé, pris pendant une montée de 2 à 20 utilisateurs virtuels sur 10 s, rend visible ce
+qu'un seul état final aurait caché : l'effectif qui grimpe (colonne « vus actifs »), le débit qui
+suit, et une dette d'ordonnancement qui apparaît dès que la cible commence à ne plus absorber la
+charge — la même donnée que `/report/live`, mais gardée dans le temps plutôt qu'écrasée à chaque
+sondage.
+
+Techniquement, `TimeSeriesRecorder` (`Tempest.Application.Metrics`) tourne en parallèle du moteur
+plutôt qu'à l'intérieur de lui — `TargetRpsLoadEngine` ne détient aucune référence vers un
+`MetricsAggregator`, il ne fait qu'écrire des mesures dans un puits — et relève à chaque
+intervalle un `Snapshot(StatisticsScope.Sliding)` plus une nouvelle jauge,
+`ActiveVirtualUserGauge` (`Tempest.Application.Execution`), incrémentée/décrémentée par chaque
+`VirtualUserWorker` à l'entrée et à la sortie de sa boucle de consommation — la seule façon
+d'observer la concurrence *réelle* dans le temps, par opposition au plafond ou à l'effectif
+configuré. `LoadTestHostedService` démarre ce relevé sur un jeton d'annulation distinct de celui
+du tir : `stoppingToken` ne se déclenche qu'à l'arrêt de l'hôte, jamais à la seule fin naturelle
+d'un tir à durée ou à itérations fixes, donc le relevé a besoin de son propre jeton, annulé dès
+que le tir se termine, pour ne pas tourner indéfiniment après.
+
+Un tir plus court que l'intervalle de relevé garde toujours au moins un point — le dernier
+relevé est pris sans condition juste avant de rendre la main, jamais seulement à l'intérieur de
+la boucle périodique.
+
+Limite de cette version : non alimentée pour un tir à
+[scénarios concurrents](#scénarios-concurrents) (`MultiScenarioRunner` construit sa propre chaîne
+de mesure sans enregistreur de série temporelle). Rendue en table *et* en graphe — voir
+[Courbe de dette d'ordonnancement superposée](#courbe-de-dette-dordonnancement-superposée)
+ci-dessous. Vérifié par un vrai tir (`--vus-from 2 --vus-to 20 --duration 10s`) contre
+`Tempest.SampleTarget` : effectif actif croissant fidèle à la rampe (3 → 7 → 10 → 14 → 18), débit
+croissant en conséquence, dernier point pris après la fin du tir avec effectif retombé à 0.
+
+### Distribution des temps de réponse
+
+Un centile ment par omission : un p95 propre et une distribution bimodale (la moitié des requêtes
+très rapides, l'autre très lentes) peuvent produire exactement le même chiffre. `LatencyHistogram`
+détient déjà les paniers bruts qui feraient la différence — il les utilise pour calculer les
+centiles — mais ne les exposait pas. `StepStatistics.ResponseHistogram` les publie, un histogramme
+par étape, agrégés dans `LoadTestReport.ToHtml` sous une section « Distribution des temps de
+réponse » : les 3 072 paniers de `LatencyHistogram` (bien trop fins pour un graphe lisible) sont
+regroupés par octave — le découpage natif de l'histogramme lui-même — puis seules les octaves qui
+couvrent réellement la distribution observée sont rendues en barres SVG, avec l'infobulle de
+chaque barre donnant sa borne haute exacte et son nombre de mesures.
+
+Limite : seul le temps de réponse corrigé (`Response`) est exposé, jamais le temps de service brut
+(`Service`) — c'est la distribution à publier, voir la remarque de classe de `StepStatistics`.
+Vérifié par un vrai tir bridé (`--rps 300 --max-rps 20`) contre `Tempest.SampleTarget` : un
+histogramme par étape dans le rapport HTML, cohérent avec les percentiles publiés à côté, et le
+même histogramme brut (3 072 paniers) présent dans le rapport JSON.
+
+### Courbe de dette d'ordonnancement superposée
+
+Une table de centiles ne montre jamais *quand* un injecteur ou une cible décroche — seulement
+l'état final. `LoadTestReport.ToHtml` superpose désormais, sur `LoadTestReport.TimeSeries`, un
+graphe en ligne SVG : débit et dette d'ordonnancement maximale, chacun mis à l'échelle de son
+propre maximum (leurs unités n'ont rien de comparable), sur le même axe des temps. Une dette qui
+grimpe pendant que le débit stagne ou chute est la signature visuelle d'une saturation — invisible
+dans un tableau de centiles, et le graphe qu'aucun outil qui ne corrige pas le *coordinated
+omission* ne peut produire.
+
+Rendu uniquement à partir de deux points de trajectoire ou plus (une seule mesure ne fait pas une
+courbe) ; sans effet si `TimeSeries` est vide, même limite que la série temporelle elle-même.
+Vérifié par un vrai tir volontairement bridé bien en deçà de la demande (`--rps 300 --max-rps 20`,
+soit 15 fois le débit réellement transmis) : la courbe de débit plafonne immédiatement à 20 it/s
+tandis que la dette d'ordonnancement grimpe de façon quasi linéaire, exactement le retard imposé
+par le bridage — visible en un coup d'œil, là où le tableau juste en dessous demande de parcourir
+des dizaines de lignes.
+
+### Tableau de bord temps réel
+
+`/report/live` existe depuis longtemps, mais reste du JSON brut — illisible pendant un tir en
+cours sans outil pour l'interpréter. `/report/live.html` sert le même
+`aggregator.Snapshot(StatisticsScope.Sliding)`, cette fois rendu par `LoadTestReport.ToHtml` (donc
+avec la même distribution de latences et la même mise en page que le rapport final), et ajoute une
+balise `<meta http-equiv="refresh">` qui recharge la page seule toutes les
+`TempestHostOptions.LiveDashboardRefreshSeconds` (3 s par défaut) : ouvrir cette URL dans un
+navigateur pendant le tir suffit, sans script ni extension.
+
+Un rechargement de page entier plutôt qu'un flux `EventSource`/SSE — aucun des deux n'existait déjà
+dans `Tempest.Host`, et un tableau de bord d'opérateur n'a pas besoin d'une latence de mise à jour
+inférieure à quelques secondes pour rester utile. Limite : comme `/report/live`, non alimenté pour
+un tir à [scénarios concurrents](#scénarios-concurrents). Vérifié par un vrai tir : `/report/live.html`
+interrogé deux fois à quelques secondes d'écart pendant la montée en charge par défaut montre le
+débit progresser (49 puis 99 itérations/s) avec la balise de rechargement présente à chaque fois,
+tandis que `/report.html` (rapport cumulé, sans le paramètre d'auto-rechargement) ne la porte
+jamais.
 
 ## Comparaison entre tirs
 
@@ -1569,6 +1674,8 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 36** — [Itérations partagées et itérations par utilisateur](#itérations-partagées-et-itérations-par-utilisateur) : `IterationCountScheduler` (`Tempest.Application.Execution`, implémente `ILoadScheduler` en s'arrêtant sur un nombre fixe de jetons plutôt qu'une durée), `--iterations <n>` (itérations partagées, `TempestHostOptions.SharedIterations`) et `--vus <n> --iterations-per-vu <k>` (itérations par utilisateur, `TempestHostOptions.IterationsPerVirtualUser`) en CLI. **Clôt entièrement le bullet « exécuteurs multiples » et la roadmap phase 3.** `VirtualUserWorker` accepte désormais un quota personnel optionnel au-delà duquel il s'arrête de lui-même sans fermer la file partagée — combiné à un `IterationCountScheduler` dimensionné à effectif × quota, cet auto-arrêt garantit par construction que chaque utilisateur virtuel en fait exactement sa part, prouvé par un test qui trace `VirtualUserId` par itération et vérifie que les 8 utilisateurs virtuels en ont fait exactement 15 chacun, ni plus ni moins. `TempestHostOptions.IsClosedModel` couvre désormais aussi ces deux modes. Limite documentée : mode distribué non pris en charge, comme pour le reste du modèle fermé. Vérifié par de vrais tirs (`--iterations 300 --max-vus 20` puis `--vus 10 --iterations-per-vu 20`) : 300 puis 200 itérations exactement, avertissement présent en texte et en JSON, modèle ouvert inchangé en régression
 - [x] **Étape 37** — [Scénarios concurrents](#scénarios-concurrents) : `Tempest:Scenarios` (`TempestHostOptions.Scenarios`/`ScenarioOptions`), `MultiScenarioRunner`/`MultiScenarioHost`/`MultiScenarioLoadTestHostedService` (`Tempest.Host`), `ScenarioRunSpec` (`Tempest.Application.Execution`), `ScenarioReport`/`MultiScenarioReport` (`Tempest.Domain.Metrics`). **Clôt le bullet « scénarios concurrents » de la phase 3, ne laissant plus que le bridage.** Chaque scénario construit sa propre chaîne complète à la main plutôt que via le conteneur d'injection de dépendances (qui n'enregistre qu'un singleton de chaque type) — c'est cet isolement complet, pas un préfixe de nom, qui garantit que deux scénarios déclarant la même étape ne voient jamais leurs mesures fusionnées, prouvé par un test qui fait tourner deux scénarios partageant un nom d'étape et vérifie que chacun garde son propre compte. `LoadTestReport.ToHtml` refactorisé (extraction de `AppendHtmlShellStart`/`AppendBodyContent`) pour permettre un document HTML unique avec une section par scénario, sans changement de sortie pour le tir simple (569 tests existants toujours verts après coup). Limites documentées : mode distribué non pris en charge, `/report/live` et `/metrics` non alimentés. Vérifié par un vrai tir à deux scénarios (modèle ouvert + modèle fermé, étape de même nom `browse` dans les deux) contre `Tempest.SampleTarget` : 100 puis 943 itérations indépendantes, jamais fusionnées, étiquettes et seuils propres à chacune, tir simple inchangé en régression
 - [x] **Étape 38** — [Bridage](#bridage) : `RateCappedScheduler` (`Tempest.Application.Execution`, décorateur d'`ILoadScheduler`), `TempestHostOptions.MaxRequestsPerSecond`/`ScenarioOptions.MaxRequestsPerSecond`, `--max-rps` en CLI. **Clôt entièrement la phase 3 de la roadmap.** Le décorateur enveloppe le `ChannelWriter` remis à l'ordonnanceur choisi plutôt que son `Run` lui-même, ce qui le fait composer identiquement avec les quatre ordonnanceurs existants sans en modifier aucun ; le retard qu'il impose porte sur la transmission, jamais sur `ExecutionToken.ScheduledTicks` déjà fixé par l'ordonnanceur enveloppé, donc il se mesure côté rapport exactement comme une dette d'ordonnancement plutôt que d'être masqué. `--max-rps` n'est mutuellement exclusif avec rien (overlay, pas un cinquième modèle) et compose avec `Tempest:Scenarios`, où `ScenarioOptions.MaxRequestsPerSecond` retombe sur le plafond global si absent — même convention que `TargetBaseUrl`. Vérifié par de vrais tirs contre `Tempest.SampleTarget` : `--rps 100 --duration 5s --max-rps 20` ramené à 20 RPS exactement (dette ~20s, cohérente avec le retard imposé) ; `--vus 10 --duration 5s --max-rps 15` (176 RPS naturels avec ces 10 utilisateurs virtuels) ramené à 15 RPS exactement ; scénarios concurrents avec plafond propre (5 RPS) et repli sur le plafond global (8 RPS) tous deux respectés
+- [x] **Étape 39** — [Série temporelle](#série-temporelle) : `TimeSeriesSample`/`LoadTestReport.TimeSeries` (`Tempest.Domain.Metrics`), `TimeSeriesRecorder` (`Tempest.Application.Metrics`), `ActiveVirtualUserGauge` (`Tempest.Application.Execution`), `TempestHostOptions.TimeSeriesIntervalSeconds`. **Premier bullet de la phase 4 (« un rapport au niveau de Gatling »).** Le relevé tourne en parallèle du moteur sur un jeton d'annulation distinct de celui de l'hôte — sans quoi il ne s'arrêterait jamais après un tir à durée ou itérations fixes, `stoppingToken` ne se déclenchant qu'à l'arrêt de l'hôte. `ActiveVirtualUserGauge` est la première mesure de concurrence *réelle* dans le temps, par opposition au plafond configuré : chaque `VirtualUserWorker` l'incrémente/décrémente à l'entrée et à la sortie de sa boucle de consommation, quelle que soit la raison de la sortie. Un tir plus court que l'intervalle de relevé garde toujours au moins un point. Limites documentées : non alimentée pour les scénarios concurrents (`MultiScenarioRunner`), rendue en table pour l'instant, pas encore en courbe. Vérifié par un vrai tir (`--vus-from 2 --vus-to 20 --duration 10s`) : effectif actif croissant fidèle à la rampe (3 → 7 → 10 → 14 → 18), débit croissant en conséquence, dans le rapport texte et JSON
+- [x] **Étape 40** — [Distribution des temps de réponse](#distribution-des-temps-de-réponse), [Courbe de dette d'ordonnancement superposée](#courbe-de-dette-dordonnancement-superposée) et [Tableau de bord temps réel](#tableau-de-bord-temps-réel) : `LatencyHistogram.UpperBoundOf` rendu public, `StepStatistics.ResponseHistogram` (paniers bruts, une entrée par étape), rendu en barres SVG groupées par octave dans `LoadTestReport.ToHtml` ; le même `ToHtml` superpose désormais débit et dette d'ordonnancement (`LoadTestReport.TimeSeries`) sur un graphe en ligne SVG, chacun à l'échelle de son propre maximum ; `/report/live.html` (`TempestHostOptions.LiveDashboardRefreshSeconds`) sert ce même rendu sur la fenêtre glissante avec une balise `<meta http-equiv="refresh">`, qui le recharge seul pendant le tir. **Clôt entièrement les trois bullets restants de la phase 4 et la phase 4 elle-même.** Le regroupement par octave n'invente aucune résolution : c'est le découpage natif de `LatencyHistogram` (`PRECISION_BITS`), pas une approximation ajoutée pour l'affichage. `<meta http-equiv="refresh">` plutôt que SSE/`EventSource` (aucun des deux n'existait déjà dans `Tempest.Host`) : un rechargement de page entier reste largement suffisant pour un tableau de bord d'opérateur, sans nouvelle infrastructure temps réel à maintenir. Limite documentée : comme `/report/live`, `/report/live.html` n'est pas alimenté pour les scénarios concurrents. Vérifié par de vrais tirs contre `Tempest.SampleTarget` : un tir bridé (`--rps 300 --max-rps 20`) produit un histogramme par étape cohérent avec les centiles déjà publiés et une dette d'ordonnancement visible sur la courbe superposée (rapport HTML et JSON) ; `/report/live.html` interrogé deux fois pendant un tir en cours montre un débit croissant (49 puis 99 it/s) avec la balise de rechargement présente, `/report.html` cumulé restant sans cette balise
 
 ## Roadmap initiale — close
 

@@ -30,6 +30,7 @@ public sealed class LoadTestReportComparisonTests
             MaxSchedulingDelayMicroseconds = 0L,
             Response = latency,
             Service = latency,
+            ResponseHistogram = HistogramSnapshot.Empty,
         };
     }
 

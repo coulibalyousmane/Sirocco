@@ -16,6 +16,7 @@ public sealed class MultiScenarioReportTests
         MaxSchedulingDelayMicroseconds = 0L,
         Response = LatencySnapshot.Empty,
         Service = LatencySnapshot.Empty,
+        ResponseHistogram = HistogramSnapshot.Empty,
     };
 
     private static LoadTestReport CreateReport(string stepName, long count, long metricsDropped = 0L, bool closedModel = false) => new()

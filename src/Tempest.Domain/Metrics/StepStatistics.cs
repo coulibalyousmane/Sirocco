@@ -52,6 +52,14 @@ public sealed record StepStatistics
     /// </summary>
     public required LatencySnapshot Service { get; init; }
 
+    /// <summary>
+    /// Etat brut des paniers du temps de reponse corrige (voir <see cref="Response"/>) : ce que
+    /// <see cref="LoadTestReport.ToHtml"/> groupe et rend en histogramme. Le temps de service
+    /// brut n'a pas d'equivalent expose : <see cref="Response"/> est la distribution a publier,
+    /// voir la remarque de classe.
+    /// </summary>
+    public required HistogramSnapshot ResponseHistogram { get; init; }
+
     /// <summary>Nombre de mesures qui ne sont pas des succes.</summary>
     public long FailureCount => Count - SuccessCount;
 
@@ -80,6 +88,7 @@ public sealed record StepStatistics
         MaxSchedulingDelayMicroseconds = 0L,
         Response = LatencySnapshot.Empty,
         Service = LatencySnapshot.Empty,
+        ResponseHistogram = HistogramSnapshot.Empty,
     };
 
     /// <inheritdoc />

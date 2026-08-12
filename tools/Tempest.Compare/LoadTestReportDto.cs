@@ -70,5 +70,8 @@ internal sealed class StepStatisticsDto
         MaxSchedulingDelayMicroseconds = MaxSchedulingDelayMicroseconds,
         Response = Response,
         Service = Service,
+        // Non transporte par ce DTO : Tempest.Compare ne diffe que des centiles deja
+        // calcules, jamais les paniers bruts d'un histogramme.
+        ResponseHistogram = HistogramSnapshot.Empty,
     };
 }

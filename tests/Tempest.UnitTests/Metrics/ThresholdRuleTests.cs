@@ -38,6 +38,7 @@ public sealed class ThresholdRuleTests
             MaxSchedulingDelayMicroseconds = maxSchedulingDelayMicroseconds,
             Response = response,
             Service = response,
+            ResponseHistogram = HistogramSnapshot.Empty,
         };
     }
 

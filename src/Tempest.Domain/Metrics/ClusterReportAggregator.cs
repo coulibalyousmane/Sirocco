@@ -119,6 +119,7 @@ public static class ClusterReportAggregator
                 MaxSchedulingDelayMicroseconds = _maxSchedulingDelayMicroseconds,
                 Response = _response.Snapshot(),
                 Service = _service.Snapshot(),
+                ResponseHistogram = _response.Export(),
             };
         }
     }

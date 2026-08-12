@@ -222,13 +222,22 @@ Le rapport de Gatling est la raison pour laquelle beaucoup d'équipes le choisis
 Tempest est un tableau statique : il donne l'état final, jamais la trajectoire. Or c'est la
 trajectoire — le moment où les centiles décrochent — qui explique une dégradation.
 
-- **Séries temporelles** — centiles dans le temps, débit, utilisateurs actifs, taux d'erreur, sur
-  un même axe de temps.
-- **Distribution des temps de réponse** en histogramme : la donnée que `LatencyHistogram` possède
-  déjà (ses paniers) et que le rapport n'expose pas.
-- **Courbe de dette d'ordonnancement** superposée — le graphe que personne d'autre ne peut
-  produire, à mettre en avant.
-- **Interface web temps réel** pendant le tir, au-delà du JSON de `/report/live`.
+- ~~**Séries temporelles**~~ — fait, voir [Série temporelle](README.md#série-temporelle) :
+  `TimeSeriesRecorder` relève périodiquement centiles, débit, utilisateurs actifs (nouvelle
+  `ActiveVirtualUserGauge`) et taux d'erreur sur un même axe de temps, gardés dans
+  `LoadTestReport.TimeSeries`. Limites : non alimentée pour les scénarios concurrents, rendue en
+  table pour l'instant — la visualisation en courbe reste aux deux bullets suivants.
+- ~~**Distribution des temps de réponse**~~ — fait : `StepStatistics.ResponseHistogram` expose les
+  paniers bruts de `LatencyHistogram` (déjà là, jamais publiés), regroupés par octave — le
+  découpage natif de l'histogramme, pas une résolution inventée pour l'occasion — et rendus en
+  barres SVG, une distribution par étape, dans `ToHtml`.
+- ~~**Courbe de dette d'ordonnancement**~~ — fait : `LoadTestReport.ToHtml` superpose désormais
+  débit et dette d'ordonnancement sur le même axe de temps (`LoadTestReport.TimeSeries`), chacun à
+  l'échelle de son propre maximum, en SVG inline — le graphe que personne d'autre ne peut produire.
+- ~~**Interface web temps réel**~~ — fait : `/report/live.html` (`TempestHostOptions.LiveDashboardRefreshSeconds`,
+  3 s par défaut) rend le même rapport HTML sur la fenêtre glissante, avec une balise
+  `<meta http-equiv="refresh">` qui le recharge seul pendant le tir — au-delà du JSON brut de
+  `/report/live`. **Clôt entièrement la phase 4.**
 
 ### Phase 5 — Réduire le coût du premier scénario
 
@@ -331,8 +340,14 @@ plusieurs de ces modèles en parallèle dans le même tir, chacun isolé jusque 
 de mesure. [Bridage](README.md#bridage) (`--max-rps`) plafonne le débit réel par-dessus n'importe
 lequel de ces modèles, y compris par scénario dans un tir à scénarios concurrents.
 
-Le reste peut attendre des retours d'utilisateurs réels. Construire les phases 4 à 8 sans eux,
-c'est deviner.
+**La phase 4 est entièrement traitée.** Voir [Série temporelle](README.md#série-temporelle),
+[Distribution des temps de réponse](README.md#distribution-des-temps-de-réponse) et [Tableau de
+bord temps réel](README.md#tableau-de-bord-temps-réel) : `TimeSeriesRecorder` relève
+périodiquement la trajectoire du tir, gardée dans `LoadTestReport.TimeSeries` ; `ToHtml` la rend
+désormais en graphe (débit et dette d'ordonnancement superposés) et ajoute un histogramme par
+étape à partir des paniers déjà détenus par `LatencyHistogram` ; `/report/live.html` transforme la
+fenêtre glissante déjà servie en JSON par `/report/live` en tableau de bord HTML qui se recharge
+seul pendant le tir. Les phases 5 à 8 peuvent toujours attendre des retours d'utilisateurs réels.
 
 ## Sources
 

@@ -29,6 +29,7 @@ internal sealed class VirtualUserWorker
     private readonly IWorkflow _workflow;
     private readonly long _maxSchedulingDelayTicks;
     private readonly long? _maxIterations;
+    private readonly ActiveVirtualUserGauge? _activeVirtualUsers;
 
     /// <summary>Cree un travailleur.</summary>
     /// <param name="context">Contexte de l'utilisateur virtuel, reutilise a chaque iteration.</param>
@@ -39,7 +40,17 @@ internal sealed class VirtualUserWorker
     /// <see langword="null"/> (defaut) : aucune limite propre, seule la fermeture de la file ou
     /// l'annulation du tir l'arrete.
     /// </param>
-    public VirtualUserWorker(VirtualUserContext context, IWorkflow workflow, long maxSchedulingDelayTicks, long? maxIterations = null)
+    /// <param name="activeVirtualUsers">
+    /// Jauge partagee a incrementer pendant que ce travailleur consomme des jetons.
+    /// <see langword="null"/> (defaut) : aucun suivi, comportement inchange pour tout appelant qui
+    /// n'a pas besoin de la concurrence reelle dans le temps.
+    /// </param>
+    public VirtualUserWorker(
+        VirtualUserContext context,
+        IWorkflow workflow,
+        long maxSchedulingDelayTicks,
+        long? maxIterations = null,
+        ActiveVirtualUserGauge? activeVirtualUsers = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(workflow);
@@ -48,6 +59,7 @@ internal sealed class VirtualUserWorker
         _workflow = workflow;
         _maxSchedulingDelayTicks = maxSchedulingDelayTicks;
         _maxIterations = maxIterations;
+        _activeVirtualUsers = activeVirtualUsers;
     }
 
     /// <summary>Contexte de l'utilisateur virtuel, porteur des compteurs du travailleur.</summary>
@@ -58,6 +70,19 @@ internal sealed class VirtualUserWorker
     {
         ArgumentNullException.ThrowIfNull(tokens);
 
+        _activeVirtualUsers?.Increment();
+        try
+        {
+            await ConsumeAsync(tokens, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _activeVirtualUsers?.Decrement();
+        }
+    }
+
+    private async Task ConsumeAsync(ChannelReader<ExecutionToken> tokens, CancellationToken cancellationToken)
+    {
         long processed = 0L;
 
         while (true)

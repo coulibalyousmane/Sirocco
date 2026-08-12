@@ -167,6 +167,42 @@ public sealed class MetricsAggregatorTests
         Assert.InRange(statistics.CoordinatedOmissionP99Milliseconds, 479d, 484d);
     }
 
+    /// <summary>
+    /// Le rapport d'histogramme n'est pas un a-cote optionnel : il doit refleter exactement le
+    /// nombre de mesures que les centiles voisins comptent deja, sans quoi le graphe qui en est
+    /// tire (voir <see cref="LoadTestReport"/>) mentirait par rapport au tableau.
+    /// </summary>
+    [Fact]
+    public void The_response_histogram_reflects_recorded_measurements()
+    {
+        StepRegistry registry = CreateRegistry();
+        MetricsAggregator aggregator = new(registry, _options);
+        registry.TryGetId(LOGIN_STEP, out StepId login);
+        long now = TempestClock.Now;
+
+        for (int i = 0; i < 5; i++)
+        {
+            aggregator.Record(Metric(login, now, responseMilliseconds: 10d, serviceMilliseconds: 10d));
+        }
+
+        StepStatistics statistics = aggregator.SnapshotStep(login, StatisticsScope.Cumulative, now);
+
+        Assert.Equal(5L, statistics.ResponseHistogram.TotalCount);
+        Assert.Equal(statistics.ResponseHistogram.Buckets.Sum(), statistics.ResponseHistogram.TotalCount);
+    }
+
+    [Fact]
+    public void The_response_histogram_is_empty_for_a_step_without_measurements()
+    {
+        StepRegistry registry = CreateRegistry();
+        MetricsAggregator aggregator = new(registry, _options);
+        registry.TryGetId(LOGIN_STEP, out StepId login);
+
+        StepStatistics statistics = aggregator.SnapshotStep(login, StatisticsScope.Cumulative, TempestClock.Now);
+
+        Assert.Equal(0L, statistics.ResponseHistogram.TotalCount);
+    }
+
     [Fact]
     public void The_cumulative_scope_keeps_everything_the_sliding_scope_forgets()
     {

@@ -104,6 +104,15 @@ public static class StandaloneHost
             return Results.Content(report.ToHtml(thresholds), "text/html");
         });
 
+        // Miroir de /report/live, mais en page HTML qui se recharge seule : un JSON ne se lit
+        // pas pendant un tir en cours, contrairement a ce tableau de bord (voir sa remarque de
+        // classe sur TempestHostOptions.LiveDashboardRefreshSeconds).
+        app.MapGet("/report/live.html", (MetricsAggregator aggregator, TempestHostOptions options) =>
+        {
+            LoadTestReport report = aggregator.Snapshot(StatisticsScope.Sliding) with { Tags = workflow.Tags, ClosedModel = options.IsClosedModel };
+            return Results.Content(report.ToHtml(autoRefreshSeconds: options.LiveDashboardRefreshSeconds), "text/html");
+        });
+
         app.Run();
     }
 
