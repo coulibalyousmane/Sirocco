@@ -33,7 +33,7 @@ Légende : ● solide · ◐ partiel · ○ absent
 | Mode distribué | ● fusion d'histogrammes exacte | ● `k6-operator` | ◐ Enterprise | ● Studio / K8s |
 | Installation en une commande | ○ cloner et compiler | ● brew, apt, docker | ● bundle, maven | ● NuGet |
 | Écosystème d'extensions communautaire | ○ | ● `xk6` | ◐ | ◐ plugins officiels |
-| Conversion HAR / OpenAPI / Postman | ◐ HAR seul | ● | ● *recorder* proxy | ○ |
+| Conversion HAR / OpenAPI / Postman | ● HAR + OpenAPI + Postman | ● | ● *recorder* proxy | ○ |
 | Test navigateur (Web Vitals) | ○ | ● k6 browser | ◐ Enterprise | ○ |
 
 ## Le différenciateur réel n'est pas celui qu'on croit
@@ -257,8 +257,32 @@ d'une page blanche.
   probablement expirées), corps multipart non pris en charge. Vérifié par un vrai tir : HAR
   reconstitué d'un aller-retour réel login/catalogue/checkout contre `Tempest.SampleTarget`,
   mêlé à un actif statique et un hôte secondaire, converti puis exécuté par `tempest run`.
-- **OpenAPI vers scénario** — squelette généré à partir de la spécification d'une API.
-- **Collection Postman vers scénario.**
+- ~~**OpenAPI vers scénario**~~ — fait, voir [Convertisseur OpenAPI](README.md#convertisseur-openapi) :
+  `tools/Tempest.OpenApiConvert` traduit une spécification OpenAPI 3.x (JSON) en **squelette**
+  scripté C# (`.csx`) — un step par opération, corps JSON d'exemple dérivé du schéma (`$ref`
+  résolues contre `components/schemas`, garde anti-cycle). Différence assumée avec le
+  convertisseur HAR : une spécification ne décrit que la forme d'une API, jamais de données
+  réelles, donc la sortie n'est jamais directement jouable — contrairement au HAR, qui rejoue du
+  trafic capturé. Limites documentées : JSON seul (pas de YAML dans cette première version),
+  `application/json` seul comme type de corps, paramètres de requête optionnels omis, aucun
+  schéma d'authentification traduit (même raison que pour le HAR : une vraie valeur ne peut venir
+  que d'un humain). Vérifié par deux vrais tirs contre `Tempest.SampleTarget` à partir d'une
+  spécification décrivant fidèlement ses trois routes réelles : le squelette brut échoue le
+  checkout (placeholder d'authentification, comme documenté) ; complété à la main avec le jeton
+  et l'identifiant de produit lus dans les réponses précédentes, les 3 étapes réussissent.
+- ~~**Collection Postman vers scénario**~~ — fait, voir [Convertisseur
+  Postman](README.md#convertisseur-postman) : `tools/Tempest.PostmanConvert` traduit une
+  collection Postman (v2.1) en squelette scripté C# (`.csx`), même nature que le convertisseur
+  OpenAPI — une collection décrit des requêtes construites à la main, pas des données réelles.
+  Dossiers imbriqués parcourus récursivement, variables de collection (`{{nom}}`) substituées
+  dans l'URL/en-têtes/corps. Limites documentées : pas d'environnement Postman séparé lu, corps
+  `formdata` non pris en charge, aucun schéma d'authentification traduit. Trouvaille réelle en
+  vérifiant une vraie conversion : un placeholder substitué sans guillemets dans un corps JSON
+  (convention Postman pour injecter un nombre) casse la syntaxe — documenté, pas corrigé en
+  silence, une variable Postman n'ayant pas de schéma pour deviner son type. **Clôt entièrement
+  la phase 5**, hors proxy enregistreur (bullet suivant, conditionné à un vrai public). Vérifié
+  par deux vrais tirs contre `Tempest.SampleTarget` : squelette brut en échec sur le checkout
+  (placeholders), squelette complété à la main aux 3 étapes réussies.
 - **Proxy enregistreur** à la Gatling, si les convertisseurs rencontrent leur public.
 
 ### Phase 6 — Élargir sans tout porter soi-même
@@ -358,11 +382,16 @@ désormais en graphe (débit et dette d'ordonnancement superposés) et ajoute un
 fenêtre glissante déjà servie en JSON par `/report/live` en tableau de bord HTML qui se recharge
 seul pendant le tir.
 
-**La phase 5 est engagée : le convertisseur HAR est fait.** Voir [Convertisseur
-HAR](README.md#convertisseur-har) : `tools/Tempest.HarConvert` traduit un export du navigateur en
-scénario scripté C# (`.csx`), conformément à la décision structurante prise en phase 2 — pas de
-YAML/JSON généré. Restent OpenAPI vers scénario, collection Postman vers scénario et le proxy
-enregistreur — les phases 6 à 8 peuvent toujours attendre des retours d'utilisateurs réels.
+**La phase 5 est entièrement traitée**, hors proxy enregistreur. Voir [Convertisseur
+HAR](README.md#convertisseur-har), [Convertisseur OpenAPI](README.md#convertisseur-openapi) et
+[Convertisseur Postman](README.md#convertisseur-postman) : `tools/Tempest.HarConvert`,
+`tools/Tempest.OpenApiConvert` et `tools/Tempest.PostmanConvert` traduisent respectivement un
+export du navigateur, une spécification d'API et une collection Postman en scénario scripté C#
+(`.csx`), conformément à la décision structurante prise en phase 2 — pas de YAML/JSON généré.
+Différence de nature assumée dans la doc : le HAR rejoue du trafic réel capturé, OpenAPI et
+Postman ne produisent qu'un squelette (ni une spécification ni une collection ne décrivent de
+données réelles). Reste le proxy enregistreur — comme les phases 6 à 8, il peut attendre des
+retours d'utilisateurs réels.
 
 ## Sources
 

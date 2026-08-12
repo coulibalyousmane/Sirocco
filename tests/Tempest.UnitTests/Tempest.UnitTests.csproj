@@ -43,6 +43,14 @@
     <!-- Idem pour HarConverter (Tempest.HarConvert) : logique pure (parsing HAR, generation de
          source C#), sans dependance ASP.NET, testable directement sans lancer de processus. -->
     <ProjectReference Include="..\..\tools\Tempest.HarConvert\Tempest.HarConvert.csproj" />
+    <!-- Idem pour OpenApiConverter (Tempest.OpenApiConvert) : logique pure (parsing OpenAPI,
+         generation de source C#), sans dependance ASP.NET, testable directement sans lancer de
+         processus. -->
+    <ProjectReference Include="..\..\tools\Tempest.OpenApiConvert\Tempest.OpenApiConvert.csproj" />
+    <!-- Idem pour PostmanConverter (Tempest.PostmanConvert) : logique pure (parsing collection
+         Postman, generation de source C#), sans dependance ASP.NET, testable directement sans
+         lancer de processus. -->
+    <ProjectReference Include="..\..\tools\Tempest.PostmanConvert\Tempest.PostmanConvert.csproj" />
   </ItemGroup>
 
 </Project>

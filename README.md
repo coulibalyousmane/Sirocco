@@ -811,6 +811,92 @@ les 3 étapes réelles converties, actif statique et hôte secondaire bien exclu
 `browse` à 0 % d'échec, `checkout` à 100 % d'échec — le jeton capturé avait expiré au moment du
 tir, exactement la mise en garde documentée plus haut, pas une anomalie.
 
+## Convertisseur OpenAPI
+
+Deuxième bullet de la phase 5 : `tools/Tempest.OpenApiConvert` part d'une spécification OpenAPI
+3.x (JSON — l'export le plus courant, `swagger.json`/`openapi.json`) plutôt que d'un trafic
+capturé. Contrairement au convertisseur HAR, une spécification ne décrit que la **forme** d'une
+API, jamais des données réelles : la sortie est délibérément un **squelette**, pas un scénario
+directement jouable.
+
+```bash
+dotnet run --project tools/Tempest.OpenApiConvert -- openapi.json scenario.csx --name mon-scenario
+```
+
+Même sortie scriptée (`.csx`) que le convertisseur HAR, pour la même raison — voir la
+[décision structurante de la roadmap](ROADMAP.md). Une étape est générée par opération
+(méthode + chemin) : les paramètres de chemin et les paramètres de requête **requis** sont
+substitués par un placeholder dérivé du type du schéma (ou de l'`example` déclaré s'il y en a
+un), le corps `application/json` est un exemple JSON construit récursivement à partir du schéma
+(résolution des `$ref` locales vers `components/schemas`, avec garde anti-cycle pour un schéma
+auto-référent).
+
+Limites volontaires, comptées et documentées en tête du fichier généré plutôt que silencieuses :
+- **Un seul type de contenu** : seul `application/json` est traduit en corps ; une opération dont
+  le corps est `multipart/form-data` ou autre est générée sans corps, avec un commentaire dans le
+  code plutôt qu'une étape manquante sans explication.
+- **Aucun schéma d'authentification traduit** : comme pour le HAR, un jeton ou une clé d'API
+  réelle ne peut venir que d'un humain, jamais de la spécification elle-même — les paramètres
+  d'en-tête sont tout de même générés, avec un placeholder à remplacer.
+- **Paramètres de requête optionnels omis** : seuls les paramètres requis sont ajoutés à l'URL,
+  pour garder le squelette lisible plutôt que d'y jeter tous les paramètres facultatifs possibles.
+- **YAML non pris en charge** dans cette première version — JSON seul, comme pour la plupart des
+  exports d'outils (Swashbuckle, Swagger UI).
+
+Vérifié par un vrai tir contre `Tempest.SampleTarget`, à partir d'une spécification décrivant
+fidèlement ses trois routes réelles (`login`, `catalogue`, `checkout`, avec `$ref` vers des
+schémas `components` pour les corps). Deux tirs, pour distinguer le squelette généré de son
+usage réel :
+- **Squelette non modifié** (`tempest run scenario.csx --target-url ... --rps 5 --duration 5s`) :
+  `login` et `listProducts` à 0 % d'échec, `checkout` à 100 % d'échec — le placeholder
+  `Authorization` n'est jamais un jeton valide, exactement la limite documentée plus haut.
+- **Squelette complété à la main** (jeton lu dans la réponse de `login`, identifiant de produit lu
+  dans la réponse de `listProducts`, exactement ce qu'un humain ajouterait) : les 3 étapes à 0 %
+  d'échec.
+
+## Convertisseur Postman
+
+Troisième et dernier bullet de la phase 5 : `tools/Tempest.PostmanConvert` part d'une collection
+Postman exportée (v2.1, le format courant de « Export » depuis l'application). Même nature de
+sortie que le convertisseur OpenAPI — un **squelette**, pas un scénario directement jouable :
+une collection décrit des requêtes qu'on a construites à la main dans Postman, pas un trafic
+capturé avec de vraies données.
+
+```bash
+dotnet run --project tools/Tempest.PostmanConvert -- collection.json scenario.csx --name mon-scenario
+```
+
+Même sortie scriptée (`.csx`), pour la même raison — voir la [décision structurante de la
+roadmap](ROADMAP.md). Les dossiers d'une collection (`item` imbriqués) sont parcourus
+récursivement ; chaque requête feuille devient un step, nommé d'après le nom Postman qualifié par
+ses dossiers parents (`Auth / Login`). Les variables **de collection** (`collection.variable`,
+`{{nom}}`) sont substituées dans l'URL, les en-têtes et le corps — y compris quand elles résolvent
+l'hôte lui-même (`{{baseUrl}}/api/x`) : une fois l'URL rendue absolue par la substitution, seul
+`PathAndQuery` est conservé, l'hôte reste toujours celui de `--target-url` à l'exécution, quelle
+que soit la valeur de `{{baseUrl}}` dans la collection.
+
+Limites volontaires, comptées et documentées en tête du fichier généré :
+- **Un environnement Postman séparé n'est pas lu** dans cette première version — seules les
+  variables déclarées au niveau de la collection elle-même le sont. Une variable `{{...}}` sans
+  valeur connue devient un placeholder générique (`valeur`), compté plutôt que silencieux.
+- **Corps `formdata` non pris en charge** (comme le corps multipart du HAR et le
+  `multipart/form-data` de l'OpenAPI) — seuls les modes `raw` et `urlencoded` sont traduits.
+- **Aucun schéma d'authentification Postman traduit** (`auth` de la requête ou de la collection)
+  — même raison que pour le HAR et l'OpenAPI : une vraie valeur ne peut venir que d'un humain.
+- **Un placeholder substitué dans un corps JSON peut casser sa syntaxe** s'il apparaît sans
+  guillemets — convention Postman courante pour injecter un nombre (`"productId":{{id}}`). Trouvé
+  en vérifiant une vraie conversion (voir plus bas) : à corriger à la main, comme les autres
+  placeholders, pas une régression du convertisseur — une variable Postman n'a pas de schéma pour
+  deviner si elle attend une chaîne ou un nombre, contrairement à l'OpenAPI.
+
+Vérifié par deux vrais tirs contre `Tempest.SampleTarget`, à partir d'une collection décrivant
+fidèlement ses trois routes réelles, avec un dossier (`Auth / Login`) et une variable de
+collection résolvant l'hôte (`{{baseUrl}}`) :
+- **Squelette non modifié** : `Auth / Login` et `Catalogue` à 0 % d'échec, `Checkout` à 100 %
+  d'échec — placeholder d'authentification et corps JSON invalide (`{{productId}}` non résolu et
+  injecté sans guillemets), exactement les limites documentées plus haut.
+- **Squelette complété à la main** (même principe que pour l'OpenAPI) : les 3 étapes à 0 % d'échec.
+
 ## Pipeline CI
 
 Tout l'outillage orienté CI (seuils, `ExitAfterRun`, `Tempest.Compare`) restait, jusqu'ici,
@@ -1717,6 +1803,8 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 39** — [Série temporelle](#série-temporelle) : `TimeSeriesSample`/`LoadTestReport.TimeSeries` (`Tempest.Domain.Metrics`), `TimeSeriesRecorder` (`Tempest.Application.Metrics`), `ActiveVirtualUserGauge` (`Tempest.Application.Execution`), `TempestHostOptions.TimeSeriesIntervalSeconds`. **Premier bullet de la phase 4 (« un rapport au niveau de Gatling »).** Le relevé tourne en parallèle du moteur sur un jeton d'annulation distinct de celui de l'hôte — sans quoi il ne s'arrêterait jamais après un tir à durée ou itérations fixes, `stoppingToken` ne se déclenchant qu'à l'arrêt de l'hôte. `ActiveVirtualUserGauge` est la première mesure de concurrence *réelle* dans le temps, par opposition au plafond configuré : chaque `VirtualUserWorker` l'incrémente/décrémente à l'entrée et à la sortie de sa boucle de consommation, quelle que soit la raison de la sortie. Un tir plus court que l'intervalle de relevé garde toujours au moins un point. Limites documentées : non alimentée pour les scénarios concurrents (`MultiScenarioRunner`), rendue en table pour l'instant, pas encore en courbe. Vérifié par un vrai tir (`--vus-from 2 --vus-to 20 --duration 10s`) : effectif actif croissant fidèle à la rampe (3 → 7 → 10 → 14 → 18), débit croissant en conséquence, dans le rapport texte et JSON
 - [x] **Étape 40** — [Distribution des temps de réponse](#distribution-des-temps-de-réponse), [Courbe de dette d'ordonnancement superposée](#courbe-de-dette-dordonnancement-superposée) et [Tableau de bord temps réel](#tableau-de-bord-temps-réel) : `LatencyHistogram.UpperBoundOf` rendu public, `StepStatistics.ResponseHistogram` (paniers bruts, une entrée par étape), rendu en barres SVG groupées par octave dans `LoadTestReport.ToHtml` ; le même `ToHtml` superpose désormais débit et dette d'ordonnancement (`LoadTestReport.TimeSeries`) sur un graphe en ligne SVG, chacun à l'échelle de son propre maximum ; `/report/live.html` (`TempestHostOptions.LiveDashboardRefreshSeconds`) sert ce même rendu sur la fenêtre glissante avec une balise `<meta http-equiv="refresh">`, qui le recharge seul pendant le tir. **Clôt entièrement les trois bullets restants de la phase 4 et la phase 4 elle-même.** Le regroupement par octave n'invente aucune résolution : c'est le découpage natif de `LatencyHistogram` (`PRECISION_BITS`), pas une approximation ajoutée pour l'affichage. `<meta http-equiv="refresh">` plutôt que SSE/`EventSource` (aucun des deux n'existait déjà dans `Tempest.Host`) : un rechargement de page entier reste largement suffisant pour un tableau de bord d'opérateur, sans nouvelle infrastructure temps réel à maintenir. Limite documentée : comme `/report/live`, `/report/live.html` n'est pas alimenté pour les scénarios concurrents. Vérifié par de vrais tirs contre `Tempest.SampleTarget` : un tir bridé (`--rps 300 --max-rps 20`) produit un histogramme par étape cohérent avec les centiles déjà publiés et une dette d'ordonnancement visible sur la courbe superposée (rapport HTML et JSON) ; `/report/live.html` interrogé deux fois pendant un tir en cours montre un débit croissant (49 puis 99 it/s) avec la balise de rechargement présente, `/report.html` cumulé restant sans cette balise
 - [x] **Étape 41** — [Convertisseur HAR](#convertisseur-har) : nouveau projet `tools/Tempest.HarConvert`, sans aucune dépendance à `Tempest.Domain`/`Tempest.Scenarios` (il ne fait qu'émettre du texte C#). **Premier bullet de la phase 5, conformément à la décision structurante de la roadmap phase 2 : sortie en scénario scripté (`.csx`), jamais en YAML/JSON.** Filtrage des actifs statiques par extension (bruit majoritaire d'un HAR de chargement de page complet) et sélection de l'hôte cible par fréquence plutôt que par ordre d'apparition — un bug réel de la première version, trouvé en vérifiant un vrai HAR reconstitué d'un aller-retour réel contre `Tempest.SampleTarget` : un appel tiers sans extension reconnue dans son chemin précédait le premier appel à la cible et devenait par erreur l'« hôte de base », faisant passer la cible elle-même pour un hôte secondaire à ignorer. Corrigé avant de documenter cette section, avec un test de régression dédié. Limites documentées en tête du fichier généré : authentification/cookies capturés à revoir manuellement (valeurs de session probablement expirées), corps multipart non pris en charge. Vérifié par un vrai tir : le scénario généré à partir d'un HAR mêlant trafic réel, actif statique et hôte secondaire compile via Roslyn et s'exécute contre `Tempest.SampleTarget` (`tempest run ... --rps 5 --duration 5s`), login et catalogue à 0 % d'échec, checkout à 100 % d'échec — le jeton capturé avait expiré au moment du tir, exactement la mise en garde documentée, pas une anomalie
+- [x] **Étape 42** — [Convertisseur OpenAPI](#convertisseur-openapi) : nouveau projet `tools/Tempest.OpenApiConvert`, même absence totale de dépendance que `Tempest.HarConvert`. **Deuxième bullet de la phase 5**, même sortie scriptée (`.csx`). Différence de nature avec le HAR, assumée dans la doc : une spécification ne décrit que la forme d'une API, jamais des données réelles, donc la sortie est un **squelette** (mot de la roadmap elle-même), pas un scénario directement jouable. Un step par opération, résolution de `$ref` locales vers `components/schemas` avec garde anti-cycle pour générer un corps JSON d'exemple, placeholders dérivés du type pour les paramètres de chemin/requête requis et les en-têtes, aucune traduction de schéma d'authentification (même raison que pour le HAR). Comptés plutôt que silencieux : chemins sans méthode HTTP prise en charge, opérations à corps non-JSON. Vérifié par deux vrais tirs contre `Tempest.SampleTarget`, à partir d'une spécification décrivant fidèlement ses trois routes réelles : le squelette non modifié donne `login`/`listProducts` à 0 % d'échec et `checkout` à 100 % (placeholder d'authentification, limite documentée) ; le même squelette complété à la main (jeton et identifiant de produit lus dans les réponses précédentes, exactement ce qu'un humain ajouterait) donne les 3 étapes à 0 % d'échec
+- [x] **Étape 43** — [Convertisseur Postman](#convertisseur-postman) : nouveau projet `tools/Tempest.PostmanConvert`, même absence totale de dépendance. **Troisième et dernier bullet de la phase 5, qui clôt entièrement la phase** (hors proxy enregistreur, conditionné à un vrai public). Même nature de squelette que l'OpenAPI, pour la même raison (une collection décrit des requêtes construites à la main, pas des données réelles). Dossiers imbriqués parcourus récursivement, nom d'étape qualifié par ses dossiers parents ; variables de collection (`{{nom}}`) substituées dans l'URL/en-têtes/corps, y compris quand elles résolvent l'hôte lui-même (l'hôte reste de toute façon ignoré à l'exécution, fixé par `--target-url`) ; variable non résolue comptée plutôt que silencieuse. Limites documentées : pas d'environnement Postman séparé lu (variables de collection seules), corps `formdata` non pris en charge, aucun schéma d'authentification traduit. Trouvaille réelle en vérifiant une vraie conversion, documentée plutôt que corrigée en silence : un placeholder substitué dans un corps JSON sans guillemets (convention Postman pour injecter un nombre, `"productId":{{id}}`) casse la syntaxe JSON — une variable Postman n'a pas de schéma pour deviner son type, contrairement à l'OpenAPI. Vérifié par deux vrais tirs contre `Tempest.SampleTarget`, à partir d'une collection décrivant fidèlement ses trois routes réelles avec un dossier et une variable `{{baseUrl}}` : squelette non modifié à 100 % d'échec sur `Checkout` (placeholders documentés) ; complété à la main (même principe que l'OpenAPI), les 3 étapes à 0 % d'échec
 
 ## Roadmap initiale — close
 
