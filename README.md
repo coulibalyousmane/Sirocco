@@ -941,6 +941,132 @@ cible : les 4 étapes à 0 % d'échec, y compris `checkout` — le jeton captur�
 contrairement au HAR de la section précédente où l'export manuel avait laissé le temps au jeton
 d'expirer. **Clôt entièrement la phase 5.**
 
+## Contrat de plugin
+
+Premier chantier de la phase 6 : k6 n'a pas porté seul ses dizaines de protocoles, il a ouvert
+`xk6` et laissé la communauté le faire. Porter seul SQL, Kafka, MQTT, AMQP et le reste serait un
+puits sans fond — le modèle d'extension doit exister **avant** les protocoles qu'il doit
+accueillir, pas après.
+
+Le contrat lui-même n'est pas nouveau : `IWorkflow`/`IVirtualUserContext`/`StepScope`
+(`Tempest.Domain`) sont agnostiques du protocole depuis toujours — `DynamicCheckoutWorkflow` et
+les scénarios scriptés en sont déjà la preuve. Ce qui manquait, c'est un moyen pour l'hôte de
+**charger** un `IWorkflow` compilé dans une assembly indépendante de ce dépôt, sans
+`ProjectReference` — `PluginWorkflowLoader` (`Tempest.Scenarios`) comble ce trou :
+
+```bash
+tempest run mon-plugin.dll --plugin-type MonNamespace.MonWorkflow --target-url http://localhost:5299 --rps 20 --duration 30s
+```
+
+`WorkflowFileLoader` reconnaît maintenant l'extension `.dll` en plus de `.yaml`/`.json`
+(déclaratif) et `.csx`/`.cs` (scripté) : il charge l'assembly (`Assembly.LoadFrom`), résout le
+type à instancier — `--plugin-type` s'il est renseigné (nom complet ou simple), sinon le seul
+type public implémentant `IWorkflow` si l'assembly n'en expose qu'un — puis l'instancie via son
+constructeur public sans paramètre. Même flag disponible par scénario en mode scénarios
+concurrents (`ScenarioOptions.PluginWorkflowType`, section `Tempest:Scenarios`).
+
+Limites volontaires de cette première version :
+- **Aucune configuration injectée** dans le type instancié — pas de section `appsettings.json`
+  liée automatiquement, contrairement à `DynamicCheckoutWorkflowOptions` pour les scénarios
+  intégrés. Un plugin gère son propre réglage (variable d'environnement, fichier dédié...), voir
+  `samples/Tempest.SamplePlugin`.
+- **Pas de résolution NuGet** : le chemin donné à `tempest run`/`--scenario-file` doit déjà
+  exister sur le disque (assembly compilée localement ou publiée puis téléchargée à la main).
+  Résoudre un plugin par identifiant de paquet reste un chantier séparé, plus grand (roadmap
+  phase 6, bullet suivant).
+- **Mode distribué non pris en charge**, même limite que pour un scénario scripté :
+  `WorkerCoordinator` ne sait construire qu'un `DeclarativeWorkflow` à partir du contenu propagé
+  aux workers.
+
+`samples/Tempest.SamplePlugin` est la preuve réelle du contrat, pas un exemple théorique : un
+projet de bibliothèque .NET ordinaire, **jamais référencé par `Tempest.Host`/`Tempest.Cli`/
+`Tempest.Scenarios`**, dont la seule dépendance est `Tempest.Domain` (`ProjectReference` ici
+uniquement parce que le dépôt reste privé — un vrai plugin tiers utiliserait le paquet NuGet). Il
+implémente un `IWorkflow` minimal qui appelle `IVirtualUserContext.HttpClient` exactement comme
+`DynamicCheckoutWorkflow`. Vérifié par deux vrais tirs contre `Tempest.SampleTarget`, l'assembly
+compilée séparément puis chargée par son chemin : sélection automatique du seul type disponible,
+puis sélection explicite via `--plugin-type` — les deux à 0 % d'échec.
+
+### Résolution NuGet
+
+Deuxième moitié du bullet « chargement dynamique/résolution NuGet » de la phase 6 : plutôt que
+d'exiger un chemin de `.dll` déjà présent sur le disque, `--plugin-package` résout un plugin par
+identifiant de paquet, comme n'importe quelle dépendance NuGet ordinaire :
+
+```bash
+tempest run --plugin-package MonEntreprise.TempestPlugins.Sql --plugin-package-version 1.4.0 --plugin-source https://mon-flux-prive/index.json --target-url http://localhost:5299 --rps 20 --duration 30s
+```
+
+`NuGetPluginResolver` (`Tempest.Scenarios`, client officiel `NuGet.Protocol`) interroge
+`--plugin-source` (répétable, nuget.org seul si omis) dans l'ordre — la première source qui
+connaît le paquet gagne —, télécharge le `.nupkg` dans un cache local persistant entre les tirs,
+puis extrait la bibliothèque du groupe `lib/<tfm>` le plus proche de `net10.0` (`FrameworkReducer`,
+le même algorithme que NuGet/MSBuild eux-mêmes) avant de la remettre à `PluginWorkflowLoader`,
+exactement comme pour une `.dll` locale. Sans `--plugin-package-version`, la dernière version
+stable est résolue — mais **une version explicite déjà en cache ne redéclenche aucun trafic
+réseau**, une version publiée étant immuable, contrairement à « dernière version stable » qui doit
+toujours revalider auprès de la source.
+
+Limite assumée : aucune résolution de dépendances transitives du paquet — seule sa propre
+bibliothèque est extraite. Un plugin qui dépend d'un paquet tiers au-delà de `Tempest.Domain` doit
+être publié en assembly fusionnée, ou accepter que le chargement de type échoue si une référence ne
+se résout pas.
+
+Vérifié par un vrai tir : `Tempest.SamplePlugin` empaqueté via `dotnet pack` dans un dossier local
+(un flux NuGet à part entière, celui d'un miroir d'entreprise hors ligne — pas une approximation de
+nuget.org), résolu par `--plugin-package Tempest.SamplePlugin --plugin-source <dossier>` contre
+`Tempest.SampleTarget` réellement démarré : 0 % d'échec, confirmé une deuxième fois avec
+`--plugin-package-version` explicite pour vérifier le chemin de cache.
+
+## Protocoles de référence
+
+Troisième bullet de la phase 6 : des extensions écrites contre le contrat de plugin, pour le
+valider en conditions réelles plutôt que dans l'abstrait. `Tempest.SamplePlugin` prouvait le
+mécanisme de chargement ; ces extensions prouvent qu'un protocole *différent* de HTTP tient dans
+le même contrat, sans rien changer au cœur.
+
+### SQL
+
+`extensions/Tempest.Extensions.Sql` interroge une vraie base SQLite plutôt que
+`IVirtualUserContext.HttpClient` — la roadmap avait explicitement écarté SQL des [jeux de
+données](#jeux-de-données) (phase 2) faute de scope pour un chantier séparé ; celui-ci le referme,
+sous un angle différent (protocole de charge, pas source de paramètres).
+
+```bash
+dotnet publish extensions/Tempest.Extensions.Sql -o publish/sql-plugin
+TEMPEST_SQL_PLUGIN_CONNECTION_STRING="Data Source=/chemin/vers/ma-base.db" tempest run publish/sql-plugin/Tempest.Extensions.Sql.dll --target-url http://localhost:1 --rps 20 --duration 30s
+```
+
+SQLite plutôt qu'un serveur SQL (PostgreSQL, SQL Server...) : base embarquée, aucune
+infrastructure supplémentaire à démarrer pour vérifier ce chantier de bout en bout — cohérent avec
+la discipline de scope du reste du projet. `SetUpAsync` sème un nombre configurable de produits de
+référence (graine fixe, comme `DynamicCheckoutWorkflow`) et active le mode WAL, indispensable dès
+que plusieurs utilisateurs virtuels partagent le même fichier en même temps. Chaque itération
+exécute deux étapes réelles : un `SELECT` paramétré et un `INSERT`, chacune chronométrée par
+`StepScope` comme n'importe quelle étape HTTP.
+
+**`--target-url` reste exigé par la CLI mais n'est d'aucun usage pour ce protocole** — même
+convention que `grpc-echo`/`websocket-echo`, qui dérivent leur propre cible d'une configuration
+séparée plutôt que du client HTTP partagé. La configuration du plugin (chemin de la base, nombre de
+lignes de référence) passe par des variables d'environnement, pas par `appsettings.json` :
+`PluginWorkflowLoader` n'injecte aucune configuration dans le type qu'il instancie, voir
+[Contrat de plugin](#contrat-de-plugin).
+
+**Trouvaille réelle, documentée plutôt que corrigée dans le cœur** : un plugin chargé par
+`Assembly.LoadFrom` doit être **publié** (`dotnet publish`), pas seulement compilé —
+`dotnet build` seul ne copie pas les dépendances NuGet transitives à côté de l'assembly, que
+`PluginWorkflowLoader` ne résout alors plus (`Microsoft.Data.Sqlite` introuvable au chargement).
+Publier suffit pour une dépendance gérée, mais pas pour sa bibliothèque **native** : `SQLitePCLRaw`
+la cherche par défaut à côté de l'assembly *hôte* (`Tempest.Cli`, qui ne l'a jamais référencée), pas
+à côté du plugin. `SqlWorkflow` enregistre son propre `NativeLibrary.SetDllImportResolver` pour la
+chercher à côté de lui-même — la solution est dans le plugin, pas dans le contrat : un protocole
+tiers reste responsable de ses propres dépendances natives, exactement l'esprit de la phase 6
+(« s'ajoute sans toucher au cœur »).
+
+Vérifié par un vrai tir : plugin publié, exécuté contre une base SQLite fraîche — 30 itérations,
+0 % d'échec sur les deux étapes (`SELECT`/`INSERT`), lignes effectivement persistées (vérifié aussi
+par des tests unitaires qui interrogent directement le fichier après coup).
+
 ## Pipeline CI
 
 Tout l'outillage orienté CI (seuils, `ExitAfterRun`, `Tempest.Compare`) restait, jusqu'ici,
@@ -1850,6 +1976,9 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 42** — [Convertisseur OpenAPI](#convertisseur-openapi) : nouveau projet `tools/Tempest.OpenApiConvert`, même absence totale de dépendance que `Tempest.HarConvert`. **Deuxième bullet de la phase 5**, même sortie scriptée (`.csx`). Différence de nature avec le HAR, assumée dans la doc : une spécification ne décrit que la forme d'une API, jamais des données réelles, donc la sortie est un **squelette** (mot de la roadmap elle-même), pas un scénario directement jouable. Un step par opération, résolution de `$ref` locales vers `components/schemas` avec garde anti-cycle pour générer un corps JSON d'exemple, placeholders dérivés du type pour les paramètres de chemin/requête requis et les en-têtes, aucune traduction de schéma d'authentification (même raison que pour le HAR). Comptés plutôt que silencieux : chemins sans méthode HTTP prise en charge, opérations à corps non-JSON. Vérifié par deux vrais tirs contre `Tempest.SampleTarget`, à partir d'une spécification décrivant fidèlement ses trois routes réelles : le squelette non modifié donne `login`/`listProducts` à 0 % d'échec et `checkout` à 100 % (placeholder d'authentification, limite documentée) ; le même squelette complété à la main (jeton et identifiant de produit lus dans les réponses précédentes, exactement ce qu'un humain ajouterait) donne les 3 étapes à 0 % d'échec
 - [x] **Étape 43** — [Convertisseur Postman](#convertisseur-postman) : nouveau projet `tools/Tempest.PostmanConvert`, même absence totale de dépendance. **Troisième et dernier bullet de la phase 5, qui clôt entièrement la phase** (hors proxy enregistreur, conditionné à un vrai public). Même nature de squelette que l'OpenAPI, pour la même raison (une collection décrit des requêtes construites à la main, pas des données réelles). Dossiers imbriqués parcourus récursivement, nom d'étape qualifié par ses dossiers parents ; variables de collection (`{{nom}}`) substituées dans l'URL/en-têtes/corps, y compris quand elles résolvent l'hôte lui-même (l'hôte reste de toute façon ignoré à l'exécution, fixé par `--target-url`) ; variable non résolue comptée plutôt que silencieuse. Limites documentées : pas d'environnement Postman séparé lu (variables de collection seules), corps `formdata` non pris en charge, aucun schéma d'authentification traduit. Trouvaille réelle en vérifiant une vraie conversion, documentée plutôt que corrigée en silence : un placeholder substitué dans un corps JSON sans guillemets (convention Postman pour injecter un nombre, `"productId":{{id}}`) casse la syntaxe JSON — une variable Postman n'a pas de schéma pour deviner son type, contrairement à l'OpenAPI. Vérifié par deux vrais tirs contre `Tempest.SampleTarget`, à partir d'une collection décrivant fidèlement ses trois routes réelles avec un dossier et une variable `{{baseUrl}}` : squelette non modifié à 100 % d'échec sur `Checkout` (placeholders documentés) ; complété à la main (même principe que l'OpenAPI), les 3 étapes à 0 % d'échec
 - [x] **Étape 44** — [Proxy enregistreur](#proxy-enregistreur) : nouveau projet `tools/Tempest.RecorderProxy`, `ProjectReference` vers `Tempest.HarConvert` (seul convertisseur à en dépendre — reutilise `HarConverter.Convert` tel quel, une capture en direct alimentant la même forme `HarEntry` qu'un export HAR). **Dernier bullet de la phase 5, qui la clôt entièrement cette fois.** Scope volontairement réduit face au *recorder* de Gatling : reverse proxy à cible unique, HTTP seul, pas d'interception TLS — cohérent avec le modèle `--target-url` unique de `tempest run`, évite tout le chantier certificat/confiance d'un vrai MITM pour une fonctionnalité encore conditionnée à un vrai public. Arrêt propre via Ctrl+C ou `POST /__tempest-recorder/stop` (pilotage scripté), qui déclenche la génération du `.csx`. Limites documentées : corps binaire retransmis mais jamais capturé (même nature que le multipart du HAR). Vérifié par un vrai tir de bout en bout : proxy démarré contre `Tempest.SampleTarget`, vraie session login/catalogue/checkout envoyée à travers lui (statuts 200 confirmés, identiques à la cible directe), arrêté via l'endpoint de contrôle, scénario généré puis rejoué immédiatement via `tempest run` — les 4 étapes à 0 % d'échec, y compris `checkout` : capturé et rejoué sans le délai d'export/conversion manuel du HAR, le jeton était encore valide, contrairement à la section précédente
+- [x] **Étape 45** — [Contrat de plugin](#contrat-de-plugin) : `PluginWorkflowLoader` (`Tempest.Scenarios`) charge un `IWorkflow` depuis une assembly `.dll` compilée indépendamment de ce dépôt (`Assembly.LoadFrom`, résolution du type par `--plugin-type` ou candidat unique, constructeur public sans paramètre requis). **Premier bullet de la phase 6** : le contrat lui-même (`IWorkflow`/`IVirtualUserContext`/`StepScope`) existait déjà, agnostique du protocole — ce qui manquait était un moyen de le charger sans `ProjectReference`. `WorkflowFileLoader` reconnaît désormais `.dll` en plus de `.yaml`/`.json`/`.csx`/`.cs`, même flag `PluginWorkflowType` disponible par scénario en mode concurrent. Limites documentées : aucune configuration injectée dans le type instancié (un plugin gère la sienne), pas de résolution NuGet dans cette version (chemin de fichier déjà présent sur le disque uniquement), mode distribué non pris en charge (même limite que le scripté). `samples/Tempest.SamplePlugin` est la preuve réelle du découplage : projet compilé séparément, jamais référencé par `Tempest.Host`/`Tempest.Cli`/`Tempest.Scenarios`, seule dépendance `Tempest.Domain`. Vérifié par deux vrais tirs contre `Tempest.SampleTarget`, l'assembly compilée puis chargée par son chemin : sélection automatique du seul type disponible, puis sélection explicite via `--plugin-type` — les deux à 0 % d'échec
+- [x] **Étape 46** — [Résolution NuGet](#résolution-nuget) : `NuGetPluginResolver` (`Tempest.Scenarios`, `NuGet.Protocol`) résout un plugin par identifiant de paquet plutôt que par chemin de fichier déjà sur le disque — deuxième moitié du bullet « chargement dynamique/résolution NuGet » de la phase 6. `--plugin-package`/`--plugin-package-version`/`--plugin-source` (répétable), même flags disponibles par scénario en mode concurrent. Télécharge le `.nupkg` depuis la première source qui connaît le paquet, extrait le groupe `lib/<tfm>` le plus proche de `net10.0` (`FrameworkReducer`), cache local persistant entre les tirs — une version explicite déjà en cache ne redéclenche aucun trafic réseau, contrairement à « dernière version stable » qui revalide toujours. Limite documentée : aucune résolution de dépendances transitives du paquet, seule sa propre bibliothèque est extraite. Vérifié par un vrai tir : `Tempest.SamplePlugin` empaqueté via `dotnet pack` dans un dossier local (flux NuGet à part entière), résolu puis exécuté contre `Tempest.SampleTarget` — 0 % d'échec, confirmé une deuxième fois avec une version explicite pour vérifier le chemin de cache
+- [x] **Étape 47** — [Protocoles de référence — SQL](#sql) : `extensions/Tempest.Extensions.Sql` interroge une vraie base SQLite plutôt que le client HTTP partagé — première extension protocole de la phase 6, referme le SQL explicitement écarté des jeux de données en phase 2 (même mot, angle différent : protocole de charge, pas source de paramètres). Deux étapes réelles par itération (`SELECT` paramétré, `INSERT`), mode WAL pour la concurrence entre utilisateurs virtuels, graine fixe pour la reproductibilité. Trouvaille réelle documentée plutôt que corrigée dans le cœur : un plugin chargé par `Assembly.LoadFrom` doit être publié (`dotnet publish`), pas seulement compilé, pour que ses dépendances NuGet transitives soient résolues ; sa bibliothèque *native* (`e_sqlite3`) doit en plus être cherchée par le plugin lui-même via `NativeLibrary.SetDllImportResolver`, `SQLitePCLRaw` la cherchant par défaut à côté de l'hôte (`Tempest.Cli`) plutôt qu'à côté du plugin. Vérifié par un vrai tir : plugin publié contre une base SQLite fraîche, 30 itérations, 0 % d'échec sur les deux étapes, lignes persistées confirmées
 
 ## Roadmap initiale — close
 

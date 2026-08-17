@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    Premier protocole de reference de la roadmap phase 6 (SQL, avant SSE/MQTT/GraphQL) : valide le
+    contrat de plugin (voir tools/../samples/Tempest.SamplePlugin) contre un protocole reellement
+    different de HTTP, pas une variation de plus autour d'IVirtualUserContext.HttpClient. Seule
+    dependance au-dela de Tempest.Domain : le pilote SQLite lui-meme — aucun serveur externe requis,
+    ce qui garde la verification end-to-end reproductible sans infrastructure supplementaire.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Tempest.Domain\Tempest.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
+  </ItemGroup>
+
+</Project>

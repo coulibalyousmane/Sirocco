@@ -9,6 +9,7 @@ using Tempest.Domain.Metrics;
 using Tempest.Host.Configuration;
 using Tempest.Infrastructure.DependencyInjection;
 using Tempest.Scenarios;
+using Tempest.Scenarios.Plugins;
 
 namespace Tempest.Host;
 
@@ -61,7 +62,14 @@ public static class StandaloneHost
         // Le scenario code en dur reste le comportement par defaut : un fichier de scenario
         // n'entre en jeu que si l'operateur le renseigne explicitement, et garde la priorite sur
         // le choix fait via Workflow.
-        IWorkflow workflow = BuildWorkflow(builder, tempestOptions.ScenarioFile, tempestOptions.Workflow);
+        IWorkflow workflow = BuildWorkflow(
+            builder,
+            tempestOptions.ScenarioFile,
+            tempestOptions.Workflow,
+            tempestOptions.PluginWorkflowType,
+            tempestOptions.PluginPackageId,
+            tempestOptions.PluginPackageVersion,
+            tempestOptions.PluginPackageSources);
 
         // Client HTTP unique, partage par tous les utilisateurs virtuels : c'est ce partage — pas
         // un client par requete — qui permet au pool de connexions du SocketsHttpHandler de tenir
@@ -191,18 +199,40 @@ public static class StandaloneHost
     }
 
     /// <summary>
-    /// Construit le workflow decrit par ces champs : un fichier de scenario declaratif/scripte
-    /// s'il est renseigne (garde la priorite), sinon un des scenarios integres selectionnes par
-    /// nom. Factorise hors de <see cref="Run"/> pour etre reutilise, un scenario a la fois, par
+    /// Construit le workflow decrit par ces champs, dans cet ordre de priorite : un fichier de
+    /// scenario declaratif/scripte/plugin (<paramref name="scenarioFile"/>), sinon un plugin
+    /// resolu depuis un paquet NuGet (<paramref name="pluginPackageId"/>, voir
+    /// <see cref="NuGetPluginResolver"/>), sinon un des scenarios integres selectionnes par nom.
+    /// Factorise hors de <see cref="Run"/> pour etre reutilise, un scenario a la fois, par
     /// <see cref="MultiScenarioHost"/>.
     /// </summary>
-    internal static IWorkflow BuildWorkflow(WebApplicationBuilder builder, string? scenarioFile, string workflowName)
+    internal static IWorkflow BuildWorkflow(
+        WebApplicationBuilder builder,
+        string? scenarioFile,
+        string workflowName,
+        string? pluginWorkflowType = null,
+        string? pluginPackageId = null,
+        string? pluginPackageVersion = null,
+        IReadOnlyList<string>? pluginPackageSources = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
         if (!string.IsNullOrWhiteSpace(scenarioFile))
         {
-            return WorkflowFileLoader.LoadFromFile(scenarioFile);
+            return WorkflowFileLoader.LoadFromFile(scenarioFile, pluginWorkflowType);
+        }
+
+        if (!string.IsNullOrWhiteSpace(pluginPackageId))
+        {
+            // Blocage deliberement synchrone, comme ScriptedWorkflowLoader.LoadFromFile : le
+            // chargement d'un scenario n'a jamais lieu sur le chemin critique, une seule fois
+            // avant le premier tir.
+            string assemblyPath = NuGetPluginResolver
+                .ResolveAssemblyPathAsync(pluginPackageId, pluginPackageVersion, pluginPackageSources)
+                .GetAwaiter()
+                .GetResult();
+
+            return PluginWorkflowLoader.Load(assemblyPath, pluginWorkflowType);
         }
 
         if (string.Equals(workflowName, TempestHostOptions.WEBSOCKET_ECHO_WORKFLOW, StringComparison.OrdinalIgnoreCase))

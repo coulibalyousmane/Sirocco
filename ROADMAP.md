@@ -304,11 +304,39 @@ k6 n'a pas écrit ses dizaines de protocoles : il a ouvert `xk6` et la communaut
 seul SQL, Kafka, MQTT, AMQP et le reste est un puits sans fond. Le modèle d'extension doit venir
 **avant** les protocoles, pas après — chaque protocole écrit dans le cœur est une dette permanente.
 
-- **Contrat de plugin** stable — un protocole tiers s'ajoute sans toucher au cœur, en s'appuyant
-  sur `IWorkflow` et `StepScope`, déjà agnostiques du protocole.
-- **Chargement dynamique** d'extensions et résolution depuis NuGet.
+- ~~**Contrat de plugin** stable~~ — fait, voir [Contrat de plugin](README.md#contrat-de-plugin) :
+  `PluginWorkflowLoader` (`Tempest.Scenarios`) charge un `IWorkflow` depuis une assembly `.dll`
+  compilée independamment de ce depot (`Assembly.LoadFrom`, type resolu par `--plugin-type` ou
+  candidat unique, constructeur public sans parametre). Le contrat lui-meme (`IWorkflow`/
+  `IVirtualUserContext`/`StepScope`) existait deja, agnostique du protocole — ce qui manquait
+  etait un moyen de le charger sans `ProjectReference` vers ce depot. Limites documentees :
+  aucune configuration injectee dans le type instancie (un plugin gere la sienne), pas de
+  resolution NuGet dans cette version (bullet suivant), mode distribue non pris en charge (meme
+  limite que le scripte). `samples/Tempest.SamplePlugin` est la preuve reelle du decouplage :
+  compile separement, jamais reference par `Tempest.Host`/`Tempest.Cli`/`Tempest.Scenarios`.
+  Verifie par deux vrais tirs contre `Tempest.SampleTarget` : selection automatique du seul type
+  disponible, puis selection explicite via `--plugin-type` — les deux a 0 % d'echec.
+- ~~**Chargement dynamique** d'extensions et résolution depuis NuGet~~ — fait, voir [Résolution
+  NuGet](README.md#résolution-nuget) : `NuGetPluginResolver` (`Tempest.Scenarios`,
+  `NuGet.Protocol`) resout un plugin par identifiant de paquet (`--plugin-package`/
+  `--plugin-package-version`/`--plugin-source`) plutot qu'un chemin de fichier deja present sur le
+  disque — telecharge le `.nupkg` depuis la premiere source qui le connait, extrait le groupe
+  `lib/<tfm>` le plus proche de `net10.0` (`FrameworkReducer`), cache local persistant entre les
+  tirs (une version explicite deja en cache ne redeclenche aucun trafic reseau). Limite
+  documentee : aucune resolution de dependances transitives du paquet. Verifie par un vrai tir :
+  `Tempest.SamplePlugin` empaquete via `dotnet pack` dans un dossier local (flux NuGet a part
+  entiere), resolu puis execute contre `Tempest.SampleTarget` — 0 % d'echec.
 - **Protocoles de référence** écrits comme extensions pour valider le contrat : SQL, SSE, MQTT,
   GraphQL.
+  - ~~**SQL**~~ — fait, voir [Protocoles de référence — SQL](README.md#sql) :
+    `extensions/Tempest.Extensions.Sql` interroge une vraie base SQLite (deux etapes reelles par
+    iteration, SELECT parametre et INSERT) plutot que le client HTTP partage — referme le SQL
+    explicitement ecarte des jeux de donnees en phase 2, sous un angle different. Trouvaille
+    reelle documentee plutot que corrigee dans le coeur : un plugin charge par `Assembly.LoadFrom`
+    doit etre publie (`dotnet publish`), pas seulement compile, et sa bibliotheque *native* doit
+    en plus etre cherchee par le plugin lui-meme (`NativeLibrary.SetDllImportResolver`), le
+    resolveur par defaut de `SQLitePCLRaw` cherchant a cote de l'hote plutot qu'a cote du plugin.
+    Restent SSE, MQTT, GraphQL.
 - **Guide d'écriture d'extension** — sans documentation, un modèle de plugin reste théorique.
 
 ### Phase 7 — Échelle cloud-native
@@ -407,6 +435,17 @@ logique), OpenAPI et Postman ne produisent qu'un squelette (ni une spécificatio
 collection ne décrivent de données réelles). Le proxy enregistreur reste volontairement réduit
 face à celui de Gatling : reverse proxy à cible unique, HTTP seul, pas d'interception TLS.
 Comme les phases 6 à 8, tout ce qui reste au-delà peut attendre des retours d'utilisateurs réels.
+
+**La phase 6 progresse** : voir [Contrat de plugin](README.md#contrat-de-plugin), [Résolution
+NuGet](README.md#résolution-nuget) et [Protocoles de référence — SQL](README.md#sql). Les deux
+premiers bullets — le modèle d'extension avant les protocoles, dans cet ordre précis — sont faits :
+`PluginWorkflowLoader` charge un `IWorkflow` compilé indépendamment de ce dépôt depuis un chemin de
+fichier, `NuGetPluginResolver` fait de même depuis un identifiant de paquet NuGet, et
+`samples/Tempest.SamplePlugin` prouve les deux par une assembly qui n'est justement référencée par
+aucun projet du cœur. Le troisième bullet est entamé : `extensions/Tempest.Extensions.Sql` valide
+le contrat contre un protocole réellement différent de HTTP, et a mis au jour une trouvaille reelle
+sur le chargement de dependances natives (documentee, pas corrigee dans le coeur). Restent SSE,
+MQTT, GraphQL, puis le guide d'écriture d'extension (dernier bullet de la phase).
 
 ## Sources
 

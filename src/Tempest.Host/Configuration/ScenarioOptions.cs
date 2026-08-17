@@ -66,6 +66,18 @@ public sealed class ScenarioOptions
     /// <summary>Meme role que <see cref="TempestHostOptions.Workflow"/>, propre a ce scenario.</summary>
     public string Workflow { get; init; } = TempestHostOptions.DYNAMIC_CHECKOUT_WORKFLOW;
 
+    /// <summary>Meme role que <see cref="TempestHostOptions.PluginWorkflowType"/>, propre a ce scenario.</summary>
+    public string? PluginWorkflowType { get; init; }
+
+    /// <summary>Meme role que <see cref="TempestHostOptions.PluginPackageId"/>, propre a ce scenario.</summary>
+    public string? PluginPackageId { get; init; }
+
+    /// <summary>Meme role que <see cref="TempestHostOptions.PluginPackageVersion"/>, propre a ce scenario.</summary>
+    public string? PluginPackageVersion { get; init; }
+
+    /// <summary>Meme role que <see cref="TempestHostOptions.PluginPackageSources"/>, propre a ce scenario.</summary>
+    public IReadOnlyList<string> PluginPackageSources { get; init; } = [];
+
     /// <summary>Seuils evalues pour ce scenario uniquement. Vide par defaut.</summary>
     public IReadOnlyList<ThresholdRule> Thresholds { get; init; } = [];
 }

@@ -18,6 +18,14 @@ internal sealed class CliOptions
 
     public string? Workflow { get; private init; }
 
+    public string? PluginWorkflowType { get; private init; }
+
+    public string? PluginPackageId { get; private init; }
+
+    public string? PluginPackageVersion { get; private init; }
+
+    public IReadOnlyList<string> PluginPackageSources { get; private init; } = [];
+
     public string? TargetUrl { get; private init; }
 
     public double? Rps { get; private init; }
@@ -55,6 +63,10 @@ internal sealed class CliOptions
 
         string? scenarioPath = null;
         string? workflow = null;
+        string? pluginWorkflowType = null;
+        string? pluginPackageId = null;
+        string? pluginPackageVersion = null;
+        List<string> pluginPackageSources = [];
         string? targetUrl = null;
         double? rps = null;
         double? fromRps = null;
@@ -78,6 +90,22 @@ internal sealed class CliOptions
             {
                 case "--workflow" when i + 1 < args.Length:
                     workflow = args[++i];
+                    break;
+
+                case "--plugin-type" when i + 1 < args.Length:
+                    pluginWorkflowType = args[++i];
+                    break;
+
+                case "--plugin-package" when i + 1 < args.Length:
+                    pluginPackageId = args[++i];
+                    break;
+
+                case "--plugin-package-version" when i + 1 < args.Length:
+                    pluginPackageVersion = args[++i];
+                    break;
+
+                case "--plugin-source" when i + 1 < args.Length:
+                    pluginPackageSources.Add(args[++i]);
                     break;
 
                 case "--target-url" when i + 1 < args.Length:
@@ -235,6 +263,10 @@ internal sealed class CliOptions
         {
             ScenarioPath = scenarioPath,
             Workflow = workflow,
+            PluginWorkflowType = pluginWorkflowType,
+            PluginPackageId = pluginPackageId,
+            PluginPackageVersion = pluginPackageVersion,
+            PluginPackageSources = pluginPackageSources,
             TargetUrl = targetUrl,
             Rps = rps,
             FromRps = fromRps,

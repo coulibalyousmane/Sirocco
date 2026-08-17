@@ -55,6 +55,10 @@
          RecordedEntryBuilder) : le forwarding HTTP lui-meme reste verifie par un vrai tir, pas
          teste ici. -->
     <ProjectReference Include="..\..\tools\Tempest.RecorderProxy\Tempest.RecorderProxy.csproj" />
+    <!-- Premier protocole de reference de la phase 6 (SQL) : SqlWorkflow teste ici contre une
+         vraie base SQLite temporaire (aucun serveur a demarrer, contrairement au reste du mode
+         distribue verifie par de vrais tirs). -->
+    <ProjectReference Include="..\..\extensions\Tempest.Extensions.Sql\Tempest.Extensions.Sql.csproj" />
   </ItemGroup>
 
 </Project>

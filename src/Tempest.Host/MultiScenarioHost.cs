@@ -89,7 +89,14 @@ internal static class MultiScenarioHost
             scenario.IterationsPerVirtualUser,
             scenario.MaxRequestsPerSecond ?? tempestOptions.MaxRequestsPerSecond);
 
-        IWorkflow workflow = StandaloneHost.BuildWorkflow(builder, scenario.ScenarioFile, scenario.Workflow);
+        IWorkflow workflow = StandaloneHost.BuildWorkflow(
+            builder,
+            scenario.ScenarioFile,
+            scenario.Workflow,
+            scenario.PluginWorkflowType,
+            scenario.PluginPackageId,
+            scenario.PluginPackageVersion,
+            scenario.PluginPackageSources);
 
         string targetBaseUrl = string.IsNullOrWhiteSpace(scenario.TargetBaseUrl) ? tempestOptions.TargetBaseUrl : scenario.TargetBaseUrl;
         HttpClient httpClient = StandaloneHost.BuildHttpClient(targetBaseUrl);

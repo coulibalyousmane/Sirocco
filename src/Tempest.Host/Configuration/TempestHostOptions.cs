@@ -167,6 +167,39 @@ public sealed class TempestHostOptions
     public string Workflow { get; init; } = DYNAMIC_CHECKOUT_WORKFLOW;
 
     /// <summary>
+    /// Nom du type <c>IWorkflow</c> a instancier quand <see cref="ScenarioFile"/> designe une
+    /// assembly compilee (<c>.dll</c>) — le contrat de plugin de la roadmap phase 6. Nom complet ou
+    /// simple, peu importe tant qu'il est non ambigu dans l'assembly.
+    /// <para>
+    /// <see langword="null"/> par defaut : sans effet pour les formats declaratif/scripte, et
+    /// optionnel meme pour une DLL des lors qu'elle n'expose qu'un seul type implementant
+    /// <c>IWorkflow</c> (voir <c>PluginWorkflowLoader</c>).
+    /// </para>
+    /// </summary>
+    public string? PluginWorkflowType { get; init; }
+
+    /// <summary>
+    /// Identifiant d'un paquet NuGet contenant le plugin a charger — deuxieme moyen (avec
+    /// <see cref="ScenarioFile"/> pointant directement vers une <c>.dll</c>) d'utiliser le contrat
+    /// de plugin de la roadmap phase 6. Sans effet si <see cref="ScenarioFile"/> est renseigne,
+    /// qui garde la priorite. <see langword="null"/> par defaut.
+    /// </summary>
+    public string? PluginPackageId { get; init; }
+
+    /// <summary>
+    /// Version du paquet <see cref="PluginPackageId"/> a resoudre. <see langword="null"/> par
+    /// defaut : la derniere version stable publiee est utilisee.
+    /// </summary>
+    public string? PluginPackageVersion { get; init; }
+
+    /// <summary>
+    /// Sources NuGet interrogees pour resoudre <see cref="PluginPackageId"/>, dans l'ordre — la
+    /// premiere qui connait le paquet gagne. Vide par defaut : <c>NuGetPluginResolver</c> retombe
+    /// alors sur nuget.org seul.
+    /// </summary>
+    public IReadOnlyList<string> PluginPackageSources { get; init; } = [];
+
+    /// <summary>
     /// Regles de succes/echec evaluees en fin de tir. Vide par defaut : sans seuil, il n'y a
     /// pas de gate, et le tir ne peut jamais "echouer" au sens CI du terme.
     /// <para>

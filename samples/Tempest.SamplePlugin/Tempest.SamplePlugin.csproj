@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    Preuve reelle du contrat de plugin (roadmap phase 6) : cette assembly n'est referencee par
+    aucun projet Tempest.Host/Tempest.Cli/Tempest.Scenarios — volontairement, c'est le point.
+    Seule dependance : Tempest.Domain (ProjectReference ici parce que le depot est encore prive et
+    non publie sur nuget.org, voir ROADMAP.md phase 1 ; un vrai plugin tiers utiliserait le paquet
+    NuGet Tempest.Domain a la place). Compilee en .dll puis chargee au runtime par
+    PluginWorkflowLoader (Tempest.Scenarios), exactement comme le ferait un protocole tiers reel.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Tempest.Domain\Tempest.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

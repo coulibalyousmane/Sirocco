@@ -16,6 +16,17 @@ const string USAGE = """
                                  dynamic-checkout (par defaut), websocket-echo, grpc-echo,
                                  grpc-stream-echo, grpc-client-stream-echo, grpc-bidi-stream-echo.
                                  Sans effet si un fichier de scenario est fourni.
+      --plugin-type <nom>       Type IWorkflow a instancier si [scenario.yaml] designe une
+                                 assembly compilee (.dll) — le contrat de plugin de la roadmap
+                                 phase 6. Optionnel si l'assembly n'expose qu'un seul type
+                                 implementant IWorkflow. Sans effet pour les autres formats.
+      --plugin-package <id>     Identifiant d'un paquet NuGet contenant le plugin a charger, a la
+                                 place de [scenario.yaml]. Sans effet si un fichier de scenario
+                                 est fourni, qui garde la priorite.
+      --plugin-package-version <v>  Version du paquet --plugin-package. Derniere version stable
+                                 si omis.
+      --plugin-source <url>     Source NuGet interrogee pour --plugin-package, repetable. nuget.org
+                                 seul si omis.
       --target-url <url>        Adresse de base de la cible. Requis, sauf si deja fourni via
                                  Tempest:TargetBaseUrl dans un appsettings.json du repertoire courant.
       --rps <n>                 Debit cible constant, en requetes par seconde (avec --duration).
@@ -135,6 +146,10 @@ if (options.Vus is int vus)
         MaxRequestsPerSecond = maxRequestsPerSecond,
         ScenarioFile = options.ScenarioPath ?? builder.Configuration["Tempest:ScenarioFile"],
         Workflow = options.Workflow ?? builder.Configuration["Tempest:Workflow"] ?? TempestHostOptions.DYNAMIC_CHECKOUT_WORKFLOW,
+        PluginWorkflowType = options.PluginWorkflowType ?? builder.Configuration["Tempest:PluginWorkflowType"],
+        PluginPackageId = options.PluginPackageId ?? builder.Configuration["Tempest:PluginPackageId"],
+        PluginPackageVersion = options.PluginPackageVersion ?? builder.Configuration["Tempest:PluginPackageVersion"],
+        PluginPackageSources = options.PluginPackageSources.Count > 0 ? options.PluginPackageSources : ReadPluginPackageSources(builder.Configuration),
         Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
         ExitAfterRun = true,
         ReportHtmlPath = options.ReportHtmlPath,
@@ -159,6 +174,10 @@ else if (options.VusFrom is int vusFrom && options.VusTo is int vusTo)
         MaxRequestsPerSecond = maxRequestsPerSecond,
         ScenarioFile = options.ScenarioPath ?? builder.Configuration["Tempest:ScenarioFile"],
         Workflow = options.Workflow ?? builder.Configuration["Tempest:Workflow"] ?? TempestHostOptions.DYNAMIC_CHECKOUT_WORKFLOW,
+        PluginWorkflowType = options.PluginWorkflowType ?? builder.Configuration["Tempest:PluginWorkflowType"],
+        PluginPackageId = options.PluginPackageId ?? builder.Configuration["Tempest:PluginPackageId"],
+        PluginPackageVersion = options.PluginPackageVersion ?? builder.Configuration["Tempest:PluginPackageVersion"],
+        PluginPackageSources = options.PluginPackageSources.Count > 0 ? options.PluginPackageSources : ReadPluginPackageSources(builder.Configuration),
         Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
         ExitAfterRun = true,
         ReportHtmlPath = options.ReportHtmlPath,
@@ -178,6 +197,10 @@ else if (options.Iterations is long sharedIterations)
         MaxRequestsPerSecond = maxRequestsPerSecond,
         ScenarioFile = options.ScenarioPath ?? builder.Configuration["Tempest:ScenarioFile"],
         Workflow = options.Workflow ?? builder.Configuration["Tempest:Workflow"] ?? TempestHostOptions.DYNAMIC_CHECKOUT_WORKFLOW,
+        PluginWorkflowType = options.PluginWorkflowType ?? builder.Configuration["Tempest:PluginWorkflowType"],
+        PluginPackageId = options.PluginPackageId ?? builder.Configuration["Tempest:PluginPackageId"],
+        PluginPackageVersion = options.PluginPackageVersion ?? builder.Configuration["Tempest:PluginPackageVersion"],
+        PluginPackageSources = options.PluginPackageSources.Count > 0 ? options.PluginPackageSources : ReadPluginPackageSources(builder.Configuration),
         Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
         ExitAfterRun = true,
         ReportHtmlPath = options.ReportHtmlPath,
@@ -235,6 +258,10 @@ else
             MaxRequestsPerSecond = maxRequestsPerSecond,
             ScenarioFile = options.ScenarioPath ?? builder.Configuration["Tempest:ScenarioFile"],
             Workflow = options.Workflow ?? builder.Configuration["Tempest:Workflow"] ?? TempestHostOptions.DYNAMIC_CHECKOUT_WORKFLOW,
+            PluginWorkflowType = options.PluginWorkflowType ?? builder.Configuration["Tempest:PluginWorkflowType"],
+            PluginPackageId = options.PluginPackageId ?? builder.Configuration["Tempest:PluginPackageId"],
+            PluginPackageVersion = options.PluginPackageVersion ?? builder.Configuration["Tempest:PluginPackageVersion"],
+            PluginPackageSources = options.PluginPackageSources.Count > 0 ? options.PluginPackageSources : ReadPluginPackageSources(builder.Configuration),
             Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
             ExitAfterRun = true,
             ReportHtmlPath = options.ReportHtmlPath,
@@ -285,6 +312,9 @@ static IReadOnlyList<LoadStageOptions> BuildProfile(CliOptions options, IConfigu
 
 static IReadOnlyList<ThresholdRule> ReadThresholds(IConfiguration configuration) =>
     configuration.GetSection("Tempest:Thresholds").Get<List<ThresholdRule>>() ?? [];
+
+static IReadOnlyList<string> ReadPluginPackageSources(IConfiguration configuration) =>
+    configuration.GetSection("Tempest:PluginPackageSources").Get<List<string>>() ?? [];
 
 static IReadOnlyList<ScenarioOptions> ReadScenarios(IConfiguration configuration) =>
     configuration.GetSection("Tempest:Scenarios").Get<List<ScenarioOptions>>() ?? [];
