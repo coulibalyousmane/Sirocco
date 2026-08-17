@@ -51,6 +51,10 @@
          Postman, generation de source C#), sans dependance ASP.NET, testable directement sans
          lancer de processus. -->
     <ProjectReference Include="..\..\tools\Tempest.PostmanConvert\Tempest.PostmanConvert.csproj" />
+    <!-- Idem pour la logique pure de Tempest.RecorderProxy (RecorderOptions, ProxyHeaders,
+         RecordedEntryBuilder) : le forwarding HTTP lui-meme reste verifie par un vrai tir, pas
+         teste ici. -->
+    <ProjectReference Include="..\..\tools\Tempest.RecorderProxy\Tempest.RecorderProxy.csproj" />
   </ItemGroup>
 
 </Project>

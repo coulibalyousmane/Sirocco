@@ -897,6 +897,50 @@ collection résolvant l'hôte (`{{baseUrl}}`) :
   injecté sans guillemets), exactement les limites documentées plus haut.
 - **Squelette complété à la main** (même principe que pour l'OpenAPI) : les 3 étapes à 0 % d'échec.
 
+## Proxy enregistreur
+
+Dernier bullet de la phase 5 : `tools/Tempest.RecorderProxy` capture du trafic HTTP réel en
+direct, sans étape d'export manuel — à la différence du convertisseur HAR, qui suppose une
+capture déjà faite (« Enregistrer tout en HAR » du navigateur). Scope volontairement réduit par
+rapport au *recorder* de Gatling : un **reverse proxy à cible unique**, pas un proxy HTTP
+générique multi-hôtes avec interception TLS (MITM) — cohérent avec le modèle `--target-url`
+unique de `tempest run`, et ça évite tout le chantier certificat/confiance qu'un vrai proxy HTTPS
+exigerait pour une fonctionnalité encore conditionnée à un vrai public.
+
+```bash
+dotnet run --project tools/Tempest.RecorderProxy -- --target-url http://localhost:5299 --out scenario.csx [--listen http://localhost:8888] [--name mon-scenario]
+```
+
+Pointez votre client (navigateur configuré avec cette adresse comme hôte, `curl`, l'application
+elle-même) vers `--listen` au lieu de la cible réelle : chaque requête est retransmise fidèlement
+vers `--target-url` — méthode, en-têtes, corps — et la réponse réelle relayée telle quelle,
+pendant que la requête est enregistrée en arrière-plan. À l'arrêt (Ctrl+C, ou
+`POST /__tempest-recorder/stop` pour un pilotage scripté), le proxy s'arrête proprement puis
+génère le scénario **en réutilisant `HarConverter.Convert` tel quel** — la capture en direct
+alimente exactement la même forme de données (`HarEntry`) qu'un export HAR de navigateur, donc le
+filtrage des actifs statiques et la génération du `.csx` sont acquis gratuitement, sans code
+dupliqué.
+
+Limites volontaires, documentées :
+- **HTTP seul dans cette première version** — pas d'interception TLS. Une cible HTTPS ne peut pas
+  être enregistrée par ce proxy tel qu'il est aujourd'hui.
+- **Seul un corps de type textuel reconnu est capturé** (JSON, XML, texte brut, HTML, JavaScript,
+  formulaire, GraphQL, d'après `Content-Type`) ; un corps binaire (upload de fichier, image, ...)
+  est retransmis fidèlement en direct mais jamais enregistré dans le scénario généré — même
+  limite que le corps multipart du convertisseur HAR, pas une nouvelle.
+- **Authentification/cookies capturés** : mêmes valeurs de session réelles que pour le HAR,
+  potentiellement expirées au moment du tir — mais capturées et rejouées dans la foulée, sans le
+  délai d'un export/conversion manuel, ce qui les rend souvent *plus* susceptibles d'être encore
+  valides qu'un HAR exporté puis converti plus tard (vérifié ci-dessous).
+
+Vérifié par un vrai tir de bout en bout contre `Tempest.SampleTarget` : proxy démarré, une vraie
+session login/catalogue/checkout envoyée à travers lui (statuts 200 confirmés à travers le proxy,
+identiques à ceux de la cible directe), arrêté via `/__tempest-recorder/stop`, scénario généré (4
+requêtes enregistrées, 4 étapes retenues). Rejoué immédiatement via `tempest run` contre la même
+cible : les 4 étapes à 0 % d'échec, y compris `checkout` — le jeton capturé était encore valide,
+contrairement au HAR de la section précédente où l'export manuel avait laissé le temps au jeton
+d'expirer. **Clôt entièrement la phase 5.**
+
 ## Pipeline CI
 
 Tout l'outillage orienté CI (seuils, `ExitAfterRun`, `Tempest.Compare`) restait, jusqu'ici,
@@ -1805,6 +1849,7 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 41** — [Convertisseur HAR](#convertisseur-har) : nouveau projet `tools/Tempest.HarConvert`, sans aucune dépendance à `Tempest.Domain`/`Tempest.Scenarios` (il ne fait qu'émettre du texte C#). **Premier bullet de la phase 5, conformément à la décision structurante de la roadmap phase 2 : sortie en scénario scripté (`.csx`), jamais en YAML/JSON.** Filtrage des actifs statiques par extension (bruit majoritaire d'un HAR de chargement de page complet) et sélection de l'hôte cible par fréquence plutôt que par ordre d'apparition — un bug réel de la première version, trouvé en vérifiant un vrai HAR reconstitué d'un aller-retour réel contre `Tempest.SampleTarget` : un appel tiers sans extension reconnue dans son chemin précédait le premier appel à la cible et devenait par erreur l'« hôte de base », faisant passer la cible elle-même pour un hôte secondaire à ignorer. Corrigé avant de documenter cette section, avec un test de régression dédié. Limites documentées en tête du fichier généré : authentification/cookies capturés à revoir manuellement (valeurs de session probablement expirées), corps multipart non pris en charge. Vérifié par un vrai tir : le scénario généré à partir d'un HAR mêlant trafic réel, actif statique et hôte secondaire compile via Roslyn et s'exécute contre `Tempest.SampleTarget` (`tempest run ... --rps 5 --duration 5s`), login et catalogue à 0 % d'échec, checkout à 100 % d'échec — le jeton capturé avait expiré au moment du tir, exactement la mise en garde documentée, pas une anomalie
 - [x] **Étape 42** — [Convertisseur OpenAPI](#convertisseur-openapi) : nouveau projet `tools/Tempest.OpenApiConvert`, même absence totale de dépendance que `Tempest.HarConvert`. **Deuxième bullet de la phase 5**, même sortie scriptée (`.csx`). Différence de nature avec le HAR, assumée dans la doc : une spécification ne décrit que la forme d'une API, jamais des données réelles, donc la sortie est un **squelette** (mot de la roadmap elle-même), pas un scénario directement jouable. Un step par opération, résolution de `$ref` locales vers `components/schemas` avec garde anti-cycle pour générer un corps JSON d'exemple, placeholders dérivés du type pour les paramètres de chemin/requête requis et les en-têtes, aucune traduction de schéma d'authentification (même raison que pour le HAR). Comptés plutôt que silencieux : chemins sans méthode HTTP prise en charge, opérations à corps non-JSON. Vérifié par deux vrais tirs contre `Tempest.SampleTarget`, à partir d'une spécification décrivant fidèlement ses trois routes réelles : le squelette non modifié donne `login`/`listProducts` à 0 % d'échec et `checkout` à 100 % (placeholder d'authentification, limite documentée) ; le même squelette complété à la main (jeton et identifiant de produit lus dans les réponses précédentes, exactement ce qu'un humain ajouterait) donne les 3 étapes à 0 % d'échec
 - [x] **Étape 43** — [Convertisseur Postman](#convertisseur-postman) : nouveau projet `tools/Tempest.PostmanConvert`, même absence totale de dépendance. **Troisième et dernier bullet de la phase 5, qui clôt entièrement la phase** (hors proxy enregistreur, conditionné à un vrai public). Même nature de squelette que l'OpenAPI, pour la même raison (une collection décrit des requêtes construites à la main, pas des données réelles). Dossiers imbriqués parcourus récursivement, nom d'étape qualifié par ses dossiers parents ; variables de collection (`{{nom}}`) substituées dans l'URL/en-têtes/corps, y compris quand elles résolvent l'hôte lui-même (l'hôte reste de toute façon ignoré à l'exécution, fixé par `--target-url`) ; variable non résolue comptée plutôt que silencieuse. Limites documentées : pas d'environnement Postman séparé lu (variables de collection seules), corps `formdata` non pris en charge, aucun schéma d'authentification traduit. Trouvaille réelle en vérifiant une vraie conversion, documentée plutôt que corrigée en silence : un placeholder substitué dans un corps JSON sans guillemets (convention Postman pour injecter un nombre, `"productId":{{id}}`) casse la syntaxe JSON — une variable Postman n'a pas de schéma pour deviner son type, contrairement à l'OpenAPI. Vérifié par deux vrais tirs contre `Tempest.SampleTarget`, à partir d'une collection décrivant fidèlement ses trois routes réelles avec un dossier et une variable `{{baseUrl}}` : squelette non modifié à 100 % d'échec sur `Checkout` (placeholders documentés) ; complété à la main (même principe que l'OpenAPI), les 3 étapes à 0 % d'échec
+- [x] **Étape 44** — [Proxy enregistreur](#proxy-enregistreur) : nouveau projet `tools/Tempest.RecorderProxy`, `ProjectReference` vers `Tempest.HarConvert` (seul convertisseur à en dépendre — reutilise `HarConverter.Convert` tel quel, une capture en direct alimentant la même forme `HarEntry` qu'un export HAR). **Dernier bullet de la phase 5, qui la clôt entièrement cette fois.** Scope volontairement réduit face au *recorder* de Gatling : reverse proxy à cible unique, HTTP seul, pas d'interception TLS — cohérent avec le modèle `--target-url` unique de `tempest run`, évite tout le chantier certificat/confiance d'un vrai MITM pour une fonctionnalité encore conditionnée à un vrai public. Arrêt propre via Ctrl+C ou `POST /__tempest-recorder/stop` (pilotage scripté), qui déclenche la génération du `.csx`. Limites documentées : corps binaire retransmis mais jamais capturé (même nature que le multipart du HAR). Vérifié par un vrai tir de bout en bout : proxy démarré contre `Tempest.SampleTarget`, vraie session login/catalogue/checkout envoyée à travers lui (statuts 200 confirmés, identiques à la cible directe), arrêté via l'endpoint de contrôle, scénario généré puis rejoué immédiatement via `tempest run` — les 4 étapes à 0 % d'échec, y compris `checkout` : capturé et rejoué sans le délai d'export/conversion manuel du HAR, le jeton était encore valide, contrairement à la section précédente
 
 ## Roadmap initiale — close
 

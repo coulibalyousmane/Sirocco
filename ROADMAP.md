@@ -33,7 +33,7 @@ Légende : ● solide · ◐ partiel · ○ absent
 | Mode distribué | ● fusion d'histogrammes exacte | ● `k6-operator` | ◐ Enterprise | ● Studio / K8s |
 | Installation en une commande | ○ cloner et compiler | ● brew, apt, docker | ● bundle, maven | ● NuGet |
 | Écosystème d'extensions communautaire | ○ | ● `xk6` | ◐ | ◐ plugins officiels |
-| Conversion HAR / OpenAPI / Postman | ● HAR + OpenAPI + Postman | ● | ● *recorder* proxy | ○ |
+| Conversion HAR / OpenAPI / Postman / *recorder* proxy | ● les quatre | ● | ● *recorder* proxy | ○ |
 | Test navigateur (Web Vitals) | ○ | ● k6 browser | ◐ Enterprise | ○ |
 
 ## Le différenciateur réel n'est pas celui qu'on croit
@@ -283,7 +283,18 @@ d'une page blanche.
   la phase 5**, hors proxy enregistreur (bullet suivant, conditionné à un vrai public). Vérifié
   par deux vrais tirs contre `Tempest.SampleTarget` : squelette brut en échec sur le checkout
   (placeholders), squelette complété à la main aux 3 étapes réussies.
-- **Proxy enregistreur** à la Gatling, si les convertisseurs rencontrent leur public.
+- ~~**Proxy enregistreur**~~ — fait, voir [Proxy enregistreur](README.md#proxy-enregistreur) :
+  `tools/Tempest.RecorderProxy` capture du trafic HTTP en direct, sans export manuel — seul
+  convertisseur/outil de la phase à dépendre d'un autre (`ProjectReference` vers
+  `Tempest.HarConvert`, dont il reutilise `HarConverter.Convert` tel quel : une capture en direct
+  alimente la meme forme `HarEntry` qu'un export HAR de navigateur). Scope volontairement réduit
+  face au *recorder* de Gatling : reverse proxy à cible unique, HTTP seul, pas d'interception TLS
+  (MITM) — cohérent avec le modèle `--target-url` unique de `tempest run`, évite le chantier
+  certificat/confiance d'un vrai proxy HTTPS pour une fonctionnalité qui restait conditionnée à un
+  vrai public. **Clôt entièrement la phase 5.** Vérifié par un vrai tir de bout en bout : session
+  réelle login/catalogue/checkout enregistrée à travers le proxy contre `Tempest.SampleTarget`,
+  scénario généré puis rejoué immédiatement — les 4 étapes à 0 % d'échec, le jeton capturé
+  encore valide (contrairement au HAR, où l'export manuel laisse le temps à un jeton d'expirer).
 
 ### Phase 6 — Élargir sans tout porter soi-même
 
@@ -382,16 +393,20 @@ désormais en graphe (débit et dette d'ordonnancement superposés) et ajoute un
 fenêtre glissante déjà servie en JSON par `/report/live` en tableau de bord HTML qui se recharge
 seul pendant le tir.
 
-**La phase 5 est entièrement traitée**, hors proxy enregistreur. Voir [Convertisseur
-HAR](README.md#convertisseur-har), [Convertisseur OpenAPI](README.md#convertisseur-openapi) et
-[Convertisseur Postman](README.md#convertisseur-postman) : `tools/Tempest.HarConvert`,
-`tools/Tempest.OpenApiConvert` et `tools/Tempest.PostmanConvert` traduisent respectivement un
-export du navigateur, une spécification d'API et une collection Postman en scénario scripté C#
-(`.csx`), conformément à la décision structurante prise en phase 2 — pas de YAML/JSON généré.
-Différence de nature assumée dans la doc : le HAR rejoue du trafic réel capturé, OpenAPI et
-Postman ne produisent qu'un squelette (ni une spécification ni une collection ne décrivent de
-données réelles). Reste le proxy enregistreur — comme les phases 6 à 8, il peut attendre des
-retours d'utilisateurs réels.
+**La phase 5 est maintenant entièrement traitée, y compris le proxy enregistreur.** Voir
+[Convertisseur HAR](README.md#convertisseur-har), [Convertisseur
+OpenAPI](README.md#convertisseur-openapi), [Convertisseur
+Postman](README.md#convertisseur-postman) et [Proxy enregistreur](README.md#proxy-enregistreur) :
+`tools/Tempest.HarConvert`, `tools/Tempest.OpenApiConvert`, `tools/Tempest.PostmanConvert` et
+`tools/Tempest.RecorderProxy` traduisent respectivement un export du navigateur, une
+spécification d'API, une collection Postman et une capture de trafic en direct en scénario
+scripté C# (`.csx`), conformément à la décision structurante prise en phase 2 — pas de YAML/JSON
+généré. Différence de nature assumée dans la doc : HAR et proxy enregistreur rejouent du trafic
+réel capturé (le second réutilisant directement `HarConverter.Convert`, sans dupliquer sa
+logique), OpenAPI et Postman ne produisent qu'un squelette (ni une spécification ni une
+collection ne décrivent de données réelles). Le proxy enregistreur reste volontairement réduit
+face à celui de Gatling : reverse proxy à cible unique, HTTP seul, pas d'interception TLS.
+Comme les phases 6 à 8, tout ce qui reste au-delà peut attendre des retours d'utilisateurs réels.
 
 ## Sources
 

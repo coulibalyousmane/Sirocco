@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reutilise HarEntry/HarRequest/HarHeader/HarPostData et HarConverter tels quels : le
+         proxy ne fait qu'alimenter en direct la meme forme de donnees qu'un export HAR de
+         navigateur, filtrage des actifs statiques et generation du .csx compris gratuitement. -->
+    <ProjectReference Include="..\Tempest.HarConvert\Tempest.HarConvert.csproj" />
+  </ItemGroup>
+
+</Project>

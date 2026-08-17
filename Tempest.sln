@@ -37,6 +37,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tempest.OpenApiConvert", "t
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tempest.PostmanConvert", "tools\Tempest.PostmanConvert\Tempest.PostmanConvert.csproj", "{6CA1CCC0-1EDE-4CCE-A76B-CAA7F49D85FE}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tempest.RecorderProxy", "tools\Tempest.RecorderProxy\Tempest.RecorderProxy.csproj", "{B65D3324-C8CA-46B3-B1E7-E76A308BB5CE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -203,6 +205,18 @@ Global
 		{6CA1CCC0-1EDE-4CCE-A76B-CAA7F49D85FE}.Release|x64.Build.0 = Release|Any CPU
 		{6CA1CCC0-1EDE-4CCE-A76B-CAA7F49D85FE}.Release|x86.ActiveCfg = Release|Any CPU
 		{6CA1CCC0-1EDE-4CCE-A76B-CAA7F49D85FE}.Release|x86.Build.0 = Release|Any CPU
+		{B65D3324-C8CA-46B3-B1E7-E76A308BB5CE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B65D3324-C8CA-46B3-B1E7-E76A308BB5CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B65D3324-C8CA-46B3-B1E7-E76A308BB5CE}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B65D3324-C8CA-46B3-B1E7-E76A308BB5CE}.Debug|x64.Build.0 = Debug|Any CPU
+		{B65D3324-C8CA-46B3-B1E7-E76A308BB5CE}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B65D3324-C8CA-46B3-B1E7-E76A308BB5CE}.Debug|x86.Build.0 = Debug|Any CPU
+		{B65D3324-C8CA-46B3-B1E7-E76A308BB5CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B65D3324-C8CA-46B3-B1E7-E76A308BB5CE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B65D3324-C8CA-46B3-B1E7-E76A308BB5CE}.Release|x64.ActiveCfg = Release|Any CPU
+		{B65D3324-C8CA-46B3-B1E7-E76A308BB5CE}.Release|x64.Build.0 = Release|Any CPU
+		{B65D3324-C8CA-46B3-B1E7-E76A308BB5CE}.Release|x86.ActiveCfg = Release|Any CPU
+		{B65D3324-C8CA-46B3-B1E7-E76A308BB5CE}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -221,5 +235,6 @@ Global
 		{CB88A51E-BE96-420B-B097-30D068784619} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 		{00E1D55B-E45B-4D5D-A754-EEE18A07C7D6} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 		{6CA1CCC0-1EDE-4CCE-A76B-CAA7F49D85FE} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
+		{B65D3324-C8CA-46B3-B1E7-E76A308BB5CE} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 	EndGlobalSection
 EndGlobal
