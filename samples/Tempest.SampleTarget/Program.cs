@@ -1,9 +1,15 @@
 ﻿using System.Net.WebSockets;
+using System.Text.Json;
 using Bogus;
+using GraphQL;
+using GraphQL.SystemTextJson;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Options;
+using MQTTnet;
+using MQTTnet.Server;
 using Tempest.SampleTarget;
 using Tempest.SampleTarget.Contracts;
+using Tempest.SampleTarget.GraphQl;
 using Tempest.SampleTarget.Services;
 
 // Cible de demonstration pour un premier tir reel : pas de logique metier, juste assez de
@@ -53,6 +59,20 @@ SampleTargetOptions options = app.Services.GetRequiredService<SampleTargetOption
 TokenStore tokens = app.Services.GetRequiredService<TokenStore>();
 ConcurrencyGate gate = app.Services.GetRequiredService<ConcurrencyGate>();
 Product[] catalog = app.Services.GetRequiredService<Product[]>();
+
+// Courtier MQTT embarque pour le protocole de reference MQTT (Tempest.Extensions.Mqtt) : un
+// processus .NET ordinaire, aucun serveur Kestrel/ASP.NET requis contrairement a gRPC/WebSocket —
+// demarre et arrete avec la cible elle-meme, sans infrastructure externe a installer.
+using MqttServer mqttServer = new MqttServerFactory().CreateMqttServer(
+    new MqttServerOptionsBuilder().WithDefaultEndpoint().WithDefaultEndpointPort(options.MqttPort).Build());
+await mqttServer.StartAsync();
+
+// Schema GraphQL reel (protocole de reference Tempest.Extensions.GraphQl) : construits une fois,
+// reutilises par chaque requete comme en production. L'executeur et le serialiseur sont separes
+// du schema dans l'API de GraphQL.NET — le schema decrit, l'executeur joue, le serialiseur rend.
+SampleGraphQlSchema graphQlSchema = new(catalog);
+IDocumentExecuter graphQlExecuter = new DocumentExecuter();
+GraphQLSerializer graphQlSerializer = new();
 
 app.UseWebSockets();
 app.MapGrpcService<EchoGrpcService>();
@@ -113,7 +133,46 @@ app.Map("/ws/echo", async http =>
     await EchoLoopAsync(socket, http.RequestAborted);
 });
 
-app.Run();
+// Point d'ecoute pour le protocole de reference SSE (Tempest.Extensions.Sse) : le nombre
+// d'evenements est pilote par la requete elle-meme, pas par la config du serveur, pour qu'un seul
+// point d'ecoute serve indifferemment un tir court ou long.
+const int SSE_DEFAULT_EVENT_COUNT = 10;
+const int SSE_EVENT_DELAY_MILLISECONDS = 20;
+
+app.MapGet("/api/events/stream", async (HttpContext http, CancellationToken cancellationToken) =>
+{
+    int count = int.TryParse(http.Request.Query["count"], out int parsed) && parsed > 0
+        ? parsed
+        : SSE_DEFAULT_EVENT_COUNT;
+
+    http.Response.ContentType = "text/event-stream";
+    http.Response.Headers.CacheControl = "no-cache";
+
+    for (int i = 0; i < count; i++)
+    {
+        await http.Response.WriteAsync($"data: {i}\n\n", cancellationToken);
+        await http.Response.Body.FlushAsync(cancellationToken);
+        await Task.Delay(SSE_EVENT_DELAY_MILLISECONDS, cancellationToken);
+    }
+});
+
+app.MapPost("/graphql", async (HttpContext http, CancellationToken cancellationToken) =>
+{
+    using JsonDocument request = await JsonDocument.ParseAsync(http.Request.Body, cancellationToken: cancellationToken);
+    string query = request.RootElement.GetProperty("query").GetString() ?? string.Empty;
+
+    ExecutionResult result = await graphQlExecuter.ExecuteAsync(executionOptions =>
+    {
+        executionOptions.Schema = graphQlSchema;
+        executionOptions.Query = query;
+        executionOptions.CancellationToken = cancellationToken;
+    });
+
+    http.Response.ContentType = "application/json";
+    await http.Response.WriteAsync(graphQlSerializer.Serialize(result), cancellationToken);
+});
+
+await app.RunAsync();
 
 static int ExtractPort(string urls)
 {

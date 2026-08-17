@@ -13,6 +13,15 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <!-- Courtier MQTT embarque pour le protocole de reference MQTT (Tempest.Extensions.Mqtt) :
+         aucune infrastructure externe a installer pour verifier ce chantier de bout en bout. -->
+    <PackageReference Include="MQTTnet.Server" Version="5.2.0.1603" />
+    <!-- Moteur GraphQL reel (pas une simulation par correspondance de chaine) pour le protocole
+         de reference GraphQL (Tempest.Extensions.GraphQl) : juste le moteur d'execution, aucune
+         integration ASP.NET supplementaire (le point d'ecoute HTTP est cable a la main, comme
+         REST/WebSocket). -->
+    <PackageReference Include="GraphQL" Version="8.8.4" />
+    <PackageReference Include="GraphQL.SystemTextJson" Version="8.8.4" />
   </ItemGroup>
 
   <ItemGroup>

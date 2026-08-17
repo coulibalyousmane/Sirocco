@@ -48,6 +48,13 @@ internal sealed class SampleTargetOptions
     public const int DEFAULT_STREAM_MESSAGE_COUNT = 5;
 
     /// <summary>
+    /// Port par defaut du courtier MQTT embarque. Volontairement distinct du port MQTT
+    /// conventionnel (1883) : eviter tout conflit avec un vrai courtier deja installe sur la
+    /// machine, la cible de demonstration n'a pas a en dependre.
+    /// </summary>
+    public const int DEFAULT_MQTT_PORT = 18_830;
+
+    /// <summary>
     /// Commandes simultanees admises avant mise en attente. Au-dela, la requete patiente
     /// <see cref="QueueWaitMilliseconds"/> puis echoue en 503 : c'est ce plafond qui rend
     /// la cible capable de saturer sous une charge suffisante.
@@ -86,4 +93,7 @@ internal sealed class SampleTargetOptions
 
     /// <summary>Nombre de messages envoyes par <c>StreamEcho</c> avant fermeture du flux.</summary>
     public int StreamMessageCount { get; init; } = DEFAULT_STREAM_MESSAGE_COUNT;
+
+    /// <summary>Port du courtier MQTT embarque.</summary>
+    public int MqttPort { get; init; } = DEFAULT_MQTT_PORT;
 }

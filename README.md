@@ -1067,6 +1067,111 @@ Vérifié par un vrai tir : plugin publié, exécuté contre une base SQLite fra
 0 % d'échec sur les deux étapes (`SELECT`/`INSERT`), lignes effectivement persistées (vérifié aussi
 par des tests unitaires qui interrogent directement le fichier après coup).
 
+### SSE
+
+`extensions/Tempest.Extensions.Sse` valide le contrat sous un angle différent de SQL : plutôt
+qu'un protocole *différent* de HTTP, un **usage** différent d'`IVirtualUserContext.HttpClient` — une
+réponse en flux continu (`text/event-stream`) lue événement par événement au fil de l'eau, plutôt
+que l'aller-retour requête/réponse unique de tout le reste du dépôt.
+
+```bash
+dotnet build extensions/Tempest.Extensions.Sse
+tempest run extensions/Tempest.Extensions.Sse/bin/Debug/net10.0/Tempest.Extensions.Sse.dll --target-url http://localhost:5281 --rps 20 --duration 30s
+```
+
+Contrairement au plugin SQL, celui-ci **utilise** `--target-url` normalement : le client HTTP
+partagé pointe déjà vers la cible, seul le chemin relatif (`TEMPEST_SSE_PLUGIN_PATH`, défaut
+`/api/events/stream`) et le nombre d'événements attendu (`TEMPEST_SSE_PLUGIN_EVENT_COUNT`, défaut
+20) se configurent par variable d'environnement, comme `Tempest.SamplePlugin`. Chaque itération
+exécute deux étapes réelles : `SSE connect` (ouverture de la réponse en tête seule via
+`HttpCompletionOption.ResponseHeadersRead`, vérification du `Content-Type`) et `SSE receive events`
+(lecture ligne à ligne jusqu'à la fin du flux, comptage des événements portant au moins une ligne
+`data:`). Un flux qui ne se termine jamais est borné par un délai par itération
+(`TEMPEST_SSE_PLUGIN_TIMEOUT_SECONDS`, défaut 10s) plutôt que de bloquer indéfiniment l'utilisateur
+virtuel.
+
+Conséquence directe de rester au-dessus de HTTP plutôt que d'un protocole distinct : contrairement
+à SQL, cette extension ne dépend d'aucun paquet NuGet au-delà de `Tempest.Domain` — `HttpClient` et
+la lecture de flux viennent du BCL. Un simple `dotnet build` suffit, `dotnet publish` n'est pas
+nécessaire ici, confirmant que l'exigence de publication découverte pour SQL tient à une dépendance
+réellement externe, pas au contrat de plugin lui-même.
+
+Vérifié par deux vrais tirs contre un nouvel point d'écoute de `Tempest.SampleTarget`
+(`GET /api/events/stream`, nombre d'événements piloté par la requête) : sélection par défaut sans
+aucune variable d'environnement, puis avec `--plugin-type` explicite et un nombre d'événements/délai
+personnalisés — les deux à 0 % d'échec sur `SSE connect` et `SSE receive events`.
+
+### MQTT
+
+`extensions/Tempest.Extensions.Mqtt` revient à un protocole réellement différent de HTTP, comme
+SQL, mais orienté publication/abonnement plutôt que requête/réponse : chaque itération s'abonne à
+un sujet qui lui est propre (`{préfixe}/{utilisateur}/{itération}`), y publie un message, puis
+attend sa propre réception — le round-trip complet jusqu'au courtier et retour, pas un simple
+accusé de publication.
+
+```bash
+dotnet publish extensions/Tempest.Extensions.Mqtt -o publish/mqtt-plugin
+TEMPEST_MQTT_PLUGIN_PORT=1883 tempest run publish/mqtt-plugin/Tempest.Extensions.Mqtt.dll --target-url http://localhost:1 --rps 20 --duration 30s
+```
+
+Sujet propre à chaque itération plutôt que partagé : sans cela, un utilisateur virtuel pourrait
+recevoir le message publié par un autre, rendant le round-trip mesuré non attribuable à la bonne
+itération. Deux étapes réelles par itération : `MQTT connect` (ouverture de la connexion TCP et
+poignée de main MQTT) et `MQTT publish/receive` (abonnement, publication, attente bornée par
+`TEMPEST_MQTT_PLUGIN_TIMEOUT_SECONDS` de la réception du même message).
+
+Client MQTTnet uniquement (`MQTTnet`, pas `MQTTnet.Server`) : aucun courtier n'est porté par ce
+plugin, contrairement à `Tempest.SampleTarget` qui en héberge un embarqué (`MQTTnet.Server`, sur un
+port dédié distinct du port MQTT conventionnel 1883) pour que la vérification de bout en bout ne
+dépende d'aucune infrastructure externe — même logique que SQLite pour le protocole de référence
+SQL, transposée à un courtier plutôt qu'un serveur de base de données.
+
+**Confirmation réelle plutôt que nouvelle trouvaille** : comme le plugin SQL, celui-ci doit être
+**publié** (`dotnet publish`), pas seulement compilé — vrai même ici où la seule dépendance ajoutée
+(`MQTTnet`) est entièrement gérée, sans composant natif. Un `dotnet build` seul charge le type sans
+erreur (`PluginWorkflowLoader` résout la réflexion sans toucher à MQTTnet), mais `ExecuteAsync`
+échoue dès le premier accès à un type MQTTnet, faute de trouver `MQTTnet.dll` à côté de l'assembly.
+Confirmé en isolant le problème via un harnais direct (mêmes appels, sans passer par
+`Assembly.LoadFrom`) avant de le reproduire puis de le corriger par publication — la limite tient
+bien au chargement dynamique d'un plugin avec dépendance externe, pas à un aléa propre à SQLite.
+
+Vérifié par deux vrais tirs contre le courtier MQTT embarqué de `Tempest.SampleTarget` : sélection
+par défaut, puis `--plugin-type` explicite avec un préfixe de sujet personnalisé — les deux à 0 %
+d'échec sur `MQTT connect` et `MQTT publish/receive`.
+
+### GraphQL
+
+`extensions/Tempest.Extensions.GraphQl` clôt les quatre protocoles de référence de la phase 6.
+Comme SSE, il reste au-dessus de HTTP plutôt que d'en changer, mais valide un autre aspect du
+contrat : un point d'entrée unique (toujours `POST {chemin}`, toujours le même) où le succès ou
+l'échec se lit dans le corps JSON (champ `errors`), jamais dans le code de statut — qui reste 200
+même quand une mutation échoue côté métier. Toute autre étape HTTP du dépôt
+(`DynamicCheckoutWorkflow`, `Tempest.SamplePlugin`...) utilise au contraire le code de statut comme
+seul signal.
+
+```bash
+dotnet build extensions/Tempest.Extensions.GraphQl
+tempest run extensions/Tempest.Extensions.GraphQl/bin/Debug/net10.0/Tempest.Extensions.GraphQl.dll --target-url http://localhost:5281 --rps 20 --duration 30s
+```
+
+Deux étapes réelles par itération, mêmes deux natures d'opération que SQL sous revêtement HTTP :
+`GraphQL query` (liste le catalogue, vérifie qu'elle n'est jamais vide) et `GraphQL mutation`
+(passe une commande pour un identifiant tiré dans `[1, TEMPEST_GRAPHQL_PLUGIN_PRODUCT_ID_MAX]`,
+20 par défaut). Ni variables GraphQL ni alias : les valeurs sont inlinées dans la chaîne de requête,
+la cible de référence n'en a pas besoin pour prouver le contrat.
+
+`Tempest.SampleTarget` héberge un schéma GraphQL réel (`GraphQL`, moteur GraphQL.NET — pas une
+simulation par correspondance de chaîne) exposé à la main sur `POST /graphql`, dans le même esprit
+que REST/WebSocket : `products` en lecture, `placeOrder` en écriture, qui échoue avec une entrée
+`errors` plutôt qu'un code de statut différent de 200 pour un identifiant de produit inconnu —
+exactement le comportement que ce protocole de référence existe pour vérifier. Aucune dépendance
+NuGet au-delà de `Tempest.Domain` côté plugin (`System.Text.Json` et `HttpClient` suffisent) : comme
+SSE, un simple `dotnet build` suffit, sans avoir besoin de publier.
+
+Vérifié par deux vrais tirs contre le vrai schéma GraphQL de `Tempest.SampleTarget` : sélection par
+défaut, puis `--plugin-type` explicite avec une plage d'identifiants réduite — les deux à 0 %
+d'échec sur `GraphQL query` et `GraphQL mutation`.
+
 ## Pipeline CI
 
 Tout l'outillage orienté CI (seuils, `ExitAfterRun`, `Tempest.Compare`) restait, jusqu'ici,
@@ -1979,6 +2084,9 @@ par utilisateur. Les supprimer demanderait un tampon circulaire maison : pas enc
 - [x] **Étape 45** — [Contrat de plugin](#contrat-de-plugin) : `PluginWorkflowLoader` (`Tempest.Scenarios`) charge un `IWorkflow` depuis une assembly `.dll` compilée indépendamment de ce dépôt (`Assembly.LoadFrom`, résolution du type par `--plugin-type` ou candidat unique, constructeur public sans paramètre requis). **Premier bullet de la phase 6** : le contrat lui-même (`IWorkflow`/`IVirtualUserContext`/`StepScope`) existait déjà, agnostique du protocole — ce qui manquait était un moyen de le charger sans `ProjectReference`. `WorkflowFileLoader` reconnaît désormais `.dll` en plus de `.yaml`/`.json`/`.csx`/`.cs`, même flag `PluginWorkflowType` disponible par scénario en mode concurrent. Limites documentées : aucune configuration injectée dans le type instancié (un plugin gère la sienne), pas de résolution NuGet dans cette version (chemin de fichier déjà présent sur le disque uniquement), mode distribué non pris en charge (même limite que le scripté). `samples/Tempest.SamplePlugin` est la preuve réelle du découplage : projet compilé séparément, jamais référencé par `Tempest.Host`/`Tempest.Cli`/`Tempest.Scenarios`, seule dépendance `Tempest.Domain`. Vérifié par deux vrais tirs contre `Tempest.SampleTarget`, l'assembly compilée puis chargée par son chemin : sélection automatique du seul type disponible, puis sélection explicite via `--plugin-type` — les deux à 0 % d'échec
 - [x] **Étape 46** — [Résolution NuGet](#résolution-nuget) : `NuGetPluginResolver` (`Tempest.Scenarios`, `NuGet.Protocol`) résout un plugin par identifiant de paquet plutôt que par chemin de fichier déjà sur le disque — deuxième moitié du bullet « chargement dynamique/résolution NuGet » de la phase 6. `--plugin-package`/`--plugin-package-version`/`--plugin-source` (répétable), même flags disponibles par scénario en mode concurrent. Télécharge le `.nupkg` depuis la première source qui connaît le paquet, extrait le groupe `lib/<tfm>` le plus proche de `net10.0` (`FrameworkReducer`), cache local persistant entre les tirs — une version explicite déjà en cache ne redéclenche aucun trafic réseau, contrairement à « dernière version stable » qui revalide toujours. Limite documentée : aucune résolution de dépendances transitives du paquet, seule sa propre bibliothèque est extraite. Vérifié par un vrai tir : `Tempest.SamplePlugin` empaqueté via `dotnet pack` dans un dossier local (flux NuGet à part entière), résolu puis exécuté contre `Tempest.SampleTarget` — 0 % d'échec, confirmé une deuxième fois avec une version explicite pour vérifier le chemin de cache
 - [x] **Étape 47** — [Protocoles de référence — SQL](#sql) : `extensions/Tempest.Extensions.Sql` interroge une vraie base SQLite plutôt que le client HTTP partagé — première extension protocole de la phase 6, referme le SQL explicitement écarté des jeux de données en phase 2 (même mot, angle différent : protocole de charge, pas source de paramètres). Deux étapes réelles par itération (`SELECT` paramétré, `INSERT`), mode WAL pour la concurrence entre utilisateurs virtuels, graine fixe pour la reproductibilité. Trouvaille réelle documentée plutôt que corrigée dans le cœur : un plugin chargé par `Assembly.LoadFrom` doit être publié (`dotnet publish`), pas seulement compilé, pour que ses dépendances NuGet transitives soient résolues ; sa bibliothèque *native* (`e_sqlite3`) doit en plus être cherchée par le plugin lui-même via `NativeLibrary.SetDllImportResolver`, `SQLitePCLRaw` la cherchant par défaut à côté de l'hôte (`Tempest.Cli`) plutôt qu'à côté du plugin. Vérifié par un vrai tir : plugin publié contre une base SQLite fraîche, 30 itérations, 0 % d'échec sur les deux étapes, lignes persistées confirmées
+- [x] **Étape 48** — [Protocoles de référence — SSE](#sse) : `extensions/Tempest.Extensions.Sse` valide le contrat sous un angle différent de SQL — pas un protocole différent de HTTP, mais un usage différent d'`IVirtualUserContext.HttpClient` : une réponse en flux continu lue événement par événement, plutôt que l'aller-retour requête/réponse unique de tout le reste du dépôt. Deux étapes réelles par itération (`SSE connect` via `HttpCompletionOption.ResponseHeadersRead` + vérification du `Content-Type`, `SSE receive events` via lecture ligne à ligne bornée par un délai par itération). Contrairement à SQL, utilise `--target-url` normalement (le client HTTP partagé pointe déjà vers la cible) et ne dépend d'aucun paquet NuGet au-delà de `Tempest.Domain` — confirmation par contraste que l'exigence de `dotnet publish` découverte pour SQL tenait à sa dépendance externe, pas au contrat de plugin lui-même : un simple `dotnet build` suffit ici. Nouveau point d'écoute `GET /api/events/stream` sur `Tempest.SampleTarget`, nombre d'événements piloté par la requête elle-même. Vérifié par deux vrais tirs : sélection par défaut sans configuration, puis `--plugin-type` explicite avec nombre d'événements et délai personnalisés — les deux à 0 % d'échec
+- [x] **Étape 49** — [Protocoles de référence — MQTT](#mqtt) : `extensions/Tempest.Extensions.Mqtt` revient à un protocole réellement différent de HTTP comme SQL, mais orienté publication/abonnement — chaque itération s'abonne à un sujet qui lui est propre (`{préfixe}/{utilisateur}/{itération}`, pour ne jamais recevoir le message d'un autre utilisateur virtuel), y publie un message, puis attend sa propre réception : le round-trip complet, pas un simple accusé de publication. Deux étapes réelles (`MQTT connect`, `MQTT publish/receive` borné par un délai par itération). `Tempest.SampleTarget` héberge désormais son propre courtier MQTT embarqué (`MQTTnet.Server`, port dédié) pour que la vérification reste sans infrastructure externe, même logique que SQLite pour SQL. Confirmation réelle plutôt que nouvelle trouvaille : comme SQL, ce plugin doit être publié (`dotnet publish`), pas seulement compilé — vrai même ici où la seule dépendance ajoutée (`MQTTnet`) est entièrement gérée, sans composant natif ; confirmé en isolant le problème via un harnais direct avant de le reproduire puis de le corriger par publication. Vérifié par deux vrais tirs contre le courtier embarqué : sélection par défaut, puis `--plugin-type` explicite avec préfixe de sujet personnalisé — les deux à 0 % d'échec
+- [x] **Étape 50** — [Protocoles de référence — GraphQL](#graphql) : `extensions/Tempest.Extensions.GraphQl` clôt les quatre protocoles de référence de la phase 6. Comme SSE, reste au-dessus de HTTP mais valide un autre aspect du contrat : succès/échec se lit dans le corps JSON (`errors`), jamais dans le code de statut qui reste 200 même pour une mutation en échec métier — contrairement à toute autre étape HTTP du dépôt, qui utilise le code de statut comme seul signal. Deux étapes réelles, mêmes natures d'opération que SQL sous revêtement HTTP (`GraphQL query` en lecture, `GraphQL mutation` en écriture pour un identifiant tiré dans une plage configurable). `Tempest.SampleTarget` héberge un schéma GraphQL réel (`GraphQL`, moteur GraphQL.NET) exposé à la main sur `POST /graphql`, dont la mutation échoue avec une entrée `errors` plutôt qu'un code de statut différent de 200 pour un identifiant inconnu. Aucune dépendance NuGet au-delà de `Tempest.Domain` côté plugin : un simple `dotnet build` suffit, comme SSE. **Clôt entièrement le bullet « protocoles de référence » de la phase 6.** Vérifié par deux vrais tirs contre le vrai schéma GraphQL de `Tempest.SampleTarget` : sélection par défaut, puis `--plugin-type` explicite avec une plage d'identifiants réduite — les deux à 0 % d'échec
 
 ## Roadmap initiale — close
 

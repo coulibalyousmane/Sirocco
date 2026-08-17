@@ -19,6 +19,13 @@
          en conflit de type (CS0436) avec ceux references via ce projet. -->
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Grpc.AspNetCore" Version="2.83.0" />
+    <!-- Courtier MQTT en boucle locale pour MqttWorkflowTests (MqttTestBroker) : aucun serveur
+         externe requis pour verifier le protocole de reference MQTT. -->
+    <PackageReference Include="MQTTnet.Server" Version="5.2.0.1603" />
+    <!-- Serveur GraphQL en boucle locale pour GraphQlWorkflowTests (GraphQlTestServer) : vrai
+         moteur GraphQL.NET, pas une simulation par correspondance de chaine. -->
+    <PackageReference Include="GraphQL" Version="8.8.4" />
+    <PackageReference Include="GraphQL.SystemTextJson" Version="8.8.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
@@ -59,6 +66,16 @@
          vraie base SQLite temporaire (aucun serveur a demarrer, contrairement au reste du mode
          distribue verifie par de vrais tirs). -->
     <ProjectReference Include="..\..\extensions\Tempest.Extensions.Sql\Tempest.Extensions.Sql.csproj" />
+    <!-- Deuxieme protocole de reference de la phase 6 (SSE) : SseWorkflow teste ici contre un vrai
+         serveur Kestrel en boucle locale (SseTestServer, meme gabarit que GrpcEchoTestServer). -->
+    <ProjectReference Include="..\..\extensions\Tempest.Extensions.Sse\Tempest.Extensions.Sse.csproj" />
+    <!-- Troisieme protocole de reference de la phase 6 (MQTT) : MqttWorkflow teste ici contre un
+         vrai courtier MQTT en boucle locale (MqttTestBroker, meme gabarit que SseTestServer). -->
+    <ProjectReference Include="..\..\extensions\Tempest.Extensions.Mqtt\Tempest.Extensions.Mqtt.csproj" />
+    <!-- Quatrieme et dernier protocole de reference de la phase 6 (GraphQL) : GraphQlWorkflow
+         teste ici contre un vrai serveur GraphQL en boucle locale (GraphQlTestServer, meme
+         gabarit que SseTestServer). -->
+    <ProjectReference Include="..\..\extensions\Tempest.Extensions.GraphQl\Tempest.Extensions.GraphQl.csproj" />
   </ItemGroup>
 
 </Project>

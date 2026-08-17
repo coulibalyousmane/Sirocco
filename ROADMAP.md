@@ -326,8 +326,8 @@ seul SQL, Kafka, MQTT, AMQP et le reste est un puits sans fond. Le modèle d'ext
   documentee : aucune resolution de dependances transitives du paquet. Verifie par un vrai tir :
   `Tempest.SamplePlugin` empaquete via `dotnet pack` dans un dossier local (flux NuGet a part
   entiere), resolu puis execute contre `Tempest.SampleTarget` — 0 % d'echec.
-- **Protocoles de référence** écrits comme extensions pour valider le contrat : SQL, SSE, MQTT,
-  GraphQL.
+- ~~**Protocoles de référence**~~ écrits comme extensions pour valider le contrat : SQL, SSE, MQTT,
+  GraphQL. **Les quatre sont faits.**
   - ~~**SQL**~~ — fait, voir [Protocoles de référence — SQL](README.md#sql) :
     `extensions/Tempest.Extensions.Sql` interroge une vraie base SQLite (deux etapes reelles par
     iteration, SELECT parametre et INSERT) plutot que le client HTTP partage — referme le SQL
@@ -336,7 +336,33 @@ seul SQL, Kafka, MQTT, AMQP et le reste est un puits sans fond. Le modèle d'ext
     doit etre publie (`dotnet publish`), pas seulement compile, et sa bibliotheque *native* doit
     en plus etre cherchee par le plugin lui-meme (`NativeLibrary.SetDllImportResolver`), le
     resolveur par defaut de `SQLitePCLRaw` cherchant a cote de l'hote plutot qu'a cote du plugin.
-    Restent SSE, MQTT, GraphQL.
+  - ~~**SSE**~~ — fait, voir [Protocoles de référence — SSE](README.md#sse) :
+    `extensions/Tempest.Extensions.Sse` valide le contrat sous un angle different de SQL — pas un
+    protocole different de HTTP, mais un usage different d'`IVirtualUserContext.HttpClient` : une
+    reponse en flux continu (`text/event-stream`) lue evenement par evenement, plutot que
+    l'aller-retour requete/reponse unique du reste du depot. Contrairement a SQL, utilise
+    `--target-url` normalement et ne depend d'aucun paquet NuGet au-dela de `Tempest.Domain` — un
+    simple `dotnet build` suffit, confirmant par contraste que l'exigence de publication de SQL
+    tenait a sa dependance externe, pas au contrat lui-meme. Nouveau point d'ecoute
+    `GET /api/events/stream` sur `Tempest.SampleTarget`.
+  - ~~**MQTT**~~ — fait, voir [Protocoles de référence — MQTT](README.md#mqtt) :
+    `extensions/Tempest.Extensions.Mqtt` revient a un protocole reellement different de HTTP comme
+    SQL, mais oriente publication/abonnement : chaque iteration s'abonne a un sujet qui lui est
+    propre, y publie un message, puis attend sa propre reception (round-trip complet, pas un
+    simple accuse de publication). `Tempest.SampleTarget` heberge desormais son propre courtier
+    MQTT embarque (`MQTTnet.Server`) pour rester sans infrastructure externe, meme logique que
+    SQLite pour SQL. Confirmation reelle plutot que nouvelle trouvaille : ce plugin doit lui aussi
+    etre publie (`dotnet publish`), pas seulement compile, meme si sa seule dependance ajoutee
+    (`MQTTnet`) est entierement geree, sans composant natif — la limite tient au chargement
+    dynamique d'un plugin avec dependance externe, pas a un alea propre a SQLite.
+  - ~~**GraphQL**~~ — fait, voir [Protocoles de référence — GraphQL](README.md#graphql) : comme
+    SSE, reste au-dessus de HTTP mais valide un autre aspect du contrat — succes/echec se lit dans
+    le corps JSON (`errors`), jamais dans le code de statut qui reste 200 meme pour une mutation en
+    echec metier. Deux etapes reelles, memes natures d'operation que SQL (lecture/ecriture) sous
+    revetement HTTP. `Tempest.SampleTarget` heberge un vrai schema GraphQL (`GraphQL`, moteur
+    GraphQL.NET, pas une simulation par correspondance de chaine). Aucune dependance NuGet au-dela
+    de `Tempest.Domain` cote plugin : un simple `dotnet build` suffit, comme SSE. **Clot
+    entierement le bullet des quatre protocoles de reference.**
 - **Guide d'écriture d'extension** — sans documentation, un modèle de plugin reste théorique.
 
 ### Phase 7 — Échelle cloud-native
@@ -436,16 +462,25 @@ collection ne décrivent de données réelles). Le proxy enregistreur reste volo
 face à celui de Gatling : reverse proxy à cible unique, HTTP seul, pas d'interception TLS.
 Comme les phases 6 à 8, tout ce qui reste au-delà peut attendre des retours d'utilisateurs réels.
 
-**La phase 6 progresse** : voir [Contrat de plugin](README.md#contrat-de-plugin), [Résolution
-NuGet](README.md#résolution-nuget) et [Protocoles de référence — SQL](README.md#sql). Les deux
-premiers bullets — le modèle d'extension avant les protocoles, dans cet ordre précis — sont faits :
+**La phase 6 avance fortement** : voir [Contrat de plugin](README.md#contrat-de-plugin),
+[Résolution NuGet](README.md#résolution-nuget), [Protocoles de référence —
+SQL](README.md#sql), [— SSE](README.md#sse), [— MQTT](README.md#mqtt) et [—
+GraphQL](README.md#graphql). Les trois premiers bullets sont maintenant entièrement traités.
 `PluginWorkflowLoader` charge un `IWorkflow` compilé indépendamment de ce dépôt depuis un chemin de
 fichier, `NuGetPluginResolver` fait de même depuis un identifiant de paquet NuGet, et
 `samples/Tempest.SamplePlugin` prouve les deux par une assembly qui n'est justement référencée par
-aucun projet du cœur. Le troisième bullet est entamé : `extensions/Tempest.Extensions.Sql` valide
-le contrat contre un protocole réellement différent de HTTP, et a mis au jour une trouvaille reelle
-sur le chargement de dependances natives (documentee, pas corrigee dans le coeur). Restent SSE,
-MQTT, GraphQL, puis le guide d'écriture d'extension (dernier bullet de la phase).
+aucun projet du cœur. Les quatre protocoles de référence sont faits, chacun validant une facette
+différente du contrat : `extensions/Tempest.Extensions.Sql` contre un protocole réellement
+différent de HTTP (trouvaille réelle sur le chargement de dépendances natives, documentée, pas
+corrigée dans le cœur) ; `extensions/Tempest.Extensions.Sse` sous l'angle d'un usage différent du
+client HTTP partagé (flux continu plutôt qu'aller-retour unique), confirmant par contraste que
+l'exigence de publication de SQL tenait à sa dépendance externe, pas au contrat lui-même ;
+`extensions/Tempest.Extensions.Mqtt` en revenant à un protocole réellement différent comme SQL,
+mais orienté publication/abonnement (round-trip complet sujet→courtier→sujet), confirmant que
+l'exigence de publication s'applique à toute dépendance externe, gérée ou native ;
+`extensions/Tempest.Extensions.GraphQl` enfin, sous un autre usage HTTP comme SSE — succès/échec
+porté par le corps JSON, jamais par le code de statut. Reste le guide d'écriture d'extension,
+dernier bullet de la phase.
 
 ## Sources
 

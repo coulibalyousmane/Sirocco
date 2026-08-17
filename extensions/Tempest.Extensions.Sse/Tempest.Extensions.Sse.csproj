@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    Deuxieme protocole de reference de la roadmap phase 6 (SSE, apres SQL, avant MQTT/GraphQL) :
+    contrairement a SQL, ne valide pas le contrat contre un protocole different de HTTP mais contre
+    un usage different d'IVirtualUserContext.HttpClient — une reponse en flux continu (event-stream)
+    lue au fil de l'eau, plutot qu'un aller-retour requete/reponse unique comme tout le reste du
+    depot. Aucune dependance au-dela de Tempest.Domain : HttpClient et la lecture de flux viennent du
+    BCL, rien a publier au-dela d'un dotnet build (contrairement a SQL, voir SqlWorkflow).
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Tempest.Domain\Tempest.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
