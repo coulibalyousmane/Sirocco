@@ -82,7 +82,7 @@ internal sealed class GraphQlTestServer : IAsyncDisposable
         return new GraphQlTestServer(app, new Uri(address));
     }
 
-    private static ISchema BuildSchema(int validProductId)
+    private static Schema BuildSchema(int validProductId)
     {
         TestProduct[] catalog = [new TestProduct(validProductId, "Widget", 9.99m)];
 

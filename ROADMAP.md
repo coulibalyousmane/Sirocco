@@ -388,8 +388,20 @@ atteignent ce plafond.
 - **TLS sur le control plane** — tout est en clair aujourd'hui ; le secret partagé de l'étape 15
   protège l'authentification, pas la confidentialité.
 - **Autoscaling** des workers selon le débit cible.
-- **Reprise sur perte d'un worker** en cours de tir, aujourd'hui non gérée : le maître attend
-  indéfiniment un rapport qui ne viendra jamais.
+- ~~**Reprise sur perte d'un worker**~~ — fait, voir [Reprise sur perte d'un
+  worker](README.md#reprise-sur-perte-dun-worker) : un worker dispatché signale désormais qu'il
+  est vivant en continu (`POST /master/heartbeat`, `WorkerLivenessHostedService`), pas seulement
+  une fois à l'enregistrement. Passé `Master.WorkerDeadAfterSeconds` (20 s par défaut) sans
+  heartbeat, `MasterCoordinator.MarkDeadIfStale` déclare le worker perdu et le rapport final se
+  fusionne avec les survivants (`LoadTestReport.LostWorkers` documente honnêtement ce qui manque),
+  plutôt que d'attendre indéfiniment un rapport qui ne viendra jamais. Filet de sécurité optionnel
+  (`Master.ReportTimeoutSeconds`, `null` par défaut) pour le cas non couvert par le heartbeat : un
+  worker dont le *process* reste vivant mais dont le *tir local* est bloqué. Vérifié par un vrai
+  tir distribué à deux workers (maître + deux process réels, pas de simulation) : un worker tué en
+  cours de tir (`kill -9`) est déclaré perdu ~6 s après son dernier heartbeat, le rapport final
+  contient `lostWorkers: ["http://localhost:5301"]` et les statistiques réelles du seul worker
+  survivant (60 itérations, percentiles réels) — le maître ne reste jamais bloqué. Un second tir
+  témoin, sans tuer aucun worker, confirme l'absence de faux positif.
 
 ### Phase 8 — Prouver publiquement le différenciateur
 
@@ -498,8 +510,15 @@ l'exigence de publication s'applique à toute dépendance externe, gérée ou na
 porté par le corps JSON, jamais par le code de statut. Dernier bullet, purement documentaire : le
 guide d'écriture d'extension rassemble cette recette pour la cinquième extension, pas encore
 écrite par ce dépôt — vérifié en le suivant à la lettre depuis un dossier vide, jusqu'à un vrai tir
-à 0 % d'échec contre `Tempest.SampleTarget`. Ne reste plus, au-delà de cette phase, que les phases
-7 et 8, toutes deux conditionnées à un vrai public.
+à 0 % d'échec contre `Tempest.SampleTarget`.
+
+**La phase 7 est entamée**, malgré le principe énoncé plus haut ("ne lancer que lorsque des
+utilisateurs réels atteignent ce plafond") — choix explicite de l'utilisateur plutôt qu'attente
+passive. Premier bullet traité : [Reprise sur perte d'un worker](README.md#reprise-sur-perte-dun-worker),
+qui ne dépend d'aucune infrastructure Kubernetes et fermait un vrai trou de robustesse (un maître
+qui restait bloqué indéfiniment sur un worker mort). Restent, dans l'ordre choisi : TLS sur le
+control plane, l'opérateur Kubernetes, puis l'autoscaling — ce dernier dépendant logiquement de
+l'opérateur.
 
 ## Sources
 

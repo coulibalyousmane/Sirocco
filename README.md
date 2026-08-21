@@ -2220,6 +2220,50 @@ compteurs locaux (`tempest_requests_total`, etc.) ; `/metrics` sur le maître, i
 plein tir, affiche les centiles et compteurs **fusionnés** des deux workers (176 itérations
 combinées à l'instant du sondage) — la même donnée que `/report/live`, sous forme Prometheus.
 
+### Reprise sur perte d'un worker
+
+Jusqu'ici, l'enregistrement (`POST /master/register`) était le seul signal de vie qu'un worker
+donnait au maître — une fois le tir lancé, plus rien. Un worker qui meurt en cours de route
+(process tué, conteneur évincé, coupure réseau) laissait donc le maître attendre indéfiniment
+un rapport qui ne viendrait jamais : `MasterCoordinator.WaitForReportsAsync` n'avait aucun
+timeout, et son unique appelant le sollicitait avec `CancellationToken.None`.
+
+**Heartbeat continu, pas un enregistrement ponctuel.** Chaque worker signale maintenant qu'il
+est vivant en continu (`POST /master/heartbeat`, `WorkerLivenessHostedService`), toutes les
+`Worker.HeartbeatIntervalSeconds` (5 s par défaut), jusqu'à l'arrêt du process — plus seulement
+une fois, à l'enregistrement. Passé `Master.WorkerDeadAfterSeconds` (20 s par défaut, soit 4
+heartbeats manqués) sans signal d'un worker dispatché n'ayant pas encore rapporté,
+`MasterCoordinator.MarkDeadIfStale` le déclare perdu — ce qui suffit à faire avancer
+`WaitForReportsAsync` (le compte "rentré" inclut désormais les workers déclarés morts, pas
+seulement les rapports effectivement reçus) sans attendre le worker manquant. Un heartbeat
+tardif annule un faux positif tant que l'attente n'a pas déjà rendu la main.
+
+**Fusion partielle honnête, pas un rapport silencieusement incomplet.** `ClusterReportAggregator.Merge`
+tolérait déjà un sous-ensemble de rapports (il ne lève que sur une liste vide) — c'est la
+couche d'orchestration qui exigeait jusqu'ici que *tous* les workers dispatchés rapportent.
+Le rapport final expose maintenant `LostWorkers` : la liste des workers dispatchés qui n'ont
+pas rapporté, rendue en bandeau d'avertissement par `ToTable()`/`ToHtml()`, sur le même modèle
+que l'avertissement déjà existant pour les mesures perdues. Si *tous* les workers dispatchés
+sont perdus, le maître refuse de fusionner une liste vide (ce serait un rapport fabriqué à
+partir de rien) et échoue proprement plutôt que de planter sur une exception non gérée.
+
+**Filet de sécurité optionnel pour le cas résiduel non couvert par le heartbeat** : un worker
+dont le *process* reste vivant (donc continue de heartbeat normalement) mais dont le *tir
+local* est bloqué (deadlock dans un workflow, par exemple) n'est pas détecté par ce mécanisme.
+`Master.ReportTimeoutSeconds` (`null` par défaut, donc désactivé) plafonne alors l'attente de
+manière absolue, quel que soit l'état des heartbeats — à renseigner explicitement si ce risque
+est réel pour le scénario exécuté. Limite assumée plutôt que résolue ici : le détecter
+proprement demanderait que le heartbeat porte un signal de progression du tir, pas seulement
+« le process répond ».
+
+Vérifié par un vrai tir distribué (1 maître, 2 workers, process réels — pas de simulation,
+`Master.WorkerDeadAfterSeconds` réduit à 6 s pour resserrer le test) : un des deux workers tué
+(`kill -9`) en cours de tir est déclaré perdu ~6 s après son dernier heartbeat ; le rapport
+final contient `lostWorkers: ["http://localhost:5301"]` et les statistiques réelles du seul
+worker survivant (60 itérations, percentiles réels, ni vides ni fabriqués) — le maître ne reste
+jamais bloqué. Un second tir témoin, sans tuer aucun worker, confirme l'absence de faux positif
+(aucun worker déclaré perdu, rapport complet aux deux workers).
+
 ## Conteneurisation
 
 Une seule image sert les trois rôles (autonome/maître/worker) — c'est `Tempest:Role`, pas

@@ -27,7 +27,7 @@ if (string.Equals(tempestOptions.Role, TempestHostOptions.ROLE_WORKER, StringCom
     builder.Services.AddSingleton(workerOptions);
     builder.Services.AddSingleton(tempestOptions);
     builder.Services.AddSingleton<WorkerCoordinator>();
-    builder.Services.AddHostedService<WorkerRegistrationHostedService>();
+    builder.Services.AddHostedService<WorkerLivenessHostedService>();
 
     // Cable des le demarrage, avant meme qu'un tir n'existe : WorkerCoordinator.Prepare()
     // construit son propre TempestMeter a la main une fois le tir connu (voir son commentaire),
@@ -110,6 +110,15 @@ else if (string.Equals(tempestOptions.Role, TempestHostOptions.ROLE_MASTER, Stri
     masterApp.MapPost("/master/report", (WorkerReport report, MasterCoordinator coordinator) =>
     {
         coordinator.SubmitReport(report);
+        return Results.Ok();
+    }).AddEndpointFilter<ClusterAuthenticationFilter>();
+
+    // Signal de vie continu (WorkerLivenessHostedService), distinct de /master/register (un seul
+    // appel, au demarrage) : c'est l'absence prolongee de ces appels qui permet au maitre de
+    // detecter un worker perdu en cours de tir plutot que d'attendre indefiniment son rapport.
+    masterApp.MapPost("/master/heartbeat", (WorkerRegistration heartbeat, MasterCoordinator coordinator) =>
+    {
+        coordinator.Heartbeat(heartbeat.WorkerUrl);
         return Results.Ok();
     }).AddEndpointFilter<ClusterAuthenticationFilter>();
 

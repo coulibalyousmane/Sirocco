@@ -60,6 +60,16 @@ public sealed record LoadTestReport
     /// </summary>
     public IReadOnlyList<TimeSeriesSample> TimeSeries { get; init; } = [];
 
+    /// <summary>
+    /// Workers (mode distribue) declares perdus en cours de tir plutot que d'avoir rapporte
+    /// normalement — voir <c>Tempest.Host.Distributed.MasterCoordinator.MarkDeadIfStale</c>. Vide
+    /// par defaut : sans effet en mode autonome, et un tir distribue nominal ou tous les workers
+    /// rapportent laisse aussi ce champ vide. Non vide, il signale que ce rapport ne reflete
+    /// qu'un sous-ensemble des workers dispatches — fusion partielle honnete, pas un rapport
+    /// silencieusement incomplet.
+    /// </summary>
+    public IReadOnlyList<string> LostWorkers { get; init; } = [];
+
     /// <summary>Debit moyen sur la periode, iterations par seconde.</summary>
     public double IterationsPerSecond =>
         Duration > TimeSpan.Zero ? Iteration.Count / Duration.TotalSeconds : 0d;
@@ -93,6 +103,12 @@ public sealed record LoadTestReport
         {
             builder.AppendLine(
                 "  /!\\ Modele ferme : pas de correction du coordinated omission, chiffres non comparables a un tir en modele ouvert.");
+        }
+
+        if (LostWorkers.Count > 0)
+        {
+            builder.AppendLine(
+                $"  /!\\ {LostWorkers.Count} worker(s) perdu(s) en cours de tir : {string.Join(", ", LostWorkers)}.");
         }
 
         builder.AppendLine(
@@ -272,6 +288,12 @@ public sealed record LoadTestReport
         {
             html.AppendLine(
                 "<div class=\"warning\">/!\\ Modele ferme : pas de correction du coordinated omission, chiffres non comparables a un tir en modele ouvert.</div>");
+        }
+
+        if (LostWorkers.Count > 0)
+        {
+            html.AppendLine(
+                $"<div class=\"warning\">/!\\ {LostWorkers.Count} worker(s) perdu(s) en cours de tir : {WebUtility.HtmlEncode(string.Join(", ", LostWorkers))}.</div>");
         }
 
         html.AppendLine("<table>");

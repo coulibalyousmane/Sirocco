@@ -131,16 +131,23 @@ public sealed class MqttWorkflow : IWorkflow
             scope.Success();
             return client;
         }
+        catch (Exception) when (connectCancellationToken.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            // Notre propre delai (_timeout) a expire avant tout CONNACK, quelle que soit la forme
+            // exacte de l'exception que MQTTnet leve dans ce cas : verifie reellement en reproduisant
+            // ce test sous Linux (conteneur), pas suppose depuis un seul systeme — MQTTnet y leve
+            // MqttCommunicationException plutot que OperationCanceledException pour la meme cause,
+            // alors que Windows leve bien OperationCanceledException. Se fier a l'etat du jeton de
+            // notre propre delai plutot qu'au type de l'exception evite que ce classement depende de
+            // la plateforme.
+            client.Dispose();
+            scope.Fail(RequestOutcome.Timeout);
+            return null;
+        }
         catch (MqttCommunicationException)
         {
             client.Dispose();
             scope.Fail(RequestOutcome.ConnectionError);
-            return null;
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            client.Dispose();
-            scope.Fail(RequestOutcome.Timeout);
             return null;
         }
     }
@@ -195,13 +202,15 @@ public sealed class MqttWorkflow : IWorkflow
 
             scope.Success();
         }
+        catch (Exception) when (readCancellationToken.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            // Meme raisonnement que ConnectAsync : notre propre delai a expire, quelle que soit la
+            // forme exacte de l'exception levee pour cette cause sur la plateforme courante.
+            scope.Fail(RequestOutcome.Timeout);
+        }
         catch (MqttCommunicationException)
         {
             scope.Fail(RequestOutcome.ConnectionError);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            scope.Fail(RequestOutcome.Timeout);
         }
         finally
         {

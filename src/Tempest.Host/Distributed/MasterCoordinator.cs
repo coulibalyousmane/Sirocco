@@ -15,6 +15,8 @@ public sealed class MasterCoordinator
     private readonly Lock _gate = new();
     private readonly HashSet<string> _registeredWorkers = new(StringComparer.Ordinal);
     private readonly List<WorkerReport> _reports = [];
+    private readonly Dictionary<string, DateTimeOffset> _lastHeartbeat = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _deadWorkers = new(StringComparer.Ordinal);
 
     private TaskCompletionSource? _registrationTarget;
     private int _registrationGoal;
@@ -41,12 +43,75 @@ public sealed class MasterCoordinator
         lock (_gate)
         {
             _registeredWorkers.Add(workerUrl);
+            _lastHeartbeat[workerUrl] = DateTimeOffset.UtcNow;
 
             if (_registrationTarget is not null && _registeredWorkers.Count >= _registrationGoal)
             {
                 _registrationTarget.TrySetResult();
             }
         }
+    }
+
+    /// <summary>
+    /// Signale que <paramref name="workerUrl"/> est toujours vivant (<c>POST /master/heartbeat</c>).
+    /// Annule un faux positif si ce worker avait ete declare mort entre-temps
+    /// (<see cref="MarkDeadIfStale"/>) — sauf si l'attente des rapports a deja rendu la main sur la
+    /// base de cette perte : voir la remarque de <see cref="MarkDeadIfStale"/>.
+    /// </summary>
+    public void Heartbeat(string workerUrl)
+    {
+        lock (_gate)
+        {
+            _lastHeartbeat[workerUrl] = DateTimeOffset.UtcNow;
+            _deadWorkers.Remove(workerUrl);
+        }
+    }
+
+    /// <summary>
+    /// Declare perdu tout worker enregistre qui n'a pas rapporte, n'est pas deja marque mort, et
+    /// n'a pas donne signe de vie depuis plus de <paramref name="deadAfter"/>. Renvoie les workers
+    /// nouvellement declares morts par cet appel (pour un log unique cote appelant, pas repete a
+    /// chaque sondage).
+    /// <para>
+    /// Un worker ainsi marque compte comme "rentre" pour <see cref="WaitForReportsAsync"/> : c'est
+    /// ce qui permet au maitre de cesser d'attendre un rapport qui ne viendra jamais plutot que de
+    /// rester bloque indefiniment.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> MarkDeadIfStale(TimeSpan deadAfter)
+    {
+        List<string> newlyDead = [];
+
+        lock (_gate)
+        {
+            DateTimeOffset threshold = DateTimeOffset.UtcNow - deadAfter;
+
+            foreach (string worker in _registeredWorkers)
+            {
+                if (_deadWorkers.Contains(worker))
+                {
+                    continue;
+                }
+
+                if (_reports.Any(report => report.WorkerId == worker))
+                {
+                    continue;
+                }
+
+                if (_lastHeartbeat.TryGetValue(worker, out DateTimeOffset lastSeen) && lastSeen <= threshold)
+                {
+                    _deadWorkers.Add(worker);
+                    newlyDead.Add(worker);
+                }
+            }
+
+            if (newlyDead.Count > 0)
+            {
+                TryCompleteReportsWait();
+            }
+        }
+
+        return newlyDead;
     }
 
     /// <summary>
@@ -93,15 +158,16 @@ public sealed class MasterCoordinator
         lock (_gate)
         {
             _reports.Add(report);
-
-            if (_reportsTarget is not null && _reports.Count >= _reportsGoal)
-            {
-                _reportsTarget.TrySetResult();
-            }
+            TryCompleteReportsWait();
         }
     }
 
-    /// <summary>Attend que les <paramref name="expected"/> workers dispatches aient tous rapporte.</summary>
+    /// <summary>
+    /// Attend que les <paramref name="expected"/> workers dispatches aient tous rapporte —
+    /// "rapporte" incluant desormais un worker declare mort (<see cref="MarkDeadIfStale"/>), pas
+    /// seulement un worker dont le rapport a ete effectivement recu : sans cela, un worker perdu
+    /// en cours de tir bloquerait cette attente indefiniment.
+    /// </summary>
     public async Task<IReadOnlyList<WorkerReport>> WaitForReportsAsync(int expected, CancellationToken cancellationToken)
     {
         TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -111,7 +177,7 @@ public sealed class MasterCoordinator
             _reportsGoal = expected;
             _reportsTarget = tcs;
 
-            if (_reports.Count >= expected)
+            if (_reports.Count + _deadWorkers.Count >= expected)
             {
                 tcs.TrySetResult();
             }
@@ -122,6 +188,43 @@ public sealed class MasterCoordinator
         lock (_gate)
         {
             return [.. _reports];
+        }
+    }
+
+    /// <summary>Complete l'attente en cours si assez de workers sont rentres ou declares morts.</summary>
+    private void TryCompleteReportsWait()
+    {
+        if (_reportsTarget is not null && _reports.Count + _deadWorkers.Count >= _reportsGoal)
+        {
+            _reportsTarget.TrySetResult();
+        }
+    }
+
+    /// <summary>Workers actuellement declares morts (voir <see cref="MarkDeadIfStale"/>), a l'instant de l'appel.</summary>
+    public IReadOnlyList<string> DeadWorkers
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return [.. _deadWorkers];
+            }
+        }
+    }
+
+    /// <summary>
+    /// Rapports deja recus a l'instant de l'appel, meme si <see cref="WaitForReportsAsync"/> n'a
+    /// pas encore rendu la main pour tous les workers dispatches — utilise quand un plafond
+    /// absolu (<c>MasterOptions.ReportTimeoutSeconds</c>) force a proceder avec un sous-ensemble.
+    /// </summary>
+    public IReadOnlyList<WorkerReport> ReportsSoFar
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return [.. _reports];
+            }
         }
     }
 

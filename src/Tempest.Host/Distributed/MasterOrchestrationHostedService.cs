@@ -76,12 +76,63 @@ internal sealed class MasterOrchestrationHostedService(
         await Task.WhenAll(workers.Select(worker => StartAsync(client, worker, stoppingToken))).ConfigureAwait(false);
         logger.LogInformation("Depart envoye a tous les workers.");
 
-        IReadOnlyList<WorkerReport> reports = await coordinator.WaitForReportsAsync(workers.Count, CancellationToken.None).ConfigureAwait(false);
+        // CancellationToken.None si aucun plafond absolu n'est configure : seule la detection par
+        // heartbeat (MarkDeadIfStale, dans PollLiveReportsAsync) fait alors avancer cette attente
+        // au-dela des rapports effectivement recus. Voir MasterOptions.ReportTimeoutSeconds pour
+        // le cas residuel qu'elle ne couvre pas (worker vivant, tir local bloque).
+        using CancellationTokenSource reportWaitCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        if (masterOptions.ReportTimeoutSeconds is { } reportTimeoutSeconds)
+        {
+            reportWaitCts.CancelAfter(TimeSpan.FromSeconds(reportTimeoutSeconds));
+        }
+
+        IReadOnlyList<WorkerReport> reports;
+        try
+        {
+            reports = await coordinator.WaitForReportsAsync(workers.Count, reportWaitCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
+        {
+            // Plafond absolu atteint (ReportTimeoutSeconds) : on procede avec ce qui est deja en
+            // main plutot que d'attendre davantage.
+            reports = coordinator.ReportsSoFar;
+            logger.LogWarning(
+                "Plafond de {Timeout}s atteint pour la remontee des rapports finaux : poursuite avec les {Count} worker(s) deja rentre(s).",
+                masterOptions.ReportTimeoutSeconds,
+                reports.Count);
+        }
+
         TimeSpan duration = DateTime.UtcNow - startedAt;
+
+        // Ecart entre les workers dispatches et ceux effectivement rentres — pas uniquement
+        // coordinator.DeadWorkers (detectes par heartbeat) : un plafond absolu
+        // (ReportTimeoutSeconds) peut aussi rendre la main avant que le heartbeat n'ait declare
+        // mort un worker toujours vivant mais dont le tir local est bloque.
+        HashSet<string> reportedWorkerIds = [.. reports.Select(report => report.WorkerId)];
+        IReadOnlyList<string> lostWorkers = [.. workers.Where(worker => !reportedWorkerIds.Contains(worker))];
 
         await StopLivePollingAsync(livePollingCts, livePolling).ConfigureAwait(false);
 
+        if (reports.Count == 0)
+        {
+            logger.LogError(
+                "Tous les workers dispatches ({Count}) ont ete perdus en cours de tir : aucun rapport a fusionner.",
+                workers.Count);
+            ExitIfConfigured(passed: false);
+            return;
+        }
+
         LoadTestReport report = ClusterReportAggregator.Merge(reports, duration);
+        if (lostWorkers.Count > 0)
+        {
+            report = report with { LostWorkers = lostWorkers };
+            logger.LogWarning(
+                "{Count} worker(s) perdu(s) en cours de tir : {Workers}. Rapport fusionne a partir des {Reported} restants.",
+                lostWorkers.Count,
+                string.Join(", ", lostWorkers),
+                reports.Count);
+        }
+
         coordinator.FinalReport = report;
 
         if (logger.IsEnabled(LogLevel.Information))
@@ -120,6 +171,7 @@ internal sealed class MasterOrchestrationHostedService(
     private async Task PollLiveReportsAsync(HttpClient client, IReadOnlyList<string> workers, DateTime startedAt, CancellationToken cancellationToken)
     {
         TimeSpan interval = TimeSpan.FromSeconds(masterOptions.LivePollIntervalSeconds);
+        TimeSpan deadAfter = TimeSpan.FromSeconds(masterOptions.WorkerDeadAfterSeconds);
 
         try
         {
@@ -133,6 +185,18 @@ internal sealed class MasterOrchestrationHostedService(
                 if (received.Count > 0)
                 {
                     coordinator.LiveReport = ClusterReportAggregator.Merge(received, DateTime.UtcNow - startedAt);
+                }
+
+                // Meme cadence que le sondage du tableau de bord : pas de minuteur dedie. C'est ce
+                // qui permet a WaitForReportsAsync de cesser d'attendre un worker perdu en cours
+                // de tir plutot que de rester bloque indefiniment (voir MasterCoordinator).
+                IReadOnlyList<string> newlyDead = coordinator.MarkDeadIfStale(deadAfter);
+                foreach (string worker in newlyDead)
+                {
+                    logger.LogWarning(
+                        "Worker {WorkerUrl} declare perdu : aucun heartbeat depuis plus de {DeadAfter}s.",
+                        worker,
+                        masterOptions.WorkerDeadAfterSeconds);
                 }
 
                 await Task.Delay(interval, cancellationToken).ConfigureAwait(false);

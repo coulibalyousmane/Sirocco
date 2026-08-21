@@ -32,6 +32,36 @@ public sealed class MasterOptions
     /// </summary>
     public int LivePollIntervalSeconds { get; init; } = DEFAULT_LIVE_POLL_INTERVAL_SECONDS;
 
+    /// <summary>Valeur par defaut de <see cref="WorkerDeadAfterSeconds"/>.</summary>
+    public const int DEFAULT_WORKER_DEAD_AFTER_SECONDS = 20;
+
+    /// <summary>
+    /// Delai sans heartbeat (<c>POST /master/heartbeat</c>) au-dela duquel un worker dispatche
+    /// mais n'ayant pas encore rapporte est declare perdu : le maitre cesse alors de l'attendre
+    /// et fusionne le rapport final avec les workers restants (voir
+    /// <see cref="Tempest.Domain.Metrics.LoadTestReport.LostWorkers"/>), plutot que d'attendre
+    /// indefiniment un rapport qui ne viendra jamais. <see cref="DEFAULT_WORKER_DEAD_AFTER_SECONDS"/>
+    /// par defaut, soit 4 heartbeats manques a l'intervalle par defaut du worker
+    /// (<see cref="WorkerOptions.HeartbeatIntervalSeconds"/>).
+    /// <para>
+    /// Ne detecte que le worker dont le <i>process</i> ne repond plus (crash, coupure reseau) —
+    /// pas un worker dont le process reste vivant mais dont le tir local est bloque (le heartbeat
+    /// continue alors d'arriver normalement). Ce cas residuel releve de
+    /// <see cref="ReportTimeoutSeconds"/>.
+    /// </para>
+    /// </summary>
+    public int WorkerDeadAfterSeconds { get; init; } = DEFAULT_WORKER_DEAD_AFTER_SECONDS;
+
+    /// <summary>
+    /// Plafond absolu, en secondes, sur l'attente des rapports finaux — au-dela, le maitre
+    /// fusionne ce qu'il a deja recu plutot que d'attendre plus longtemps, meme si des workers
+    /// continuent de heartbeat normalement. <see langword="null"/> par defaut : seule la
+    /// detection par heartbeat (<see cref="WorkerDeadAfterSeconds"/>) s'applique alors. Filet de
+    /// securite pour le cas qu'elle ne couvre pas (process vivant, tir local bloque) — a
+    /// renseigner explicitement si ce risque est reel pour le scenario execute.
+    /// </summary>
+    public int? ReportTimeoutSeconds { get; init; }
+
     /// <summary>Valide la coherence des reglages.</summary>
     public void Validate()
     {
@@ -48,6 +78,16 @@ public sealed class MasterOptions
         if (LivePollIntervalSeconds < 1)
         {
             throw new ArgumentException("LivePollIntervalSeconds doit valoir au moins 1.", nameof(LivePollIntervalSeconds));
+        }
+
+        if (WorkerDeadAfterSeconds < 1)
+        {
+            throw new ArgumentException("WorkerDeadAfterSeconds doit valoir au moins 1.", nameof(WorkerDeadAfterSeconds));
+        }
+
+        if (ReportTimeoutSeconds is < 1)
+        {
+            throw new ArgumentException("ReportTimeoutSeconds doit valoir au moins 1 s'il est renseigne.", nameof(ReportTimeoutSeconds));
         }
     }
 }
