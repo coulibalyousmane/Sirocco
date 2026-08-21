@@ -67,11 +67,15 @@ public sealed class MqttWorkflowTests
     public async Task A_broker_that_never_acknowledges_the_connection_times_out()
     {
         // Un TcpListener brut accepte la connexion mais ne repond jamais au CONNECT MQTT :
-        // reproduit un courtier qui decroche sans dependre d'un alea reseau.
+        // reproduit un courtier qui decroche sans dependre d'un alea reseau. La tache d'accept
+        // doit rester referencee (pas "_ = ...") : sans ca, le TcpClient accepte n'a plus aucune
+        // reference une fois la tache terminee et peut etre finalise par le GC en plein test,
+        // ce qui reinitialise la connexion (RST) et fait echouer l'assertion avec
+        // ConnectionError au lieu de Timeout — flaky vu en CI, pas reproduit systematiquement.
         TcpListener listener = new(IPAddress.Loopback, 0);
         listener.Start();
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        _ = listener.AcceptTcpClientAsync();
+        Task<TcpClient> acceptTask = listener.AcceptTcpClientAsync();
 
         try
         {
@@ -86,6 +90,11 @@ public sealed class MqttWorkflowTests
         finally
         {
             listener.Stop();
+
+            if (acceptTask.IsCompletedSuccessfully)
+            {
+                (await acceptTask).Dispose();
+            }
         }
     }
 
