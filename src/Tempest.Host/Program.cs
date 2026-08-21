@@ -23,7 +23,8 @@ if (string.Equals(tempestOptions.Role, TempestHostOptions.ROLE_WORKER, StringCom
         ?? throw new InvalidOperationException("La section de configuration 'Worker' est manquante.");
     workerOptions.Validate();
 
-    builder.Services.AddHttpClient();
+    builder.Services.AddHttpClient(ClusterCertificatePinning.CLUSTER_CLIENT_NAME)
+        .ConfigurePrimaryHttpMessageHandler(() => ClusterCertificatePinning.CreateHandler(tempestOptions.ClusterCertificateThumbprint));
     builder.Services.AddSingleton(workerOptions);
     builder.Services.AddSingleton(tempestOptions);
     builder.Services.AddSingleton<WorkerCoordinator>();
@@ -81,7 +82,8 @@ else if (string.Equals(tempestOptions.Role, TempestHostOptions.ROLE_MASTER, Stri
         ?? throw new InvalidOperationException("La section de configuration 'Master' est manquante.");
     masterOptions.Validate();
 
-    builder.Services.AddHttpClient();
+    builder.Services.AddHttpClient(ClusterCertificatePinning.CLUSTER_CLIENT_NAME)
+        .ConfigurePrimaryHttpMessageHandler(() => ClusterCertificatePinning.CreateHandler(tempestOptions.ClusterCertificateThumbprint));
     builder.Services.AddSingleton(masterOptions);
     builder.Services.AddSingleton(tempestOptions);
     builder.Services.AddSingleton<MasterCoordinator>();

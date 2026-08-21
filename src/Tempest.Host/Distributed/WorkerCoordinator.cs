@@ -135,7 +135,7 @@ public sealed class WorkerCoordinator(
     {
         try
         {
-            HttpClient masterClient = httpClientFactory.CreateClient();
+            HttpClient masterClient = httpClientFactory.CreateClient(ClusterCertificatePinning.CLUSTER_CLIENT_NAME);
             masterClient.DefaultRequestHeaders.Authorization = ClusterAuthentication.BuildHeader(tempestOptions.ClusterSharedSecret);
             using HttpResponseMessage response = await masterClient
                 .PostAsJsonAsync($"{options.MasterUrl.TrimEnd('/')}/master/report", report)

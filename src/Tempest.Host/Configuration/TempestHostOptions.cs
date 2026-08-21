@@ -271,6 +271,20 @@ public sealed class TempestHostOptions
     public string? ClusterSharedSecret { get; init; }
 
     /// <summary>
+    /// Empreinte (thumbprint) du certificat TLS partage attendu de tout pair du control plane
+    /// distribue (maitre ou worker), pour l'appel HTTP nomme
+    /// <see cref="Distributed.ClusterCertificatePinning.CLUSTER_CLIENT_NAME"/>.
+    /// <para>
+    /// <see langword="null"/> par defaut : la validation par defaut du systeme (chaine de
+    /// confiance normale) s'applique alors, sans effet particulier en HTTP. Une fois renseigne,
+    /// seul un pair presentant exactement ce certificat est accepte — modele a certificat unique
+    /// partage entre les trois roles, comme <see cref="ClusterSharedSecret"/>, pas une PKI par
+    /// noeud. Voir <see cref="Distributed.ClusterCertificatePinning"/>.
+    /// </para>
+    /// </summary>
+    public string? ClusterCertificateThumbprint { get; init; }
+
+    /// <summary>
     /// Si renseigne, le rapport final est ecrit en HTML a ce chemin a la fin du tir, en plus de
     /// tout endpoint expose. <see langword="null"/> par defaut. C'est <c>Tempest.Cli</c> qui en a
     /// besoin : contrairement a l'hote, il ne reste pas actif apres le tir pour servir

@@ -56,7 +56,7 @@ internal sealed class MasterOrchestrationHostedService(
             logger.LogInformation("{Count} worker(s) enregistre(s) : {Workers}", workers.Count, string.Join(", ", workers));
         }
 
-        HttpClient client = httpClientFactory.CreateClient();
+        HttpClient client = httpClientFactory.CreateClient(ClusterCertificatePinning.CLUSTER_CLIENT_NAME);
         client.DefaultRequestHeaders.Authorization = ClusterAuthentication.BuildHeader(tempestOptions.ClusterSharedSecret);
 
         // Le sondage tourne des maintenant, en tache de fond, pendant tout le reste de la

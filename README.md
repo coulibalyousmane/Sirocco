@@ -2264,6 +2264,75 @@ worker survivant (60 itérations, percentiles réels, ni vides ni fabriqués) �
 jamais bloqué. Un second tir témoin, sans tuer aucun worker, confirme l'absence de faux positif
 (aucun worker déclaré perdu, rapport complet aux deux workers).
 
+### TLS sur le control plane
+
+`ClusterSharedSecret` protège l'**authentification** du control plane (`/master/register`,
+`/master/report`, `/master/heartbeat`, `/worker/prepare`, `/worker/start`) mais rien ne
+protégeait jusqu'ici sa **confidentialité** : un rapport de tir, un scénario propagé, ou le
+secret partagé lui-même circulaient en clair sur le réseau.
+
+**Un seul certificat auto-signé partagé par les trois rôles, épinglé par empreinte — pas une
+PKI complète.** Même philosophie que le secret partagé : simple plutôt qu'une infrastructure
+lourde. Le même certificat (paire clé publique/privée) est installé sur le maître et sur chaque
+worker ; chacun le présente via Kestrel (configuration standard ASP.NET Core, aucun code
+supplémentaire) et chacun valide le certificat présenté par ses pairs contre une seule
+empreinte configurée — symétrique, une seule valeur de configuration, comme
+`ClusterSharedSecret` :
+
+```json
+"Tempest": { "ClusterCertificateThumbprint": "9DAB455A2D1D91CA1D077E52AF6C46449E037242" }
+```
+
+Côté serveur, rien à coder : ASP.NET Core sert déjà du HTTPS par pure configuration —
+
+```bash
+ASPNETCORE_URLS=https://+:5299
+Kestrel__Certificates__Default__Path=/chemin/vers/cluster.pfx
+Kestrel__Certificates__Default__Password=...
+```
+
+Côté client, `ClusterCertificatePinning.CreateHandler` pose un
+`ServerCertificateCustomValidationCallback` sur le client HTTP nommé partagé par
+`WorkerLivenessHostedService`, `MasterOrchestrationHostedService` et
+`WorkerCoordinator.SubmitReportAsync` — les trois seuls points d'appel HTTP entre maître et
+workers — qui compare l'empreinte du certificat présenté à celle configurée
+(`CryptographicOperations`-style, insensible à la casse et aux séparateurs `:`), plutôt que la
+chaîne de confiance par défaut, inadaptée à un certificat auto-signé. `null` par défaut : la
+validation standard du système s'applique alors, sans effet en HTTP, et reste utilisable si un
+opérateur préfère un certificat signé par une vraie CA plutôt que le certificat partagé.
+
+Générer un certificat de test (PowerShell) :
+
+```powershell
+$cert = New-SelfSignedCertificate -DnsName "tempest-cluster" -CertStoreLocation "Cert:\CurrentUser\My" -KeyExportPolicy Exportable
+Export-PfxCertificate -Cert $cert -FilePath cluster.pfx -Password (ConvertTo-SecureString -String "..." -Force -AsPlainText)
+$cert.Thumbprint
+```
+
+**Limites assumées, pas résolues ici** : un seul certificat partagé plutôt qu'une PKI avec un
+certificat par nœud (une vraie infrastructure de certificats, via `cert-manager` par exemple,
+trouvera naturellement sa place dans le chantier Kubernetes suivant) ; pas de révocation ; une
+rotation du certificat exige de reconfigurer l'empreinte à la main sur les trois rôles.
+`docker-compose.yml` reste volontairement en HTTP — monter un certificat partagé dans trois
+conteneurs ajouterait de la complexité pour une démo locale sans enjeu de confidentialité réel ;
+la configuration TLS ci-dessus s'ajoute à la main pour qui veut l'essayer.
+
+**Un vrai bug trouvé par la vérification de bout en bout, pas supposé** : `WorkerCoordinator.SubmitReportAsync`
+(`POST /master/report`) utilisait un client HTTP différent des deux autres points d'appel,
+oublié lors du câblage initial — les appels d'enregistrement et de sondage passaient bien en
+HTTPS avec l'épinglage, mais l'envoi du rapport final échouait en
+`RemoteCertificateNameMismatch`. Trouvé en observant un tir réel qui ne se terminait jamais,
+pas en relisant le code.
+
+Vérifié par un vrai tir (1 maître, 2 workers, certificat auto-signé partagé, empreinte
+configurée sur les trois rôles) : 224 itérations fusionnées, **0 % d'échec**, seuils respectés,
+code de sortie 0 — enregistrement, heartbeat, préparation/départ, sondage live et rapport final
+circulent tous en HTTPS avec l'empreinte validée. Contre-épreuve : un worker configuré avec une
+empreinte volontairement fausse échoue la poignée de main TLS dès la première tentative
+d'enregistrement (`AuthenticationException`, `SSL connection could not be established`),
+preuve que l'épinglage est réellement appliqué, pas un no-op silencieux. Tir témoin sans TLS
+(comme avant ce chantier) : mêmes résultats, aucune régression sur le mode HTTP existant.
+
 ## Conteneurisation
 
 Une seule image sert les trois rôles (autonome/maître/worker) — c'est `Tempest:Role`, pas

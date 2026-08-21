@@ -26,7 +26,7 @@ internal sealed class WorkerLivenessHostedService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        HttpClient client = httpClientFactory.CreateClient();
+        HttpClient client = httpClientFactory.CreateClient(ClusterCertificatePinning.CLUSTER_CLIENT_NAME);
         client.DefaultRequestHeaders.Authorization = ClusterAuthentication.BuildHeader(tempestOptions.ClusterSharedSecret);
         WorkerRegistration registration = new(options.SelfUrl);
 

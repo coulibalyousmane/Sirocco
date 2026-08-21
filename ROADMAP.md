@@ -385,8 +385,11 @@ de quelques dizaines de workers, ça ne tient plus. À ne lancer que lorsque des
 atteignent ce plafond.
 
 - **Opérateur Kubernetes** — une ressource `TestRun`, des workers créés et détruits automatiquement.
-- **TLS sur le control plane** — tout est en clair aujourd'hui ; le secret partagé de l'étape 15
-  protège l'authentification, pas la confidentialité.
+- ~~**TLS sur le control plane**~~ — fait, voir [TLS sur le control plane](README.md#tls-sur-le-control-plane) :
+  un seul certificat auto-signé partagé par le maître et les workers, épinglé par empreinte
+  (`Tempest.ClusterCertificateThumbprint`) côté client — le serveur (Kestrel) sert du HTTPS par
+  pure configuration, sans code supplémentaire. Simplification assumée face à une PKI par nœud,
+  renvoyée au chantier Kubernetes suivant (`cert-manager` y trouvera naturellement sa place).
 - **Autoscaling** des workers selon le débit cible.
 - ~~**Reprise sur perte d'un worker**~~ — fait, voir [Reprise sur perte d'un
   worker](README.md#reprise-sur-perte-dun-worker) : un worker dispatché signale désormais qu'il
@@ -514,11 +517,12 @@ guide d'écriture d'extension rassemble cette recette pour la cinquième extensi
 
 **La phase 7 est entamée**, malgré le principe énoncé plus haut ("ne lancer que lorsque des
 utilisateurs réels atteignent ce plafond") — choix explicite de l'utilisateur plutôt qu'attente
-passive. Premier bullet traité : [Reprise sur perte d'un worker](README.md#reprise-sur-perte-dun-worker),
-qui ne dépend d'aucune infrastructure Kubernetes et fermait un vrai trou de robustesse (un maître
-qui restait bloqué indéfiniment sur un worker mort). Restent, dans l'ordre choisi : TLS sur le
-control plane, l'opérateur Kubernetes, puis l'autoscaling — ce dernier dépendant logiquement de
-l'opérateur.
+passive. Deux bullets traités, dans l'ordre choisi : [Reprise sur perte d'un
+worker](README.md#reprise-sur-perte-dun-worker) d'abord, qui fermait un vrai trou de robustesse
+(un maître qui restait bloqué indéfiniment sur un worker mort) ; puis [TLS sur le control
+plane](README.md#tls-sur-le-control-plane), qui protège désormais la confidentialité du control
+plane, pas seulement son authentification. Restent, dans l'ordre choisi : l'opérateur
+Kubernetes, puis l'autoscaling — ce dernier dépendant logiquement de l'opérateur.
 
 ## Sources
 
