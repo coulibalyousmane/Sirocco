@@ -1,0 +1,32 @@
+# Parcours de paiement — l'un des deux scénarios de l'exemple « scénarios concurrents »
+# (voir docs/examples/config/appsettings.scenarios-concurrents.json).
+#
+# Déclare volontairement une étape nommée « browse », comme docs/examples/scenarios/browse.yaml :
+# c'est ce qui rend l'isolement observable dans le rapport combiné — deux lignes indépendantes,
+# jamais une seule fusionnée.
+
+name: checkout
+
+steps:
+  - name: login
+    method: POST
+    path: /api/auth/login
+    body: '{"username":"demo","password":"demo"}'
+    contentType: application/json
+    extract:
+      - variable: token
+        jsonPath: $.token
+
+  - name: browse
+    method: GET
+    path: /api/catalog/products
+    expectedStatusCodes: [200]
+
+  - name: pay
+    method: POST
+    path: /api/checkout
+    body: '{"items":[{"productId":1,"quantity":1}]}'
+    contentType: application/json
+    headers:
+      Authorization: "Bearer {{token}}"
+    expectedStatusCodes: [200]

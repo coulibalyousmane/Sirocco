@@ -1,0 +1,49 @@
+# Groupes d'étapes et étiquettes de scénario, contre Tempest.SampleTarget.
+#
+# Deux dimensions de découpage, volontairement distinctes :
+#   - group, par étape : préfixé au nom pour former le nom qualifié (« checkout / login »).
+#     Couvre la dimension « endpoint » — ce qui varie d'une requête à l'autre dans un même tir.
+#   - tags, par scénario : métadonnée de tir reportée dans l'en-tête du rapport. Couvre les
+#     dimensions « région » / « version » — ce qui varie d'un tir à l'autre, pas d'une requête
+#     à l'autre.
+#
+# Rendu délibérément plat : pas de hiérarchie visuelle ni de sous-total par groupe déduits du nom,
+# et pas d'étiquette par requête. Les deux exigeraient de faire d'une valeur choisie à l'exécution
+# une clé d'agrégation à part entière. Une étape sans group garde son nom nu (« browse »).
+#
+# Exécution, depuis la racine du dépôt :
+#   tempest run docs/examples/scenarios/groupes-etiquettes.yaml \
+#     --target-url http://localhost:5281 --rps 10 --duration 5s
+
+name: groupes-etiquettes
+
+tags:
+  region: eu-west-1
+  version: "2.4.0"
+
+steps:
+  - name: login
+    group: checkout
+    method: POST
+    path: /api/auth/login
+    body: '{"username":"demo","password":"demo"}'
+    contentType: application/json
+    extract:
+      - variable: token
+        jsonPath: $.token
+
+  # Sans group : cette étape apparaît sous son nom nu, hors du groupe checkout.
+  - name: browse
+    method: GET
+    path: /api/catalog/products
+    expectedStatusCodes: [200]
+
+  - name: pay
+    group: checkout
+    method: POST
+    path: /api/checkout
+    body: '{"items":[{"productId":1,"quantity":1}]}'
+    contentType: application/json
+    headers:
+      Authorization: "Bearer {{token}}"
+    expectedStatusCodes: [200]

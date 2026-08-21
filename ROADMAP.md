@@ -69,20 +69,20 @@ d'utilisateurs possibles, quelle que soit la qualité du moteur. C'est le seul p
 qui bloque littéralement tout le reste, et c'est aussi le moins cher à traiter.
 
 - ~~**Une vraie CLI**~~ — fait (`Tempest.Cli`, voir [Interface de ligne de
-  commande](README.md#interface-de-ligne-de-commande)) : `tempest run scenario.yaml --rps 50
+  commande](docs/demarrer/cli.md#interface-de-ligne-de-commande)) : `tempest run scenario.yaml --rps 50
   --duration 30s`, options qui priment sur la configuration. Le modèle fermé (`--vus`) suit la
   phase 3 ; en attendant, le profil se pilote en débit (`--rps` ou `--from-rps`/`--to-rps`).
 - ~~**Packaging `dotnet tool`**~~ — fait (`PackAsTool`, commande `tempest`, voir
-  [Installation](README.md#installation)) : `dotnet tool install -g Tempest.Cli` fonctionne
+  [Installation](docs/demarrer/installation.md#installation)) : `dotnet tool install -g Tempest.Cli` fonctionne
   aujourd'hui depuis une source locale ou un flux privé, faute de publication sur nuget.org (le
   dépôt reste privé — bullet suivant).
 - ~~**Binaires autonomes**~~ — fait pour Windows, Linux et macOS (x64 et arm64), voir [Binaires
-  autonomes](README.md#binaires-autonomes) : self-contained, fichier unique, workflow de release
+  autonomes](docs/demarrer/installation.md#binaires-autonomes) : self-contained, fichier unique, workflow de release
   GitHub prêt (`vX.Y.Z` poussé), pas encore déclenché. Native AOT essayé réellement et
   abandonné : `YamlDotNet.DeserializerBuilder` et une désérialisation JSON par réflexion dans
   `ScenarioDefinitionLoader` échouent la compilation AOT (`IL3050`/`IL2026`) — le graphe de
   dépendances actuel ne le permet pas sans réécrire ce pipeline.
-- ~~**Paquets NuGet bibliothèque**~~ — fait, voir [Paquets NuGet](README.md#paquets-nuget) :
+- ~~**Paquets NuGet bibliothèque**~~ — fait, voir [Paquets NuGet](docs/demarrer/installation.md#paquets-nuget) :
   élargi de `Tempest.Domain` et `Tempest.Scenarios` (le texte initial de ce bullet) à
   `Tempest.Application` et `Tempest.Infrastructure` aussi — sans le moteur ni la chaîne de
   mesure, un projet externe pouvait écrire un scénario mais pas le lancer, contrairement à
@@ -104,21 +104,21 @@ ne ressemble à ça : il faut des données variables, des branchements, des asse
 n'interrompent pas le tir, et des dimensions pour découper les résultats. C'est le plus gros trou
 fonctionnel.
 
-- ~~**Jeux de données**~~ — fait, voir [Jeux de données](README.md#jeux-de-données) : `DataSet`
+- ~~**Jeux de données**~~ — fait, voir [Jeux de données](docs/scenarios/donnees-assertions.md#jeux-de-données) : `DataSet`
   (`Tempest.Domain.Data`) + `DataSetLoader` CSV/JSON (`Tempest.Scenarios.Data`), trois stratégies
   (circulaire, aléatoire, unique par utilisateur virtuel), accessible depuis le format déclaratif
   (`{{jeu.colonne}}`) et depuis un scénario scripté. Réduit à CSV/JSON pour ce premier tour — SQL
   écarté : une source de données arbitraire (requête, pool de connexions, ré-exécution par tir)
   dépasse le scope d'un chargement de fichier unique et mériterait son propre chantier plutôt
   qu'un troisième format ajouté en hâte à `DataSetLoader`. Vérifié par de vrais tirs.
-- ~~**Checks**~~ — fait, voir [Checks](README.md#checks) : `CheckRule` (même vocabulaire
+- ~~**Checks**~~ — fait, voir [Checks](docs/scenarios/donnees-assertions.md#checks) : `CheckRule` (même vocabulaire
   Regex/XPath/JsonPath que l'extraction), section `checks` par étape. Chaque check devient sa
   propre étape du rapport — reutilise `StepId`/`StepScope` tels quels, aucun changement dans
   `Tempest.Application`/`Tempest.Infrastructure`. Une assertion qui échoue ne fait jamais échouer
   la requête HTTP dont elle dérive, mais compte comme n'importe quelle étape pour l'issue de
   l'itération. Sans effet sur les scénarios scriptés, qui pouvaient déjà publier ce genre
   d'assertion directement via `StepRegistry`/`StepScope`. Vérifié par de vrais tirs.
-- ~~**Groupes et étiquettes**~~ — fait, voir [Groupes et étiquettes](README.md#groupes-et-étiquettes) :
+- ~~**Groupes et étiquettes**~~ — fait, voir [Groupes et étiquettes](docs/scenarios/donnees-assertions.md#groupes-et-étiquettes) :
   un `group` par étape (préfixé au nom pour former le nom qualifié, réutilise `StepId` tel quel —
   couvre la dimension `endpoint`) et des `tags` de scénario (métadonnée de tir reportée dans
   l'en-tête du rapport — couvre `région`/`version`, qui varient par tir, pas par requête). Rendu
@@ -126,7 +126,7 @@ fonctionnel.
   nom, ni de tags par requête façon k6 — les deux exigeraient de faire d'une valeur choisie à
   l'exécution une clé d'agrégation à part entière, jusque dans `StepAccumulator`/`MetricResult`.
   Limite : étiquettes non propagées au rapport fusionné en mode distribué. Vérifié par un vrai tir.
-- ~~**Métriques personnalisées**~~ — fait, voir [Métriques personnalisées](README.md#métriques-personnalisées) :
+- ~~**Métriques personnalisées**~~ — fait, voir [Métriques personnalisées](docs/scenarios/donnees-assertions.md#métriques-personnalisées) :
   `CustomMetricKind` (compteur/jauge/taux/tendance), `CustomMetricRegistry`/`MetricRule` (même
   vocabulaire Regex/XPath/JsonPath que les checks), section `metrics` par étape. Première
   fonctionnalité de cette phase à ne pas pouvoir réutiliser `StepId`/`StepAccumulator` tels
@@ -135,7 +135,7 @@ fonctionnel.
   unique » que la chaîne native. Rendue dans le rapport et dans Prometheus. Limites : pas de
   centiles pour la tendance (`LatencyHistogram` est bâti pour une durée non négative bornée), pas
   de fenêtre glissante, pas de fusion inter-workers en mode distribué. Vérifié par un vrai tir.
-- ~~**Temps de réflexion et rythme**~~ — fait, voir [Temps de réflexion et rythme](README.md#temps-de-réflexion-et-rythme) :
+- ~~**Temps de réflexion et rythme**~~ — fait, voir [Temps de réflexion et rythme](docs/scenarios/donnees-assertions.md#temps-de-réflexion-et-rythme) :
   `ThinkTimeDefinition` (durée fixe ou plage tirée uniformément), `thinkTime`/`thinkTimeMax` par
   étape du format déclaratif. Aucun changement dans le moteur : une pause n'est qu'un `Task.Delay`
   hors de la portée de mesure de l'étape, que le modèle ouvert absorbe nativement en dette
@@ -144,17 +144,17 @@ fonctionnel.
   la valeur attendue, sans jamais affecter la latence brute rapportée pour l'étape HTTP.
 
 > **Décision structurante tranchée et mise en œuvre : Roslyn (C# scripté).** Voir [Scénarios
-> scriptés](README.md#scénarios-scriptés-roslyn) — `ScriptedWorkflowLoader`/`WorkflowFileLoader`,
+> scriptés](docs/scenarios/scripte.md#scénarios-scriptés-roslyn) — `ScriptedWorkflowLoader`/`WorkflowFileLoader`,
 > vérifiés par un vrai tir (`scenarios/scripted-checkout.csx`). Limite restante : mode distribué
 > non pris en charge pour ce format, `WorkerCoordinator` reste câblé sur le déclaratif seul.
 >
 > Un scénario scripté devient un
 > `IWorkflow` compilé à la volée (`Microsoft.CodeAnalysis.CSharp.Scripting`) : zéro couche
 > d'interop à concevoir, réutilisation directe de `Tempest.Domain`/`Application`/`Infrastructure`,
-> déjà publiés en paquets NuGet (voir [Paquets NuGet](README.md#paquets-nuget)) — un script
+> déjà publiés en paquets NuGet (voir [Paquets NuGet](docs/demarrer/installation.md#paquets-nuget)) — un script
 > scénario et une bibliothèque scénario deviennent le même code, à la compilation près. L'AOT
 > était déjà hors de portée pour d'autres raisons (`YamlDotNet`/JSON par réflexion dans
-> `ScenarioDefinitionLoader`, voir [Binaires autonomes](README.md#binaires-autonomes)) : Roslyn
+> `ScenarioDefinitionLoader`, voir [Binaires autonomes](docs/demarrer/installation.md#binaires-autonomes)) : Roslyn
 > n'aggrave donc pas une limite qui n'existait pas encore.
 >
 > Écarté : un moteur JavaScript type Jint aurait mieux attaqué la position dominante de k6 (mêmes
@@ -180,7 +180,7 @@ réels s'expriment autrement — « exactement 50 utilisateurs simultanés », �
 réparties », « ce scénario à 10 RPS pendant que celui-là monte en charge ». Refuser le modèle fermé
 par purisme coûterait des utilisateurs.
 
-- ~~**Modèle fermé**~~ — fait, voir [Modèle fermé](README.md#modèle-fermé) : `--vus <n>
+- ~~**Modèle fermé**~~ — fait, voir [Modèle fermé](docs/charge/modeles.md#modèle-fermé) : `--vus <n>
   --duration <d>` fait tourner exactement N utilisateurs virtuels sans aucune pause imposée,
   `ClosedModelScheduler` (`ILoadScheduler`) prenant la place de `CoordinatedRateLimiter` derrière
   le même moteur. Mise en garde explicite dans le rapport (`LoadTestReport.ClosedModel`) : sans
@@ -188,13 +188,13 @@ par purisme coûterait des utilisateurs.
   chiffres ne sont jamais comparables à un tir en modèle ouvert. Limite : mode distribué non pris
   en charge pour ce modèle. Vérifié par un vrai tir.
 - ~~**Exécuteurs multiples**~~ — fait. Utilisateurs constants (voir ci-dessus) ; montée
-  d'utilisateurs, voir [Montée d'utilisateurs](README.md#montée-dutilisateurs) (`--vus-from`/
+  d'utilisateurs, voir [Montée d'utilisateurs](docs/charge/modeles.md#montée-dutilisateurs) (`--vus-from`/
   `--vus-to`, `RampingVirtualUserPool`) ; itérations partagées et itérations par utilisateur, voir
   [Itérations partagées et itérations par
-  utilisateur](README.md#itérations-partagées-et-itérations-par-utilisateur) (`--iterations`,
+  utilisateur](docs/charge/modeles.md#itérations-partagées-et-itérations-par-utilisateur) (`--iterations`,
   `--vus <n> --iterations-per-vu <k>`, `IterationCountScheduler`). Les quatre partagent la même
   mise en garde de rapport, faute d'échéancier théorique à comparer.
-- ~~**Scénarios concurrents**~~ — fait, voir [Scénarios concurrents](README.md#scénarios-concurrents) :
+- ~~**Scénarios concurrents**~~ — fait, voir [Scénarios concurrents](docs/charge/scenarios-concurrents.md#scénarios-concurrents) :
   `Tempest:Scenarios` dans un `appsettings.json` (comme `Tempest:RampVus`, pas d'équivalent CLI
   plat), chaque scénario avec son propre profil/modèle de charge, ses étiquettes et ses seuils.
   Chaque scénario construit sa propre chaîne de mesure à la main (pas via le conteneur
@@ -203,7 +203,7 @@ par purisme coûterait des utilisateurs.
   d'étape. Limites : mode distribué non pris en charge, `/report/live` et `/metrics` non
   alimentés — seuls `/report`, `/report.html` et `/thresholds` le sont, une fois le tir terminé.
   Vérifié par un vrai tir à deux scénarios concurrents.
-- ~~**Bridage**~~ — fait, voir [Bridage](README.md#bridage) : `RateCappedScheduler`
+- ~~**Bridage**~~ — fait, voir [Bridage](docs/charge/modeles.md#bridage) : `RateCappedScheduler`
   (`Tempest.Application.Execution`), décorateur d'`ILoadScheduler` qui retarde la transmission des
   jetons plutôt que de réécrire leur échéance planifiée — le retard qu'il impose se mesure donc
   comme une dette d'ordonnancement ordinaire, pas comme un cas particulier masqué. `--max-rps`
@@ -221,7 +221,7 @@ Le rapport de Gatling est la raison pour laquelle beaucoup d'équipes le choisis
 Tempest est un tableau statique : il donne l'état final, jamais la trajectoire. Or c'est la
 trajectoire — le moment où les centiles décrochent — qui explique une dégradation.
 
-- ~~**Séries temporelles**~~ — fait, voir [Série temporelle](README.md#série-temporelle) :
+- ~~**Séries temporelles**~~ — fait, voir [Série temporelle](docs/rapports/mesure.md#série-temporelle) :
   `TimeSeriesRecorder` relève périodiquement centiles, débit, utilisateurs actifs (nouvelle
   `ActiveVirtualUserGauge`) et taux d'erreur sur un même axe de temps, gardés dans
   `LoadTestReport.TimeSeries`. Limites : non alimentée pour les scénarios concurrents, rendue en
@@ -246,7 +246,7 @@ trajectoire — le moment où les centiles décrochent — qui explique une dég
 sont le levier d'adoption le moins cher du marché : on part d'un trafic déjà capturé plutôt que
 d'une page blanche.
 
-- ~~**HAR vers scénario**~~ — fait, voir [Convertisseur HAR](README.md#convertisseur-har) :
+- ~~**HAR vers scénario**~~ — fait, voir [Convertisseur HAR](docs/convertisseurs/index.md#convertisseur-har) :
   `tools/Tempest.HarConvert` traduit un export du navigateur en scénario **scripté** C# (`.csx`),
   conformément à la décision structurante ci-dessus — jouable sans aucun câblage supplémentaire.
   Actifs statiques ignorés par extension, hôte cible retenu par fréquence (pas par ordre
@@ -256,7 +256,7 @@ d'une page blanche.
   probablement expirées), corps multipart non pris en charge. Vérifié par un vrai tir : HAR
   reconstitué d'un aller-retour réel login/catalogue/checkout contre `Tempest.SampleTarget`,
   mêlé à un actif statique et un hôte secondaire, converti puis exécuté par `tempest run`.
-- ~~**OpenAPI vers scénario**~~ — fait, voir [Convertisseur OpenAPI](README.md#convertisseur-openapi) :
+- ~~**OpenAPI vers scénario**~~ — fait, voir [Convertisseur OpenAPI](docs/convertisseurs/index.md#convertisseur-openapi) :
   `tools/Tempest.OpenApiConvert` traduit une spécification OpenAPI 3.x (JSON) en **squelette**
   scripté C# (`.csx`) — un step par opération, corps JSON d'exemple dérivé du schéma (`$ref`
   résolues contre `components/schemas`, garde anti-cycle). Différence assumée avec le
@@ -270,7 +270,7 @@ d'une page blanche.
   checkout (placeholder d'authentification, comme documenté) ; complété à la main avec le jeton
   et l'identifiant de produit lus dans les réponses précédentes, les 3 étapes réussissent.
 - ~~**Collection Postman vers scénario**~~ — fait, voir [Convertisseur
-  Postman](README.md#convertisseur-postman) : `tools/Tempest.PostmanConvert` traduit une
+  Postman](docs/convertisseurs/index.md#convertisseur-postman) : `tools/Tempest.PostmanConvert` traduit une
   collection Postman (v2.1) en squelette scripté C# (`.csx`), même nature que le convertisseur
   OpenAPI — une collection décrit des requêtes construites à la main, pas des données réelles.
   Dossiers imbriqués parcourus récursivement, variables de collection (`{{nom}}`) substituées
@@ -282,7 +282,7 @@ d'une page blanche.
   la phase 5**, hors proxy enregistreur (bullet suivant, conditionné à un vrai public). Vérifié
   par deux vrais tirs contre `Tempest.SampleTarget` : squelette brut en échec sur le checkout
   (placeholders), squelette complété à la main aux 3 étapes réussies.
-- ~~**Proxy enregistreur**~~ — fait, voir [Proxy enregistreur](README.md#proxy-enregistreur) :
+- ~~**Proxy enregistreur**~~ — fait, voir [Proxy enregistreur](docs/convertisseurs/index.md#proxy-enregistreur) :
   `tools/Tempest.RecorderProxy` capture du trafic HTTP en direct, sans export manuel — seul
   convertisseur/outil de la phase à dépendre d'un autre (`ProjectReference` vers
   `Tempest.HarConvert`, dont il reutilise `HarConverter.Convert` tel quel : une capture en direct
@@ -303,7 +303,7 @@ k6 n'a pas écrit ses dizaines de protocoles : il a ouvert `xk6` et la communaut
 seul SQL, Kafka, MQTT, AMQP et le reste est un puits sans fond. Le modèle d'extension doit venir
 **avant** les protocoles, pas après — chaque protocole écrit dans le cœur est une dette permanente.
 
-- ~~**Contrat de plugin** stable~~ — fait, voir [Contrat de plugin](README.md#contrat-de-plugin) :
+- ~~**Contrat de plugin** stable~~ — fait, voir [Contrat de plugin](docs/extensions/contrat.md#contrat-de-plugin) :
   `PluginWorkflowLoader` (`Tempest.Scenarios`) charge un `IWorkflow` depuis une assembly `.dll`
   compilée independamment de ce depot (`Assembly.LoadFrom`, type resolu par `--plugin-type` ou
   candidat unique, constructeur public sans parametre). Le contrat lui-meme (`IWorkflow`/
@@ -316,7 +316,7 @@ seul SQL, Kafka, MQTT, AMQP et le reste est un puits sans fond. Le modèle d'ext
   Verifie par deux vrais tirs contre `Tempest.SampleTarget` : selection automatique du seul type
   disponible, puis selection explicite via `--plugin-type` — les deux a 0 % d'echec.
 - ~~**Chargement dynamique** d'extensions et résolution depuis NuGet~~ — fait, voir [Résolution
-  NuGet](README.md#résolution-nuget) : `NuGetPluginResolver` (`Tempest.Scenarios`,
+  NuGet](docs/extensions/contrat.md#résolution-nuget) : `NuGetPluginResolver` (`Tempest.Scenarios`,
   `NuGet.Protocol`) resout un plugin par identifiant de paquet (`--plugin-package`/
   `--plugin-package-version`/`--plugin-source`) plutot qu'un chemin de fichier deja present sur le
   disque — telecharge le `.nupkg` depuis la premiere source qui le connait, extrait le groupe
@@ -327,7 +327,7 @@ seul SQL, Kafka, MQTT, AMQP et le reste est un puits sans fond. Le modèle d'ext
   entiere), resolu puis execute contre `Tempest.SampleTarget` — 0 % d'echec.
 - ~~**Protocoles de référence**~~ écrits comme extensions pour valider le contrat : SQL, SSE, MQTT,
   GraphQL. **Les quatre sont faits.**
-  - ~~**SQL**~~ — fait, voir [Protocoles de référence — SQL](README.md#sql) :
+  - ~~**SQL**~~ — fait, voir [Protocoles de référence — SQL](docs/extensions/contrat.md#sql) :
     `extensions/Tempest.Extensions.Sql` interroge une vraie base SQLite (deux etapes reelles par
     iteration, SELECT parametre et INSERT) plutot que le client HTTP partage — referme le SQL
     explicitement ecarte des jeux de donnees en phase 2, sous un angle different. Trouvaille
@@ -335,7 +335,7 @@ seul SQL, Kafka, MQTT, AMQP et le reste est un puits sans fond. Le modèle d'ext
     doit etre publie (`dotnet publish`), pas seulement compile, et sa bibliotheque *native* doit
     en plus etre cherchee par le plugin lui-meme (`NativeLibrary.SetDllImportResolver`), le
     resolveur par defaut de `SQLitePCLRaw` cherchant a cote de l'hote plutot qu'a cote du plugin.
-  - ~~**SSE**~~ — fait, voir [Protocoles de référence — SSE](README.md#sse) :
+  - ~~**SSE**~~ — fait, voir [Protocoles de référence — SSE](docs/extensions/contrat.md#sse) :
     `extensions/Tempest.Extensions.Sse` valide le contrat sous un angle different de SQL — pas un
     protocole different de HTTP, mais un usage different d'`IVirtualUserContext.HttpClient` : une
     reponse en flux continu (`text/event-stream`) lue evenement par evenement, plutot que
@@ -344,7 +344,7 @@ seul SQL, Kafka, MQTT, AMQP et le reste est un puits sans fond. Le modèle d'ext
     simple `dotnet build` suffit, confirmant par contraste que l'exigence de publication de SQL
     tenait a sa dependance externe, pas au contrat lui-meme. Nouveau point d'ecoute
     `GET /api/events/stream` sur `Tempest.SampleTarget`.
-  - ~~**MQTT**~~ — fait, voir [Protocoles de référence — MQTT](README.md#mqtt) :
+  - ~~**MQTT**~~ — fait, voir [Protocoles de référence — MQTT](docs/extensions/contrat.md#mqtt) :
     `extensions/Tempest.Extensions.Mqtt` revient a un protocole reellement different de HTTP comme
     SQL, mais oriente publication/abonnement : chaque iteration s'abonne a un sujet qui lui est
     propre, y publie un message, puis attend sa propre reception (round-trip complet, pas un
@@ -354,7 +354,7 @@ seul SQL, Kafka, MQTT, AMQP et le reste est un puits sans fond. Le modèle d'ext
     etre publie (`dotnet publish`), pas seulement compile, meme si sa seule dependance ajoutee
     (`MQTTnet`) est entierement geree, sans composant natif — la limite tient au chargement
     dynamique d'un plugin avec dependance externe, pas a un alea propre a SQLite.
-  - ~~**GraphQL**~~ — fait, voir [Protocoles de référence — GraphQL](README.md#graphql) : comme
+  - ~~**GraphQL**~~ — fait, voir [Protocoles de référence — GraphQL](docs/extensions/contrat.md#graphql) : comme
     SSE, reste au-dessus de HTTP mais valide un autre aspect du contrat — succes/echec se lit dans
     le corps JSON (`errors`), jamais dans le code de statut qui reste 200 meme pour une mutation en
     echec metier. Deux etapes reelles, memes natures d'operation que SQL (lecture/ecriture) sous
@@ -362,7 +362,7 @@ seul SQL, Kafka, MQTT, AMQP et le reste est un puits sans fond. Le modèle d'ext
     GraphQL.NET, pas une simulation par correspondance de chaine). Aucune dependance NuGet au-dela
     de `Tempest.Domain` cote plugin : un simple `dotnet build` suffit, comme SSE. **Clot
     entierement le bullet des quatre protocoles de reference.**
-- ~~**Guide d'écriture d'extension**~~ — fait, voir [Guide d'écriture d'extension](README.md#guide-décriture-dextension) :
+- ~~**Guide d'écriture d'extension**~~ — fait, voir [Guide d'écriture d'extension](docs/extensions/guide.md#guide-décriture-dextension) :
   sans documentation, un modèle de plugin restait théorique. Le contrat lui-même n'a pas changé —
   ce chantier est purement documentaire, contrairement à tous les précédents de la phase. Contenu :
   quand écrire une extension plutôt qu'un scénario scripté, le contrat minimal (`IWorkflow` en
@@ -384,16 +384,16 @@ Le mode distribué existe et fonctionne, mais il se déploie à la main via `doc
 de quelques dizaines de workers, ça ne tient plus. À ne lancer que lorsque des utilisateurs réels
 atteignent ce plafond.
 
-- ~~**Opérateur Kubernetes**~~ — fait, voir [Opérateur Kubernetes](README.md#opérateur-kubernetes) :
+- ~~**Opérateur Kubernetes**~~ — fait, voir [Opérateur Kubernetes](docs/distribue/kubernetes.md#opérateur-kubernetes) :
   une ressource `TestRun` (`tempest.dev/v1alpha1`, construite avec KubeOps), workers en
   `StatefulSet` + service headless, maître en `Job` — créés à l'application de la ressource,
   workers détruits automatiquement (réplicas ramenés à 0) une fois le tir terminé.
-- ~~**TLS sur le control plane**~~ — fait, voir [TLS sur le control plane](README.md#tls-sur-le-control-plane) :
+- ~~**TLS sur le control plane**~~ — fait, voir [TLS sur le control plane](docs/distribue/mode-distribue.md#tls-sur-le-control-plane) :
   un seul certificat auto-signé partagé par le maître et les workers, épinglé par empreinte
   (`Tempest.ClusterCertificateThumbprint`) côté client — le serveur (Kestrel) sert du HTTPS par
   pure configuration, sans code supplémentaire. Simplification assumée face à une PKI par nœud,
   renvoyée au chantier Kubernetes suivant (`cert-manager` y trouvera naturellement sa place).
-- ~~**Autoscaling**~~ — fait, voir [Autoscaling](README.md#autoscaling) : `spec.autoscaling`
+- ~~**Autoscaling**~~ — fait, voir [Autoscaling](docs/distribue/kubernetes.md#autoscaling) : `spec.autoscaling`
   calcule le nombre de workers requis palier par palier à partir du débit cible du profil (déjà
   connu à l'avance), pas d'un HPA/KEDA réactif à des métriques observées. Live, pas seulement un
   dimensionnement statique au démarrage : `MasterOrchestrationHostedService.ExecuteAdaptiveAsync`
@@ -404,7 +404,7 @@ atteignent ce plafond.
   de disparaître en silence — tombant sinon dans le filet de sécurité déjà existant
   (`MarkDeadIfStale`/`LostWorkers`). Chemin figé (`spec.autoscaling` absent) inchangé.
 - ~~**Reprise sur perte d'un worker**~~ — fait, voir [Reprise sur perte d'un
-  worker](README.md#reprise-sur-perte-dun-worker) : un worker dispatché signale désormais qu'il
+  worker](docs/distribue/mode-distribue.md#reprise-sur-perte-dun-worker) : un worker dispatché signale désormais qu'il
   est vivant en continu (`POST /master/heartbeat`, `WorkerLivenessHostedService`), pas seulement
   une fois à l'enregistrement. Passé `Master.WorkerDeadAfterSeconds` (20 s par défaut) sans
   heartbeat, `MasterCoordinator.MarkDeadIfStale` déclare le worker perdu et le rapport final se
@@ -433,7 +433,39 @@ qu'on ne peut pas ignorer. Tempest en a une à disposition, et elle est reproduc
   observée d'un tir à l'autre sur une machine partagée).
 - **Article de fond** sur la dette d'ordonnancement résiduelle : le sujet a un public (SRE,
   ingénieurs performance) et personne ne l'occupe.
-- **Site de documentation** avec exemples exécutables.
+- ~~**Site de documentation**~~ — fait, publié sur <https://coulibalyousmane.github.io/Tempest/>
+  (DocFX, déployé par [`.github/workflows/docs.yml`](.github/workflows/docs.yml)). Le README, qui
+  faisait 2666 lignes et servait à la fois de page d'accueil, de manuel, de journal de
+  vérification et de doc d'architecture, est réduit à une page d'accueil de ~115 lignes ; son
+  contenu est réparti **verbatim** en 20 pages sous [`docs/`](docs/), sans réécriture de prose —
+  une seule source de vérité, pas un site en doublon du README.
+
+  **« Exemples exécutables » est pris au mot** : aucune page ne recopie un exemple dans son
+  markdown, chacune **transclut** un vrai fichier du dépôt (`[!code-yaml[](...)]`), et la CI
+  **exécute** chacun d'eux contre un `Tempest.SampleTarget` réellement démarré, avec un seuil sur
+  le taux d'erreur — sans seuil, `tempest run` sortirait 0 même à 100 % d'échec et la CI validerait
+  un exemple cassé. Un exemple qui cesse de fonctionner casse donc le build, et ne peut plus
+  dériver en silence de ce que le moteur fait réellement.
+
+  Ce chantier a surtout révélé combien la doc avait déjà dérivé : **aucun** fichier du dépôt ne
+  contenait `datasets:`, `checks:`, `group:`, `tags:`, `metrics:`, `thinkTime:`,
+  `Tempest:Scenarios`, `Tempest:Workflow` ni la section `GrpcEcho`, alors que chaque section
+  correspondante affirmait avoir été vérifiée par un vrai tir ; l'exemple `Tempest:Scenarios`
+  référençait `checkout.yaml` et `browse.yaml`, qui n'existaient nulle part ; et l'exemple de
+  métrique personnalisée mesurait une jauge sur `$.cartSize`, un champ absent de la réponse réelle
+  de la cible. D'où 12 nouveaux fichiers d'exemple dans [`docs/examples/`](docs/examples), tous
+  exécutés pour de bon.
+
+  Piège d'usage rencontré en écrivant les pages, documenté plutôt que contourné : `Tempest.Host`
+  n'a pas d'option pour désigner un fichier de configuration (il lit `appsettings.<env>.json` de sa
+  racine de contenu), et le chemin passé à `--contentRoot` doit être **absolu** — un chemin relatif
+  est résolu depuis le dossier du binaire, pas depuis le répertoire courant.
+
+  Limites résiduelles assumées : pas de référence d'API générée depuis les commentaires XML (DocFX
+  sait le faire, mais c'est une immense surface générée pour un bullet qui demandait un site), pas
+  de versionnement de la doc, pas de traduction, et les exemples Kubernetes (`deploy/samples/`)
+  comme les extensions SQL/MQTT ne sont pas exécutés en CI — ils demandent respectivement un
+  cluster et un `dotnet publish` du plugin.
 - **Décider de l'offre managée** — seulement si l'adoption open source la justifie.
 
 ## Trois façons de perdre du temps
@@ -461,29 +493,29 @@ déclencher le workflow de release GitHub pour les binaires autonomes (`vX.Y.Z`,
 poussé).
 
 **La décision de la phase 2 est tranchée et le moteur de script existe** : Roslyn (C# scripté),
-voir [Scénarios scriptés](README.md#scénarios-scriptés-roslyn). C'était le seul choix de cette
+voir [Scénarios scriptés](docs/scenarios/scripte.md#scénarios-scriptés-roslyn). C'était le seul choix de cette
 roadmap difficile à défaire une fois pris ; il conditionne les phases 5 et 6, toujours valables
 telles que décrites dans la note de la phase 2. **Le contenu de la phase 2 est maintenant
 entièrement traité** : jeux de données, checks, groupes/étiquettes, métriques personnalisées et
-temps de réflexion sont faits, voir [Jeux de données](README.md#jeux-de-données),
-[Checks](README.md#checks), [Groupes et étiquettes](README.md#groupes-et-étiquettes),
-[Métriques personnalisées](README.md#métriques-personnalisées) et
-[Temps de réflexion et rythme](README.md#temps-de-réflexion-et-rythme).
+temps de réflexion sont faits, voir [Jeux de données](docs/scenarios/donnees-assertions.md#jeux-de-données),
+[Checks](docs/scenarios/donnees-assertions.md#checks), [Groupes et étiquettes](docs/scenarios/donnees-assertions.md#groupes-et-étiquettes),
+[Métriques personnalisées](docs/scenarios/donnees-assertions.md#métriques-personnalisées) et
+[Temps de réflexion et rythme](docs/scenarios/donnees-assertions.md#temps-de-réflexion-et-rythme).
 
 **La phase 3 est entièrement traitée.** Effectif fixe, montée d'utilisateurs et les deux exécuteurs
-par itérations sont faits, voir [Modèle fermé](README.md#modèle-fermé) (`--vus <n> --duration <d>`),
-[Montée d'utilisateurs](README.md#montée-dutilisateurs) (`--vus-from <n> --vus-to <n> --duration <d>`)
+par itérations sont faits, voir [Modèle fermé](docs/charge/modeles.md#modèle-fermé) (`--vus <n> --duration <d>`),
+[Montée d'utilisateurs](docs/charge/modeles.md#montée-dutilisateurs) (`--vus-from <n> --vus-to <n> --duration <d>`)
 et [Itérations partagées et itérations par
-utilisateur](README.md#itérations-partagées-et-itérations-par-utilisateur) (`--iterations <n>`,
+utilisateur](docs/charge/modeles.md#itérations-partagées-et-itérations-par-utilisateur) (`--iterations <n>`,
 `--vus <n> --iterations-per-vu <k>`) — mise en garde explicite dans le rapport pour les quatre.
-[Scénarios concurrents](README.md#scénarios-concurrents) (`Tempest:Scenarios`) fait tourner
+[Scénarios concurrents](docs/charge/scenarios-concurrents.md#scénarios-concurrents) (`Tempest:Scenarios`) fait tourner
 plusieurs de ces modèles en parallèle dans le même tir, chacun isolé jusque dans sa propre chaîne
-de mesure. [Bridage](README.md#bridage) (`--max-rps`) plafonne le débit réel par-dessus n'importe
+de mesure. [Bridage](docs/charge/modeles.md#bridage) (`--max-rps`) plafonne le débit réel par-dessus n'importe
 lequel de ces modèles, y compris par scénario dans un tir à scénarios concurrents.
 
-**La phase 4 est entièrement traitée.** Voir [Série temporelle](README.md#série-temporelle),
-[Distribution des temps de réponse](README.md#distribution-des-temps-de-réponse) et [Tableau de
-bord temps réel](README.md#tableau-de-bord-temps-réel) : `TimeSeriesRecorder` relève
+**La phase 4 est entièrement traitée.** Voir [Série temporelle](docs/rapports/mesure.md#série-temporelle),
+[Distribution des temps de réponse](docs/rapports/mesure.md#distribution-des-temps-de-réponse) et [Tableau de
+bord temps réel](docs/rapports/mesure.md#tableau-de-bord-temps-réel) : `TimeSeriesRecorder` relève
 périodiquement la trajectoire du tir, gardée dans `LoadTestReport.TimeSeries` ; `ToHtml` la rend
 désormais en graphe (débit et dette d'ordonnancement superposés) et ajoute un histogramme par
 étape à partir des paniers déjà détenus par `LatencyHistogram` ; `/report/live.html` transforme la
@@ -491,9 +523,9 @@ fenêtre glissante déjà servie en JSON par `/report/live` en tableau de bord H
 seul pendant le tir.
 
 **La phase 5 est maintenant entièrement traitée, y compris le proxy enregistreur.** Voir
-[Convertisseur HAR](README.md#convertisseur-har), [Convertisseur
-OpenAPI](README.md#convertisseur-openapi), [Convertisseur
-Postman](README.md#convertisseur-postman) et [Proxy enregistreur](README.md#proxy-enregistreur) :
+[Convertisseur HAR](docs/convertisseurs/index.md#convertisseur-har), [Convertisseur
+OpenAPI](docs/convertisseurs/index.md#convertisseur-openapi), [Convertisseur
+Postman](docs/convertisseurs/index.md#convertisseur-postman) et [Proxy enregistreur](docs/convertisseurs/index.md#proxy-enregistreur) :
 `tools/Tempest.HarConvert`, `tools/Tempest.OpenApiConvert`, `tools/Tempest.PostmanConvert` et
 `tools/Tempest.RecorderProxy` traduisent respectivement un export du navigateur, une
 spécification d'API, une collection Postman et une capture de trafic en direct en scénario
@@ -505,10 +537,10 @@ collection ne décrivent de données réelles). Le proxy enregistreur reste volo
 face à celui de Gatling : reverse proxy à cible unique, HTTP seul, pas d'interception TLS.
 Comme les phases 6 à 8, tout ce qui reste au-delà peut attendre des retours d'utilisateurs réels.
 
-**La phase 6 est entièrement faite** : voir [Contrat de plugin](README.md#contrat-de-plugin),
-[Résolution NuGet](README.md#résolution-nuget), [Protocoles de référence —
-SQL](README.md#sql), [— SSE](README.md#sse), [— MQTT](README.md#mqtt), [—
-GraphQL](README.md#graphql) et [Guide d'écriture d'extension](README.md#guide-décriture-dextension).
+**La phase 6 est entièrement faite** : voir [Contrat de plugin](docs/extensions/contrat.md#contrat-de-plugin),
+[Résolution NuGet](docs/extensions/contrat.md#résolution-nuget), [Protocoles de référence —
+SQL](docs/extensions/contrat.md#sql), [— SSE](docs/extensions/contrat.md#sse), [— MQTT](docs/extensions/contrat.md#mqtt), [—
+GraphQL](docs/extensions/contrat.md#graphql) et [Guide d'écriture d'extension](docs/extensions/guide.md#guide-décriture-dextension).
 `PluginWorkflowLoader` charge un `IWorkflow` compilé indépendamment de ce dépôt depuis un chemin de
 fichier, `NuGetPluginResolver` fait de même depuis un identifiant de paquet NuGet, et
 `samples/Tempest.SamplePlugin` prouve les deux par une assembly qui n'est justement référencée par
@@ -530,17 +562,28 @@ guide d'écriture d'extension rassemble cette recette pour la cinquième extensi
 **La phase 7 est maintenant entièrement traitée**, malgré le principe énoncé plus haut ("ne
 lancer que lorsque des utilisateurs réels atteignent ce plafond") — choix explicite de
 l'utilisateur plutôt qu'attente passive. Quatre bullets, dans l'ordre choisi : [Reprise sur perte
-d'un worker](README.md#reprise-sur-perte-dun-worker) d'abord, qui fermait un vrai trou de
+d'un worker](docs/distribue/mode-distribue.md#reprise-sur-perte-dun-worker) d'abord, qui fermait un vrai trou de
 robustesse (un maître qui restait bloqué indéfiniment sur un worker mort) ; puis [TLS sur le
-control plane](README.md#tls-sur-le-control-plane), qui protège désormais la confidentialité du
+control plane](docs/distribue/mode-distribue.md#tls-sur-le-control-plane), qui protège désormais la confidentialité du
 control plane, pas seulement son authentification ; puis l'[opérateur
-Kubernetes](README.md#opérateur-kubernetes), qui remplace le déploiement manuel via
-`docker-compose` par une ressource `TestRun` déclarative ; enfin l'[autoscaling](README.md#autoscaling),
+Kubernetes](docs/distribue/kubernetes.md#opérateur-kubernetes), qui remplace le déploiement manuel via
+`docker-compose` par une ressource `TestRun` déclarative ; enfin l'[autoscaling](docs/distribue/kubernetes.md#autoscaling),
 qui rouvre le protocole maître/worker pour que le nombre de workers suive vraiment le débit cible
 en direct, pas seulement au démarrage — a mis au jour et corrigé au passage deux vrais bugs
 (exception non gérée masquant un échec en faux `Succeeded`, validation de configuration
 incompatible avec le nouveau chemin adaptatif), trouvés en vérifiant sur un vrai cluster plutôt
 qu'en supposant que ça marchait.
+
+**La phase 8 est à moitié faite.** Le [benchmark comparatif](benchmark/README.md) mesure le
+différenciateur ; le **site de documentation** le rend consultable
+(<https://coulibalyousmane.github.io/Tempest/>), avec des exemples qui ne peuvent pas mentir parce
+que la CI les exécute. Restent deux bullets, de nature très différente : l'**article de fond** sur
+la dette d'ordonnancement résiduelle, qui demanderait une vraie expérience de saturation
+complémentaire — le benchmark publié ne montre qu'une dette de 19,1 ms, l'injecteur ayant tenu la
+cadence, ce qui illustre mal le phénomène dont l'article traiterait ; et la **décision sur l'offre
+managée**, qui reste conditionnée à une adoption qui n'existe pas encore — la trancher aujourd'hui
+serait exactement le « construire le SaaS trop tôt » listé plus haut comme façon de perdre du
+temps.
 
 ## Sources
 

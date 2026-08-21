@@ -1,0 +1,49 @@
+# Jeux de données CSV et JSON, contre Tempest.SampleTarget.
+#
+# Chaque itération pioche une ligne par jeu et l'expose à toutes ses étapes via {{jeu.colonne}} —
+# une ligne par itération, pas par étape, comme les variables extraites.
+#
+# Deux formats côte à côte dans le même scénario :
+#   - CSV (scenarios/users.csv), stratégie uniquePerVirtualUser : chaque utilisateur virtuel garde
+#     le même compte à chaque itération ;
+#   - JSON (docs/examples/data/paniers.json), stratégie circular : le panier change d'itération en
+#     itération. Une valeur numérique du JSON se substitue sans guillemets ({{panier.quantity}}
+#     donne 3, pas "3"), ce qui la rend utilisable telle quelle dans un corps JSON.
+#
+# Le chemin d'un jeu de données est résolu depuis le répertoire de travail, pas depuis
+# l'emplacement de ce fichier : lancer la commande ci-dessous depuis la racine du dépôt.
+#
+# Exécution, depuis la racine du dépôt :
+#   tempest run docs/examples/scenarios/jeux-de-donnees.yaml \
+#     --target-url http://localhost:5281 --rps 10 --duration 5s --max-vus 4
+
+name: jeux-de-donnees
+
+datasets:
+  - name: user
+    path: scenarios/users.csv
+    # circular (défaut) | random | uniquePerVirtualUser
+    strategy: uniquePerVirtualUser
+
+  - name: panier
+    path: docs/examples/data/paniers.json
+    strategy: circular
+
+steps:
+  - name: login
+    method: POST
+    path: /api/auth/login
+    body: '{"username":"{{user.username}}","password":"{{user.password}}"}'
+    contentType: application/json
+    extract:
+      - variable: token
+        jsonPath: $.token
+
+  - name: checkout
+    method: POST
+    path: /api/checkout
+    body: '{"items":[{"productId":{{panier.productId}},"quantity":{{panier.quantity}}}]}'
+    contentType: application/json
+    headers:
+      Authorization: "Bearer {{token}}"
+    expectedStatusCodes: [200]

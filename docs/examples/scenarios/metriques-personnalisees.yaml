@@ -1,0 +1,73 @@
+# Métriques personnalisées (les quatre types), contre Tempest.SampleTarget.
+#
+# Une métrique personnalisée mesure une valeur métier, pas une durée de requête : elle est
+# rapportée à part du tableau d'étapes, contrairement à un check, qui devient lui-même une étape.
+#
+# Les quatre types :
+#   - counter : somme cumulée, jamais décroissante. Seul type qui peut se passer d'expression —
+#     il compte alors les passages sur l'étape (valeur implicite 1).
+#   - gauge   : dernière valeur observée.
+#   - trend   : distribution d'une valeur numérique. Pas de centiles (LatencyHistogram est bâti
+#     pour une durée bornée non négative), seulement min/moyenne/max.
+#   - rate    : fraction des mesures qui satisfont la condition. Seul type qui accepte expected —
+#     la mesure vaut 1 si la valeur trouvée lui est identique, 0 sinon ; sans expected, 1 dès que
+#     l'expression trouve quelque chose.
+#
+# Une valeur non numérique ou absente n'est jamais un échec de requête, seulement une mesure
+# manquée. Un même nom de métrique peut être alimenté par plusieurs étapes, à condition de garder
+# partout le même type.
+#
+# Exécution, depuis la racine du dépôt :
+#   tempest run docs/examples/scenarios/metriques-personnalisees.yaml \
+#     --target-url http://localhost:5281 --rps 10 --duration 5s
+
+name: metriques-personnalisees
+
+# Le panier varie d'une itération à l'autre : sans cela, un trend sur le montant de la commande
+# rapporterait trois fois la même valeur (min = moyenne = max), ce qui illustre mal une
+# distribution. Voir docs/examples/scenarios/jeux-de-donnees.yaml pour les jeux de données seuls.
+datasets:
+  - name: panier
+    path: docs/examples/data/paniers.json
+    strategy: circular
+
+steps:
+  - name: login
+    method: POST
+    path: /api/auth/login
+    body: '{"username":"demo","password":"demo"}'
+    contentType: application/json
+    extract:
+      - variable: token
+        jsonPath: $.token
+
+  - name: browse
+    method: GET
+    path: /api/catalog/products
+    expectedStatusCodes: [200]
+    metrics:
+      - name: prix-premier-produit
+        kind: gauge
+        jsonPath: $[0].price
+
+  - name: checkout
+    method: POST
+    path: /api/checkout
+    body: '{"items":[{"productId":{{panier.productId}},"quantity":{{panier.quantity}}}]}'
+    contentType: application/json
+    headers:
+      Authorization: "Bearer {{token}}"
+    expectedStatusCodes: [200]
+    metrics:
+      # Sans expression : compte les passages sur l'étape.
+      - name: commandes
+        kind: counter
+
+      - name: montant-commande
+        kind: trend
+        jsonPath: $.total
+
+      # Sans expected : vaut 1 dès qu'un identifiant de commande est présent.
+      - name: commandes-confirmees
+        kind: rate
+        jsonPath: $.orderId

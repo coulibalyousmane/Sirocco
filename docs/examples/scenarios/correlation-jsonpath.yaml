@@ -1,0 +1,40 @@
+# Corrélation dynamique par JsonPath, contre Tempest.SampleTarget.
+#
+# Variante de scenarios/smoke-test.yaml, qui extrait le même jeton par expression régulière.
+# JsonPath dit ce qu'on veut ($.token) plutôt que comment le trouver dans du texte : préférable
+# dès que le corps est réellement du JSON. Sous-ensemble pris en charge : accès par propriété
+# (.nom) et par index ([n]) — ni caractère générique, ni filtre, ni descente récursive.
+#
+# Exécution, depuis la racine du dépôt :
+#   tempest run docs/examples/scenarios/correlation-jsonpath.yaml \
+#     --target-url http://localhost:5281 --rps 10 --duration 5s
+
+name: correlation-jsonpath
+
+steps:
+  - name: login
+    method: POST
+    path: /api/auth/login
+    body: '{"username":"demo","password":"demo"}'
+    contentType: application/json
+    extract:
+      - variable: token
+        jsonPath: $.token
+
+  - name: browse
+    method: GET
+    path: /api/catalog/products
+    expectedStatusCodes: [200]
+    # Le catalogue est un tableau JSON : l'index se lit [0], la propriété .id.
+    extract:
+      - variable: premierProduit
+        jsonPath: $[0].id
+
+  - name: checkout
+    method: POST
+    path: /api/checkout
+    body: '{"items":[{"productId":{{premierProduit}},"quantity":1}]}'
+    contentType: application/json
+    headers:
+      Authorization: "Bearer {{token}}"
+    expectedStatusCodes: [200]

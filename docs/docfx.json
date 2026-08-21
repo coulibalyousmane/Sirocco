@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dotnet/docfx/main/schemas/docfx.schema.json",
+  "build": {
+    "content": [
+      {
+        "files": ["**/*.md", "toc.yml"],
+        "exclude": ["_site/**", "examples/**"]
+      }
+    ],
+    "output": "_site",
+    "template": ["default", "modern"],
+    "globalMetadata": {
+      "_appName": "Tempest",
+      "_appTitle": "Tempest",
+      "_description": "Moteur de test de charge haute performance, asynchrone et cloud-native, en C# / .NET 10.",
+      "_enableSearch": true,
+      "_enableNewTab": true,
+      "_gitContribute": {
+        "repo": "https://github.com/coulibalyousmane/Tempest",
+        "branch": "main",
+        "apiSpecFolder": "docs"
+      },
+      "_appFooter": "Tempest — Apache License 2.0. Les exemples de cette documentation sont de vrais fichiers du dépôt, exécutés par la CI."
+    }
+  }
+}

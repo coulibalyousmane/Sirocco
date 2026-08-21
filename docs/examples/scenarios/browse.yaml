@@ -1,0 +1,13 @@
+# Navigation seule — le second des deux scénarios de l'exemple « scénarios concurrents »
+# (voir docs/examples/config/appsettings.scenarios-concurrents.json).
+#
+# Son étape « browse » porte le même nom que celle de docs/examples/scenarios/checkout.yaml, sans
+# être agrégée avec elle : chaque scénario construit sa propre chaîne de mesure.
+
+name: browse
+
+steps:
+  - name: browse
+    method: GET
+    path: /api/catalog/products
+    expectedStatusCodes: [200]

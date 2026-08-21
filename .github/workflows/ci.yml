@@ -120,3 +120,54 @@ jobs:
           dotnet build src/Tempest.Cli --configuration Release -o build/framework-dependent
           dotnet build/framework-dependent/tempest.dll run scenarios/scripted-checkout.csx \
             --target-url http://localhost:5281 --rps 15 --duration 5s --max-vus 10
+
+      - name: Tir reel de chaque scenario d'exemple de la documentation
+        # Ce qui rend "exemples executables" verifie plutot que declaratif : chaque scenario
+        # transclus par une page du site est reellement joue ici, avec un seuil sur le taux
+        # d'erreur — sans seuil, tempest run sortirait 0 meme a 100 % d'echec et la CI
+        # validerait un exemple casse.
+        run: |
+          for f in docs/examples/scenarios/*.yaml; do
+            echo "::group::$f"
+            dotnet build/framework-dependent/tempest.dll run "$f" \
+              --target-url http://localhost:5281 --rps 10 --duration 5s --max-vus 40 \
+              --threshold "__iteration:ErrorRate:LessThanOrEqual:0.01"
+            echo "::endgroup::"
+          done
+
+      - name: Tir reel de chaque fragment de configuration de la documentation
+        # Tempest.Host n'a pas d'option pour designer un fichier de configuration : il lit
+        # appsettings.<environnement>.json de sa racine de contenu. Le chemin doit etre absolu
+        # (un chemin relatif est resolu depuis le dossier du binaire) ; le repertoire courant
+        # reste la racine du depot, ce dont dependent les ScenarioFile de l'exemple a scenarios
+        # concurrents. Chaque fragment porte ses propres seuils et ExitAfterRun : le code de
+        # sortie est donc un vrai verdict.
+        run: |
+          for environment in seuils-ci scenarios-concurrents grpc; do
+            echo "::group::appsettings.$environment.json"
+            dotnet src/Tempest.Host/bin/Release/net10.0/Tempest.Host.dll \
+              --contentRoot "$PWD/docs/examples/config" --environment "$environment"
+            echo "::endgroup::"
+          done
+        env:
+          ASPNETCORE_URLS: http://localhost:5299
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cloner le depot
+        uses: actions/checkout@v4
+
+      - name: Installer .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Installer DocFX
+        run: dotnet tool install -g docfx
+
+      - name: Construire le site de documentation
+        # --warningsAsErrors : DocFX signale les liens de fichier invalides (InvalidFileLink) et
+        # les ancres inexistantes (InvalidBookmark) — verifie en en cassant un exprès. Un lien
+        # mort dans la doc casse donc le build, au lieu de pourrir en silence.
+        run: docfx build docs/docfx.json --warningsAsErrors

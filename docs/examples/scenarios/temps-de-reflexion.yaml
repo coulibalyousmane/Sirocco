@@ -1,0 +1,50 @@
+# Temps de réflexion (think time), contre Tempest.SampleTarget.
+#
+# Une pause entre deux étapes, pour imiter un humain qui lit une page avant de cliquer :
+#   - thinkTime seul : durée fixe.
+#   - thinkTime + thinkTimeMax : borne minimale et maximale d'une plage tirée uniformément.
+# thinkTimeMax sans thinkTime est refusé (c'est thinkTime qui porte la borne minimale).
+#
+# Formats de durée acceptés : 500ms, 2s, 1m, 1h — un nombre nu vaut des secondes.
+#
+# Aucun changement dans le moteur : une pause n'est qu'un délai hors de la portée de mesure de
+# l'étape. Le modèle ouvert l'absorbe nativement en dette d'ordonnancement, exactement comme le
+# ferait une réponse HTTP lente — la latence brute rapportée pour l'étape HTTP n'en est jamais
+# affectée. En revanche, une pause fixe plafonne le débit d'un seul utilisateur virtuel : prévoir
+# assez de --max-vus pour tenir le débit visé.
+#
+# Exécution, depuis la racine du dépôt :
+#   tempest run docs/examples/scenarios/temps-de-reflexion.yaml \
+#     --target-url http://localhost:5281 --rps 10 --duration 5s --max-vus 40
+
+name: temps-de-reflexion
+
+steps:
+  - name: login
+    method: POST
+    path: /api/auth/login
+    body: '{"username":"demo","password":"demo"}'
+    contentType: application/json
+    extract:
+      - variable: token
+        jsonPath: $.token
+    # Durée fixe : toujours 200 ms après cette étape.
+    thinkTime: 200ms
+
+  - name: browse
+    method: GET
+    path: /api/catalog/products
+    expectedStatusCodes: [200]
+    # Plage : entre 100 ms et 400 ms, tirés uniformément à chaque itération.
+    thinkTime: 100ms
+    thinkTimeMax: 400ms
+
+  # Dernière étape sans pause : rien à attendre après la commande.
+  - name: checkout
+    method: POST
+    path: /api/checkout
+    body: '{"items":[{"productId":1,"quantity":1}]}'
+    contentType: application/json
+    headers:
+      Authorization: "Bearer {{token}}"
+    expectedStatusCodes: [200]

@@ -1,0 +1,54 @@
+# Checks (assertions sur le corps de réponse), contre Tempest.SampleTarget.
+#
+# Un check est une extraction dont on ne garde que le verdict : « a-t-elle trouvé quelque chose »
+# (sans expected) ou « a-t-elle trouvé exactement cette valeur » (avec expected, comparaison de
+# texte exacte). Même vocabulaire d'expression que extract : regex, xpath ou jsonPath, une seule
+# des trois.
+#
+# Chaque check devient sa propre étape du rapport. Un check qui échoue ne fait jamais échouer la
+# requête HTTP dont il dérive — mais il compte comme n'importe quelle étape pour l'issue de
+# l'itération. Le nom d'un check partage l'espace de noms des étapes : il ne peut donc porter ni
+# le nom d'une étape, ni celui d'un autre check du scénario.
+#
+# Exécution, depuis la racine du dépôt :
+#   tempest run docs/examples/scenarios/checks.yaml \
+#     --target-url http://localhost:5281 --rps 10 --duration 5s
+
+name: checks
+
+steps:
+  - name: login
+    method: POST
+    path: /api/auth/login
+    body: '{"username":"demo","password":"demo"}'
+    contentType: application/json
+    extract:
+      - variable: token
+        jsonPath: $.token
+    checks:
+      # Sans expected : réussit dès que l'expression trouve quelque chose.
+      - name: jeton-present
+        jsonPath: $.token
+
+  - name: browse
+    method: GET
+    path: /api/catalog/products
+    expectedStatusCodes: [200]
+    checks:
+      # Avec expected : les identifiants du catalogue de démonstration sont déterministes
+      # (1..n), contrairement aux noms et aux prix, tirés au hasard par Bogus.
+      - name: catalogue-commence-a-1
+        jsonPath: $[0].id
+        expected: "1"
+
+  - name: checkout
+    method: POST
+    path: /api/checkout
+    body: '{"items":[{"productId":1,"quantity":1}]}'
+    contentType: application/json
+    headers:
+      Authorization: "Bearer {{token}}"
+    expectedStatusCodes: [200]
+    checks:
+      - name: commande-confirmee
+        jsonPath: $.orderId

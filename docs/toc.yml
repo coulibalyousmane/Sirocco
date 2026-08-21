@@ -1,0 +1,61 @@
+- name: Accueil
+  href: index.md
+
+- name: Démarrer
+  items:
+    - name: Installation
+      href: demarrer/installation.md
+    - name: Interface de ligne de commande
+      href: demarrer/cli.md
+
+- name: Écrire un scénario
+  items:
+    - name: Format déclaratif
+      href: scenarios/declaratif.md
+    - name: Données, assertions et rythme
+      href: scenarios/donnees-assertions.md
+    - name: Scénarios scriptés (Roslyn)
+      href: scenarios/scripte.md
+    - name: Partir d'un trafic existant
+      href: convertisseurs/index.md
+
+- name: Piloter la charge
+  items:
+    - name: Modèles de charge
+      href: charge/modeles.md
+    - name: Scénarios concurrents
+      href: charge/scenarios-concurrents.md
+
+- name: Mesurer
+  items:
+    - name: Mesure et rapport
+      href: rapports/mesure.md
+    - name: Seuils et comparaison
+      href: rapports/seuils-et-comparaison.md
+
+- name: Protocoles
+  items:
+    - name: Protocoles intégrés
+      href: protocoles/integres.md
+    - name: Étendre Tempest
+      href: extensions/contrat.md
+    - name: Guide d'écriture d'extension
+      href: extensions/guide.md
+
+- name: Passer à l'échelle
+  items:
+    - name: Mode distribué
+      href: distribue/mode-distribue.md
+    - name: Kubernetes
+      href: distribue/kubernetes.md
+    - name: Conteneurisation
+      href: distribue/conteneurisation.md
+
+- name: Le projet
+  items:
+    - name: Architecture et décisions
+      href: projet/architecture.md
+    - name: Pipeline CI
+      href: projet/ci.md
+    - name: Historique
+      href: projet/historique.md

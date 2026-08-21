@@ -488,3 +488,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Site de documentation genere par DocFX (docs/docfx.json)
+docs/_site/

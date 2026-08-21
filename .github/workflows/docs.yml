@@ -1,0 +1,62 @@
+name: Documentation
+
+# Publie le site de documentation (docs/, construit par DocFX) sur GitHub Pages.
+# Prealable a faire une seule fois dans les reglages du depot : Settings > Pages > Build and
+# deployment > Source = "GitHub Actions". Sans ce reglage, le job "deploy" echoue.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs.yml"
+      # Le site transclut de vrais fichiers du depot hors de docs/ : les toucher change le site.
+      - "scenarios/**"
+      - "docker-compose.yml"
+      - "deploy/samples/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Un seul deploiement a la fois, sans annuler celui en cours : une publication interrompue
+# laisserait le site dans un etat indetermine.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cloner le depot
+        uses: actions/checkout@v4
+
+      - name: Installer .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Installer DocFX
+        run: dotnet tool install -g docfx
+
+      - name: Construire le site
+        # Meme garde-fou que dans ci.yml : un lien mort casse la publication.
+        run: docfx build docs/docfx.json --warningsAsErrors
+
+      - name: Televerser l'artefact Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deployer sur GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
