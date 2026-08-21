@@ -51,6 +51,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tempest.Extensions.Mqtt", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tempest.Extensions.GraphQl", "extensions\Tempest.Extensions.GraphQl\Tempest.Extensions.GraphQl.csproj", "{5D8A1C63-7E2F-4B9D-A3C5-9F1E4B6D2A80}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tempest.Operator", "src\Tempest.Operator\Tempest.Operator.csproj", "{A71EE222-E0D1-43CC-8478-767948AD4B89}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -289,6 +291,18 @@ Global
 		{5D8A1C63-7E2F-4B9D-A3C5-9F1E4B6D2A80}.Release|x64.Build.0 = Release|Any CPU
 		{5D8A1C63-7E2F-4B9D-A3C5-9F1E4B6D2A80}.Release|x86.ActiveCfg = Release|Any CPU
 		{5D8A1C63-7E2F-4B9D-A3C5-9F1E4B6D2A80}.Release|x86.Build.0 = Release|Any CPU
+		{A71EE222-E0D1-43CC-8478-767948AD4B89}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A71EE222-E0D1-43CC-8478-767948AD4B89}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A71EE222-E0D1-43CC-8478-767948AD4B89}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A71EE222-E0D1-43CC-8478-767948AD4B89}.Debug|x64.Build.0 = Debug|Any CPU
+		{A71EE222-E0D1-43CC-8478-767948AD4B89}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A71EE222-E0D1-43CC-8478-767948AD4B89}.Debug|x86.Build.0 = Debug|Any CPU
+		{A71EE222-E0D1-43CC-8478-767948AD4B89}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A71EE222-E0D1-43CC-8478-767948AD4B89}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A71EE222-E0D1-43CC-8478-767948AD4B89}.Release|x64.ActiveCfg = Release|Any CPU
+		{A71EE222-E0D1-43CC-8478-767948AD4B89}.Release|x64.Build.0 = Release|Any CPU
+		{A71EE222-E0D1-43CC-8478-767948AD4B89}.Release|x86.ActiveCfg = Release|Any CPU
+		{A71EE222-E0D1-43CC-8478-767948AD4B89}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -313,5 +327,6 @@ Global
 		{8F2C4A1D-9B3E-4F6A-8D2C-1E5F7A9B3C6D} = {BE133D91-034E-1084-498B-FF24C4084A55}
 		{2B7E5F91-4C3A-4D8E-9A1B-6F2D8C0E5A47} = {BE133D91-034E-1084-498B-FF24C4084A55}
 		{5D8A1C63-7E2F-4B9D-A3C5-9F1E4B6D2A80} = {BE133D91-034E-1084-498B-FF24C4084A55}
+		{A71EE222-E0D1-43CC-8478-767948AD4B89} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

@@ -2333,6 +2333,99 @@ d'enregistrement (`AuthenticationException`, `SSL connection could not be establ
 preuve que l'épinglage est réellement appliqué, pas un no-op silencieux. Tir témoin sans TLS
 (comme avant ce chantier) : mêmes résultats, aucune régression sur le mode HTTP existant.
 
+### Opérateur Kubernetes
+
+`docker-compose.yml` déploie le mode distribué à la main — au-delà de quelques dizaines de
+workers, ça ne tient plus. L'opérateur Kubernetes introduit une ressource personnalisée
+`TestRun` (`tempest.dev/v1alpha1`) : décrire un tir (cible, profil, nombre de workers) suffit,
+l'opérateur crée les ressources Kubernetes qui le portent et les détruit une fois le tir
+terminé.
+
+**Construit avec [KubeOps](https://github.com/dotnet/dotnet-operator-sdk)** (SDK .NET dédié)
+plutôt qu'une boucle watch/reconcile écrite à la main — CRD généré depuis des classes C#
+annotées (`V1TestRun`), RBAC déclaratif via `[EntityRbac]`, boucle de réconciliation fournie par
+le framework. Le contrôleur (`TestRunController`) reste volontairement fin : il délègue la
+construction des objets désirés à `TestRunResources`, une classe statique pure et testable sans
+cluster (même esprit que `ClusterCertificatePinning`).
+
+**Les workers sont un `StatefulSet` derrière un service headless, pas un `Deployment`** : le
+maître adresse chaque worker individuellement (`/worker/prepare`, `/worker/start`), exactement
+comme chaque conteneur `worker1`/`worker2` a un nom DNS stable dans `docker-compose.yml`. Chaque
+pod calcule sa propre `Worker__SelfUrl` à partir de son nom (Downward API + expansion native
+`$(POD_NAME)` de Kubernetes) — aucun changement de code côté `Tempest.Host`.
+
+**Le maître est un `Job` (`restartPolicy: Never`, `backoffLimit: 0`), pas un `Deployment`** :
+`MasterOrchestrationHostedService` positionne déjà `Environment.ExitCode` selon le succès/échec
+des seuils quand `Tempest__ExitAfterRun` est actif — la condition `Complete`/`Failed` du Job
+reflète honnêtement ce résultat sans qu'il soit besoin de parser le rapport de tir. Une fois le
+Job terminé, le contrôleur réduit le `StatefulSet` des workers à 0 réplique (patch, pas
+suppression) — c'est le nettoyage automatique promis par la ressource `TestRun` ; le
+`StatefulSet` reste inspectable mais ne consomme plus de pods.
+
+**Aucune finalisation personnalisée** : chaque ressource fille porte une `OwnerReference` vers
+la `TestRun` — la supprimer déclenche le garbage collection natif de Kubernetes (Job,
+StatefulSet, Services), sans code de nettoyage à écrire.
+
+Le secret partagé de cluster est référencé par nom (`clusterSharedSecretRef`, un `Secret`
+existant + une clé), jamais recopié en clair dans la ressource `TestRun` :
+
+```yaml
+apiVersion: tempest.dev/v1alpha1
+kind: TestRun
+metadata:
+  name: testrun-demo
+spec:
+  image: tempest-host:local
+  targetBaseUrl: http://sampletarget:5281
+  workerReplicas: 2
+  clusterSharedSecretRef:
+    name: testrun-demo-secret
+    key: shared-secret
+  profile:
+    - { fromRps: 0, toRps: 10, durationSeconds: 10 }
+    - { fromRps: 10, toRps: 10, durationSeconds: 15 }
+    - { fromRps: 10, toRps: 0, durationSeconds: 5 }
+```
+
+Essayer localement (Docker Desktop, Kubernetes activé dans ses réglages) :
+
+```bash
+docker build -f src/Tempest.Host/Dockerfile -t tempest-host:local .
+docker build -f src/Tempest.Operator/Dockerfile -t tempest-operator:local .
+kubectl apply -k deploy/operator
+kubectl apply -f deploy/samples/testrun-demo.yaml
+kubectl get testrun testrun-demo -w
+```
+
+Vérifié sur un vrai cluster (Kubernetes de Docker Desktop, pas de simulation) : l'opérateur
+déployé (CRD + RBAC + `Deployment`, générés par `dotnet kubeops generate operator`) crée bien,
+à l'application de la `TestRun`, le service headless, le `StatefulSet` des workers (2 pods,
+`-0`/`-1`, adressables individuellement par leur nom DNS stable), le service et le `Job` du
+maître — le maître enregistre les deux workers, les fait tourner, sonde leur rapport en direct
+(`/worker/report/raw`, visible dans les logs), puis fusionne un rapport final de 224 itérations,
+**0 % d'échec, tous les seuils respectés** ; `TestRun.status.phase` est passé par
+`Pending → Running → Succeeded`, et le `StatefulSet` des workers est retombé à **0 réplique**
+automatiquement une fois le `Job` `Complete`. Contre-épreuve obtenue en conditions réelles (une
+première tentative où la cible n'écoutait pas encore sur le port attendu) : le statut a fini à
+`Failed` proprement (`Job` en `BackoffLimitExceeded`, workers réduits à 0 réplique quand même),
+sans jamais rester bloqué — la détection d'échec du chantier précédent (seuils non respectés)
+se propage correctement jusqu'au statut de la ressource Kubernetes. `kubectl delete -f
+deploy/samples/testrun-demo.yaml` sur les deux tirs (échoué et réussi) a bien fait disparaître
+`Job`, `StatefulSet` et les deux `Service` via le garbage collection natif — aucune ressource
+orpheline.
+
+**Limites assumées, pas résolues ici** : les manifestes générés par l'outil CLI KubeOps
+(`dotnet kubeops generate operator`) utilisent un `ClusterRole`/`ClusterRoleBinding` — l'opérateur
+surveille les `TestRun` sur tout le cluster plutôt que dans un seul namespace ; restreindre la
+portée demanderait de configurer explicitement le champ de surveillance côté runtime, non fait
+ici. Pas de scénario personnalisé via `ConfigMap` (seuls les workflows déjà nommés dans
+`TempestHostOptions` sont sélectionnables via `spec.workflow`). Pas d'automatisation
+TLS/`cert-manager` : `spec` ne câble pas `Tempest__ClusterCertificateThumbprint` — HTTP en clair
+à l'intérieur du cluster, même choix assumé que `docker-compose.yml` aujourd'hui. Pas de
+publication d'image sur un registre (GHCR) : build et chargement locaux uniquement, comme pour
+`docker-compose.yml`. `TestRun.status` ne porte pas le contenu du rapport de tir — accès par
+`kubectl port-forward` sur le service du maître, comme aujourd'hui.
+
 ## Conteneurisation
 
 Une seule image sert les trois rôles (autonome/maître/worker) — c'est `Tempest:Role`, pas

@@ -1,0 +1,42 @@
+# Demonstration de l'operateur Kubernetes : memes valeurs que docker-compose.yml a la racine du
+# depot (2 workers, meme profil en 3 etapes, sampletarget) pour un point d'entree "kubectl apply
+# -f" pret a l'emploi.
+#
+# Prealable : sampletarget doit etre joignable a l'URL ci-dessous depuis le cluster (par exemple
+# "kubectl run sampletarget --image=tempest-sampletarget:local --port=5281 --expose").
+#
+#   kubectl apply -f deploy/samples/testrun-demo.yaml
+#   kubectl get testrun testrun-demo -w
+#   kubectl delete -f deploy/samples/testrun-demo.yaml
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: testrun-demo-secret
+type: Opaque
+stringData:
+  shared-secret: demo-cluster-secret
+
+---
+apiVersion: tempest.dev/v1alpha1
+kind: TestRun
+metadata:
+  name: testrun-demo
+spec:
+  image: tempest-host:local
+  targetBaseUrl: http://sampletarget:5281
+  workerReplicas: 2
+  maxVirtualUsers: 20
+  clusterSharedSecretRef:
+    name: testrun-demo-secret
+    key: shared-secret
+  profile:
+    - fromRps: 0
+      toRps: 10
+      durationSeconds: 10
+    - fromRps: 10
+      toRps: 10
+      durationSeconds: 15
+    - fromRps: 10
+      toRps: 0
+      durationSeconds: 5

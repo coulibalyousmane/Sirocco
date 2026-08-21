@@ -384,7 +384,10 @@ Le mode distribué existe et fonctionne, mais il se déploie à la main via `doc
 de quelques dizaines de workers, ça ne tient plus. À ne lancer que lorsque des utilisateurs réels
 atteignent ce plafond.
 
-- **Opérateur Kubernetes** — une ressource `TestRun`, des workers créés et détruits automatiquement.
+- ~~**Opérateur Kubernetes**~~ — fait, voir [Opérateur Kubernetes](README.md#opérateur-kubernetes) :
+  une ressource `TestRun` (`tempest.dev/v1alpha1`, construite avec KubeOps), workers en
+  `StatefulSet` + service headless, maître en `Job` — créés à l'application de la ressource,
+  workers détruits automatiquement (réplicas ramenés à 0) une fois le tir terminé.
 - ~~**TLS sur le control plane**~~ — fait, voir [TLS sur le control plane](README.md#tls-sur-le-control-plane) :
   un seul certificat auto-signé partagé par le maître et les workers, épinglé par empreinte
   (`Tempest.ClusterCertificateThumbprint`) côté client — le serveur (Kestrel) sert du HTTPS par
@@ -517,12 +520,14 @@ guide d'écriture d'extension rassemble cette recette pour la cinquième extensi
 
 **La phase 7 est entamée**, malgré le principe énoncé plus haut ("ne lancer que lorsque des
 utilisateurs réels atteignent ce plafond") — choix explicite de l'utilisateur plutôt qu'attente
-passive. Deux bullets traités, dans l'ordre choisi : [Reprise sur perte d'un
+passive. Trois bullets traités, dans l'ordre choisi : [Reprise sur perte d'un
 worker](README.md#reprise-sur-perte-dun-worker) d'abord, qui fermait un vrai trou de robustesse
 (un maître qui restait bloqué indéfiniment sur un worker mort) ; puis [TLS sur le control
 plane](README.md#tls-sur-le-control-plane), qui protège désormais la confidentialité du control
-plane, pas seulement son authentification. Restent, dans l'ordre choisi : l'opérateur
-Kubernetes, puis l'autoscaling — ce dernier dépendant logiquement de l'opérateur.
+plane, pas seulement son authentification ; puis l'[opérateur
+Kubernetes](README.md#opérateur-kubernetes), qui remplace le déploiement manuel via
+`docker-compose` par une ressource `TestRun` déclarative. Reste, dans l'ordre choisi :
+l'autoscaling, qui dépend logiquement de l'opérateur.
 
 ## Sources
 

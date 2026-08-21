@@ -1,0 +1,18 @@
+namespace: tempest-operator-system
+namePrefix: tempest-operator-
+labels:
+- includeSelectors: true
+  pairs:
+    operator: tempest-operator
+resources:
+- operator-role.yaml
+- operator-role-binding.yaml
+- deployment.yaml
+- testruns_tempest_dev.yaml
+- namespace.yaml
+images:
+- name: operator
+  newName: tempest-operator
+  newTag: local
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization

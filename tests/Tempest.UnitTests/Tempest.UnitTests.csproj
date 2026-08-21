@@ -76,6 +76,12 @@
          teste ici contre un vrai serveur GraphQL en boucle locale (GraphQlTestServer, meme
          gabarit que SseTestServer). -->
     <ProjectReference Include="..\..\extensions\Tempest.Extensions.GraphQl\Tempest.Extensions.GraphQl.csproj" />
+    <!-- TestRunResources (opérateur Kubernetes, phase 7) : logique pure de construction des
+         objets Kubernetes désirés à partir d'une TestRun, sans cluster ni appel réseau. Le
+         contrôleur lui-même (TestRunController) n'est pas testé ici : KubeOps ne fournit pas
+         de harnais de test sans cluster réel, voir la vérification E2E documentée dans le
+         README. -->
+    <ProjectReference Include="..\..\src\Tempest.Operator\Tempest.Operator.csproj" />
   </ItemGroup>
 
 </Project>
