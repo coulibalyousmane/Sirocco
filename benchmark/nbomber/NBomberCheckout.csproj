@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Projet volontairement hors de Tempest.sln : NBomber est une dependance sous licence
+    commerciale (gratuite pour l'usage personnel/benchmark, voir benchmark/README.md), on ne
+    veut pas l'entrainer dans le restore/build de tout le depot (voir .github/workflows/ci.yml,
+    qui restaure/construit Tempest.sln en entier). S'execute directement via `dotnet run` avec
+    l'option "projet" pointant vers ce dossier (benchmark/nbomber), voir benchmark/README.md pour
+    la commande exacte (non recopiee ici : un tiret double dans un commentaire XML casse le parsing).
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NBomber" Version="6.6.0" />
+    <PackageReference Include="NBomber.Http" Version="6.2.1" />
+  </ItemGroup>
+
+</Project>

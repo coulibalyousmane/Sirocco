@@ -424,6 +424,14 @@ autom4te.cache/
 tarballs/
 test-results/
 
+# Sorties brutes du benchmark comparatif (benchmark/README.md) : reproductibles a la demande,
+# pas versionnees. RESULTS.md est l'exception deliberee : c'est le "Benchmark comparatif publie"
+# de ROADMAP.md (phase 8), le livrable lisible que ROADMAP.md et README.md pointent depuis
+# GitHub — le laisser hors du depot casserait ces liens pour qui n'a pas relance benchmark/run.sh.
+benchmark/results/*
+!benchmark/results/.gitkeep
+!benchmark/results/RESULTS.md
+
 # content below from: https://github.com/github/gitignore/blob/main/Global/macOS.gitignore
 # General
 .DS_Store

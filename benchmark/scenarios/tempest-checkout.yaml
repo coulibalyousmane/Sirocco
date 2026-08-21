@@ -1,0 +1,26 @@
+# Scenario dedie au benchmark comparatif (voir benchmark/README.md) : exactement deux requetes
+# par iteration (login puis checkout), reproduites a l'identique dans k6/Gatling/NBomber pour
+# garantir une comparaison a sequence strictement egale. Volontairement plus court que
+# scenarios/smoke-test.yaml (pas d'etape "browse") : chaque requete en plus fausserait la
+# comparaison de debit entre les quatre outils.
+
+name: benchmark-checkout
+
+steps:
+  - name: login
+    method: POST
+    path: /api/auth/login
+    body: '{"username":"demo","password":"demo"}'
+    contentType: application/json
+    extract:
+      - variable: token
+        regex: '"token":"([^"]+)"'
+
+  - name: checkout
+    method: POST
+    path: /api/checkout
+    body: '{"items":[{"productId":1,"quantity":2}]}'
+    contentType: application/json
+    headers:
+      Authorization: "Bearer {{token}}"
+    expectedStatusCodes: [200]

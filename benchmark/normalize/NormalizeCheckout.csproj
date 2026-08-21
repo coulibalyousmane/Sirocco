@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Projet volontairement hors de Tempest.sln, comme benchmark/nbomber (voir ce dossier) : cet
+    outil ne depend d'aucun paquet externe (parsing manuel des 4 sorties, meme choix que
+    tools/Tempest.Compare), mais il vit avec les scripts et sorties du benchmark comparatif, pas
+    avec le reste des outils reutilisables. S'execute directement via `dotnet run` avec l'option
+    "projet" pointant vers ce dossier (benchmark/normalize), voir benchmark/README.md.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

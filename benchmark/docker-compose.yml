@@ -1,0 +1,24 @@
+# Cible unique du benchmark comparatif (voir benchmark/README.md), reglee pour saturer a un
+# debit modeste et reproductible sur une seule machine. Aucune modification du code de
+# Tempest.SampleTarget : uniquement des variables d'environnement deja lues par
+# SampleTargetOptions (concurrence de checkout abaissee, latence simulee augmentee).
+#
+#   docker compose -f benchmark/docker-compose.yml up --build -d
+#
+# Le contexte de build reste la racine du depot (le Dockerfile de SampleTarget reference des
+# fichiers .proto en dehors de samples/), donc cette commande doit etre lancee depuis la racine.
+
+services:
+  sampletarget:
+    build:
+      context: ..
+      dockerfile: samples/Tempest.SampleTarget/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:5281
+      SampleTarget__GrpcPort: "5287"
+      SampleTarget__MaxConcurrentCheckouts: "8"
+      SampleTarget__MinLatencyMilliseconds: "80"
+      SampleTarget__MaxLatencyMilliseconds: "150"
+      SampleTarget__ErrorRate: "0"
+    ports:
+      - "5281:5281"

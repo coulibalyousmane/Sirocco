@@ -2349,6 +2349,10 @@ matrice concurrentielle honnête, huit phases ordonnées par dépendance, et une
 importante — l'argument « Tempest corrige le *coordinated omission*, contrairement aux autres »
 est **faux** (les trois proposent un modèle ouvert) ; le différenciateur réel est ailleurs.
 
+Ce différenciateur est maintenant démontré, pas seulement affirmé : **[benchmark/](benchmark/README.md)**
+fait tourner Tempest, k6, Gatling et NBomber contre la même cible saturée avec le même scénario, et
+publie les résultats bruts dans [benchmark/results/RESULTS.md](benchmark/results/RESULTS.md).
+
 ## Licence
 
 [Apache License 2.0](LICENSE) — la même que k6 et Gatling.

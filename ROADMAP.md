@@ -90,11 +90,10 @@ qui bloque littéralement tout le reste, et c'est aussi le moins cher à traiter
   xUnit externe qui ne référence que ces quatre paquets (aucun `ProjectReference` vers ce dépôt).
   Pas encore publiés sur nuget.org — le dépôt reste privé (bullet précédent, maintenant fait :
   seule la visibilité GitHub reste un geste manuel).
-- ~~**Rendre le dépôt public**~~ — licence ([Apache License 2.0](LICENSE), celle de k6 et
-  Gatling), README d'accueil et démarrage rapide en trois commandes faits. Changer la visibilité
-  du dépôt sur GitHub reste un geste que seul le propriétaire du dépôt peut faire (Réglages →
-  Danger Zone → Change visibility) — non automatisable depuis cet environnement (`gh` CLI absent,
-  et l'installer sans qu'on le demande serait aller plus loin que ce qui a été convenu).
+- ~~**Rendre le dépôt public**~~ — fait, licence ([Apache License 2.0](LICENSE), celle de k6 et
+  Gatling), README d'accueil et démarrage rapide en trois commandes faits, et le dépôt est
+  désormais public sur GitHub (`github.com/coulibalyousmane/Tempest`). **Clôt entièrement la
+  phase 1.**
 
 ### Phase 2 — Des scénarios qu'on peut réellement écrire
 
@@ -399,9 +398,12 @@ atteignent ce plafond.
 Un outil technique inconnu ne se diffuse pas par ses fonctionnalités mais par une démonstration
 qu'on ne peut pas ignorer. Tempest en a une à disposition, et elle est reproductible.
 
-- **Benchmark comparatif publié** — même cible saturée, même profil, Tempest contre k6, Gatling et
-  NBomber, montrant l'écart entre latence rapportée et latence subie quand l'injecteur décroche.
-  Dépôt reproductible, méthode ouverte.
+- ~~**Benchmark comparatif publié**~~ — fait : [benchmark/README.md](benchmark/README.md) et
+  [benchmark/results/RESULTS.md](benchmark/results/RESULTS.md). Même cible saturée
+  (`Tempest.SampleTarget`, `ConcurrencyGate` réglé), même scénario et même profil de charge
+  (rampe 20→150 req/s) pour Tempest, k6, Gatling et NBomber. Reproductible en une commande
+  (`benchmark/run.sh`), méthode et limites documentées en toute honnêteté (y compris la variance
+  observée d'un tir à l'autre sur une machine partagée).
 - **Article de fond** sur la dette d'ordonnancement résiduelle : le sujet a un public (SRE,
   ingénieurs performance) et personne ne l'occupe.
 - **Site de documentation** avec exemples exécutables.
@@ -422,12 +424,14 @@ de plugin avant les protocoles qu'il doit accueillir.
 
 ## Recommandation
 
-**La phase 1 est faite** — CLI, packaging `dotnet tool`, binaires autonomes, paquets NuGet
-bibliothèque, licence et démarrage rapide. Un seul geste manuel reste : basculer la visibilité du
-dépôt GitHub de privé à public (Réglages → Danger Zone), réservé au propriétaire du dépôt. Tant
-qu'il reste privé, rien de ce qui a été construit — la fusion d'histogrammes exacte, les quatre
-modes gRPC, le mode distribué sécurisé, l'installation en une commande — n'a de valeur pour
-quiconque d'autre que son auteur.
+**La phase 1 est entièrement faite** — CLI, packaging `dotnet tool`, binaires autonomes, paquets
+NuGet bibliothèque, licence, démarrage rapide, et le dépôt est maintenant public sur GitHub. Ce
+qui a été construit — la fusion d'histogrammes exacte, les quatre modes gRPC, le mode distribué
+sécurisé, l'installation en une commande — a désormais de la valeur pour quelqu'un d'autre que
+son auteur. Deux gestes restent ouverts, non bloquants pour la suite : publier les paquets NuGet
+sur nuget.org (actuellement installables depuis une source locale ou un flux privé seulement) et
+déclencher le workflow de release GitHub pour les binaires autonomes (`vX.Y.Z`, prêt mais jamais
+poussé).
 
 **La décision de la phase 2 est tranchée et le moteur de script existe** : Roslyn (C# scripté),
 voir [Scénarios scriptés](README.md#scénarios-scriptés-roslyn). C'était le seul choix de cette
