@@ -102,6 +102,42 @@ public sealed class MasterCoordinatorTests
     }
 
     [Fact]
+    public void RegisteredWorkers_includes_a_worker_registered_after_the_fact()
+    {
+        MasterCoordinator coordinator = new();
+        coordinator.Register("worker-a");
+
+        Assert.Equal(["worker-a"], coordinator.RegisteredWorkers);
+
+        // Le chemin adaptatif (autoscaling) relit cette liste palier apres palier : un worker qui
+        // s'enregistre plus tard (l'operateur agrandit le StatefulSet en cours de tir) doit y
+        // apparaitre, contrairement au chemin fige qui ne relit jamais l'etat du coordinateur une
+        // fois la premiere attente rendue.
+        coordinator.Register("worker-b");
+        Assert.Equal(["worker-a", "worker-b"], coordinator.RegisteredWorkers);
+    }
+
+    /// <summary>
+    /// Le chemin adaptatif ne passe que les workers deja dispatches comme candidats : un worker
+    /// enregistre par avance (l'operateur agrandit le StatefulSet avant le palier qui en a besoin)
+    /// mais pas encore prepare ne doit jamais etre declare mort faute d'un rapport qu'on ne lui a
+    /// pas encore demande.
+    /// </summary>
+    [Fact]
+    public async Task MarkDeadIfStale_with_explicit_candidates_ignores_a_registered_but_not_yet_dispatched_worker()
+    {
+        MasterCoordinator coordinator = new();
+        coordinator.Register("worker-a");
+        coordinator.Register("worker-b");
+
+        await Task.Delay(TimeSpan.FromMilliseconds(20));
+        IReadOnlyList<string> newlyDead = coordinator.MarkDeadIfStale(TimeSpan.FromMilliseconds(1), candidates: ["worker-a"]);
+
+        Assert.Equal(["worker-a"], newlyDead);
+        Assert.Equal(["worker-a"], coordinator.DeadWorkers);
+    }
+
+    [Fact]
     public async Task A_late_report_from_a_worker_already_marked_dead_is_still_recorded()
     {
         MasterCoordinator coordinator = new();

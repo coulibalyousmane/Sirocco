@@ -77,8 +77,17 @@ public sealed class MasterCoordinator
     /// ce qui permet au maitre de cesser d'attendre un rapport qui ne viendra jamais plutot que de
     /// rester bloque indefiniment.
     /// </para>
+    /// <para>
+    /// <paramref name="candidates"/> restreint les workers eligibles a une mort declaree —
+    /// <see langword="null"/> (comportement par defaut, inchange) considere tous les workers
+    /// enregistres. Le chemin d'orchestration adaptatif (<c>MasterOrchestrationHostedService.ExecuteAdaptiveAsync</c>)
+    /// y passe explicitement les seuls workers deja dispatches : un worker enregistre par avance
+    /// (le controleur Kubernetes agrandit le <c>StatefulSet</c> avant le palier qui en a besoin)
+    /// mais pas encore prepare ne doit jamais etre declare mort faute de rapport qu'on ne lui a
+    /// pas encore demande.
+    /// </para>
     /// </summary>
-    public IReadOnlyList<string> MarkDeadIfStale(TimeSpan deadAfter)
+    public IReadOnlyList<string> MarkDeadIfStale(TimeSpan deadAfter, IReadOnlyCollection<string>? candidates = null)
     {
         List<string> newlyDead = [];
 
@@ -86,7 +95,7 @@ public sealed class MasterCoordinator
         {
             DateTimeOffset threshold = DateTimeOffset.UtcNow - deadAfter;
 
-            foreach (string worker in _registeredWorkers)
+            foreach (string worker in candidates ?? _registeredWorkers)
             {
                 if (_deadWorkers.Contains(worker))
                 {
@@ -197,6 +206,23 @@ public sealed class MasterCoordinator
         if (_reportsTarget is not null && _reports.Count + _deadWorkers.Count >= _reportsGoal)
         {
             _reportsTarget.TrySetResult();
+        }
+    }
+
+    /// <summary>
+    /// Workers enregistres a l'instant de l'appel, y compris ceux arrives apres qu'une premiere
+    /// attente ait deja rendu la main (voir <see cref="WaitForRegistrationsAsync"/>) — utilise par
+    /// le chemin d'orchestration adaptatif (<c>MasterOrchestrationHostedService.ExecuteAdaptiveAsync</c>)
+    /// pour detecter les workers nouvellement inscrits palier apres palier.
+    /// </summary>
+    public IReadOnlyList<string> RegisteredWorkers
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return [.. _registeredWorkers];
+            }
         }
     }
 

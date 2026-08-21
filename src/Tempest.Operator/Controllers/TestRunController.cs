@@ -42,6 +42,11 @@ public sealed class TestRunController(IKubernetesClient client, ILogger<TestRunC
         V1Job? job = await client.GetAsync<V1Job>(TestRunResources.MasterServiceName(entity), entity.Metadata.NamespaceProperty, cancellationToken)
             .ConfigureAwait(false);
 
+        if (entity.Spec.Autoscaling is not null)
+        {
+            await ReconcileAutoscalingAsync(entity, job, cancellationToken).ConfigureAwait(false);
+        }
+
         TimeSpan? requeueAfter = await UpdatePhaseAsync(entity, job, cancellationToken).ConfigureAwait(false);
         return ReconciliationResult<V1TestRun>.Success(entity, requeueAfter);
     }
@@ -87,6 +92,69 @@ public sealed class TestRunController(IKubernetesClient client, ILogger<TestRunC
 
         await ScaleWorkersToZeroAsync(entity, cancellationToken).ConfigureAwait(false);
         return null;
+    }
+
+    /// <summary>
+    /// Ajuste le <c>StatefulSet</c> des workers au fil des paliers du profil, en avance de
+    /// <see cref="V1TestRun.AutoscalingSpec.ScaleAheadSeconds"/> sur chaque transition — à la
+    /// hausse comme à la baisse. Chemin entièrement séparé de <see cref="UpdatePhaseAsync"/> et
+    /// jamais appelé si <see cref="V1TestRun.TestRunSpec.Autoscaling"/> est absent : le chemin
+    /// existant (dimensionnement fixe, <see cref="ScaleWorkersToZeroAsync"/> en fin de tir) n'est
+    /// alors touché en rien.
+    /// </summary>
+    private async Task ReconcileAutoscalingAsync(V1TestRun entity, V1Job? job, CancellationToken cancellationToken)
+    {
+        DateTime? startTime = job?.Status?.StartTime;
+        bool finished = job?.Status?.Succeeded is > 0 || job?.Status?.Failed is > 0;
+
+        if (startTime is null || finished)
+        {
+            // Pas encore demarre (rien a ajuster avant le premier palier) ou deja termine
+            // (ScaleWorkersToZeroAsync prend le relais) : les deux cas laissent le StatefulSet
+            // inchange ici.
+            return;
+        }
+
+        int[] stageWorkerCounts = TestRunResources.ComputeStageWorkerCounts(entity);
+        TimeSpan elapsed = DateTime.UtcNow - startTime.Value;
+        TimeSpan scaleAhead = TimeSpan.FromSeconds(entity.Spec.Autoscaling!.ScaleAheadSeconds);
+
+        int desiredStageIndex = 0;
+        TimeSpan stageStart = TimeSpan.Zero;
+        for (int i = 0; i < entity.Spec.Profile.Count; i++)
+        {
+            if (stageStart - scaleAhead <= elapsed)
+            {
+                desiredStageIndex = i;
+            }
+
+            stageStart += TimeSpan.FromSeconds(entity.Spec.Profile[i].DurationSeconds);
+        }
+
+        int desiredReplicas = stageWorkerCounts[desiredStageIndex];
+
+        V1StatefulSet? workers = await client
+            .GetAsync<V1StatefulSet>(TestRunResources.WorkerServiceName(entity), entity.Metadata.NamespaceProperty, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (workers is null || workers.Spec.Replicas == desiredReplicas)
+        {
+            return;
+        }
+
+        if (logger.IsEnabled(LogLevel.Information))
+        {
+            logger.LogInformation(
+                "TestRun {Name} : ajustement du StatefulSet {StatefulSet} de {Current} a {Desired} replique(s) (palier {Stage}).",
+                entity.Metadata.Name,
+                workers.Metadata.Name,
+                workers.Spec.Replicas,
+                desiredReplicas,
+                desiredStageIndex);
+        }
+
+        workers.Spec.Replicas = desiredReplicas;
+        await client.UpdateAsync(workers, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task ScaleWorkersToZeroAsync(V1TestRun entity, CancellationToken cancellationToken)

@@ -62,10 +62,23 @@ public sealed class MasterOptions
     /// </summary>
     public int? ReportTimeoutSeconds { get; init; }
 
+    /// <summary>
+    /// Plan de paliers pose par l'operateur Kubernetes (un nombre de workers requis par palier du
+    /// profil, voir <c>Tempest.Operator.TestRunResources.ComputeStageWorkerCounts</c>) : <see langword="null"/>
+    /// par defaut, le chemin d'orchestration existant (<see cref="ExpectedWorkers"/>, liste de
+    /// workers figee une seule fois) reste alors totalement inchange. Renseigne, l'orchestration
+    /// suit ce plan au lieu d'attendre un nombre fixe de workers une seule fois au demarrage —
+    /// voir <c>MasterOrchestrationHostedService.ExecuteAdaptiveAsync</c>.
+    /// </summary>
+    public int[]? StagePlannedWorkers { get; init; }
+
     /// <summary>Valide la coherence des reglages.</summary>
     public void Validate()
     {
-        if (ExpectedWorkers < 1)
+        // ExpectedWorkers n'a aucun sens dans le chemin adaptatif (StagePlannedWorkers pose le
+        // nombre de workers palier par palier) : l'operateur ne l'emet pas dans ce cas (voir
+        // TestRunResources.BuildMasterEnv), donc ne pas exiger qu'il soit renseigne ici non plus.
+        if (StagePlannedWorkers is null && ExpectedWorkers < 1)
         {
             throw new ArgumentException("ExpectedWorkers doit valoir au moins 1.", nameof(ExpectedWorkers));
         }
@@ -88,6 +101,11 @@ public sealed class MasterOptions
         if (ReportTimeoutSeconds is < 1)
         {
             throw new ArgumentException("ReportTimeoutSeconds doit valoir au moins 1 s'il est renseigne.", nameof(ReportTimeoutSeconds));
+        }
+
+        if (StagePlannedWorkers is { } stagePlannedWorkers && stagePlannedWorkers.Any(count => count < 1))
+        {
+            throw new ArgumentException("Chaque palier de StagePlannedWorkers doit valoir au moins 1.", nameof(StagePlannedWorkers));
         }
     }
 }

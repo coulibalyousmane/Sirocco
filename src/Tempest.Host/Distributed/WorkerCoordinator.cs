@@ -32,6 +32,7 @@ public sealed class WorkerCoordinator(
     private MetricsProcessor? _metricsProcessor;
     private TempestMeter? _meter;
     private bool _running;
+    private readonly CancellationTokenSource _stopSource = new();
 
     /// <summary>Agregateur du tir local, disponible des que <see cref="Prepare"/> a ete appele.</summary>
     public MetricsAggregator? Aggregator { get; private set; }
@@ -105,6 +106,16 @@ public sealed class WorkerCoordinator(
         _ = Task.Run(RunAndReportAsync);
     }
 
+    /// <summary>
+    /// Demande l'arret anticipe du tir en cours (scale-down piloté par l'opérateur, via
+    /// <c>IHostApplicationLifetime.ApplicationStopping</c> — voir <c>Program.cs</c>) : annule le
+    /// jeton passe a <see cref="TargetRpsLoadEngine.RunAsync"/>, sans changer le reste du cycle
+    /// de vie (<see cref="RunAndReportAsync"/> soumet quand meme un rapport, partiel mais reel,
+    /// exactement comme une fin normale). Sans effet si le tir n'a pas encore demarre ou est deja
+    /// termine — idempotent.
+    /// </summary>
+    public void Stop() => _stopSource.Cancel();
+
     private async Task RunAndReportAsync()
     {
         try
@@ -113,13 +124,17 @@ public sealed class WorkerCoordinator(
 
             try
             {
-                await _engine!.RunAsync(CancellationToken.None).ConfigureAwait(false);
+                await _engine!.RunAsync(_stopSource.Token).ConfigureAwait(false);
             }
             finally
             {
                 await _metricsProcessor.StopAsync().ConfigureAwait(false);
             }
 
+            // Meme apres un arret anticipe (Stop()) : engine.RunAsync rend la main normalement
+            // sur annulation (voir VirtualUserWorker.ConsumeAsync, meme comportement deja utilise
+            // par LoadTestHostedService en mode autonome) plutot que de lever — un rapport
+            // partiel mais reel est donc toujours soumis ici, exactement comme une fin normale.
             WorkerReport report = Aggregator!.ExportRaw(options.SelfUrl);
             await SubmitReportAsync(report).ConfigureAwait(false);
         }

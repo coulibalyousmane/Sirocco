@@ -30,8 +30,43 @@ internal sealed class MasterOrchestrationHostedService(
     private const int EXIT_CODE_SUCCESS = 0;
     private const int EXIT_CODE_FAILURE = 1;
 
+    /// <summary>
+    /// Mince enveloppe de securite autour de <see cref="RunAsync"/> : une exception non geree
+    /// dans un <see cref="BackgroundService"/> l'arrete silencieusement sans jamais positionner
+    /// <see cref="Environment.ExitCode"/> — le <c>Job</c> Kubernetes rapportait alors <c>Complete</c>
+    /// (sortie 0) et <c>TestRun.status.phase</c> passait a tort a <c>Succeeded</c> sur un tir qui
+    /// n'a jamais eu lieu (trouvaille reelle en verifiant sur un vrai cluster : une resolution DNS
+    /// transitoire d'un worker de <c>StatefulSet</c> tout juste cree suffit a le declencher — pas
+    /// une hypothese). Ne change rien au chemin normal : <see cref="RunAsync"/> contient le corps
+    /// exact d'avant ce correctif.
+    /// </summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        try
+        {
+            await RunAsync(stoppingToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Arret normal de l'hote : rien a signaler comme un echec du tir.
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Le tir distribue a echoue avec une exception non geree.");
+            ExitIfConfigured(passed: false);
+        }
+    }
+
+    private async Task RunAsync(CancellationToken stoppingToken)
+    {
+        if (masterOptions.StagePlannedWorkers is { } stagePlan)
+        {
+            // Chemin adaptatif (autoscaling piloté par l'opérateur Kubernetes) : le corps
+            // ci-dessous, inchangé, ne s'exécute alors jamais — voir ExecuteAdaptiveAsync.
+            await ExecuteAdaptiveAsync(stagePlan, stoppingToken).ConfigureAwait(false);
+            return;
+        }
+
         if (logger.IsEnabled(LogLevel.Information))
         {
             logger.LogInformation(
@@ -76,6 +111,22 @@ internal sealed class MasterOrchestrationHostedService(
         await Task.WhenAll(workers.Select(worker => StartAsync(client, worker, stoppingToken))).ConfigureAwait(false);
         logger.LogInformation("Depart envoye a tous les workers.");
 
+        await FinalizeAsync(workers, startedAt, livePollingCts, livePolling, stoppingToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Attend les rapports finaux des workers dispatches, fusionne, evalue les seuils et arrete
+    /// l'hote si configure — partagee par le chemin figé (<see cref="ExecuteAsync"/>) et le chemin
+    /// adaptatif (<see cref="ExecuteAdaptiveAsync"/>), qui different seulement dans la maniere
+    /// dont ils construisent <paramref name="dispatchedWorkers"/>.
+    /// </summary>
+    private async Task FinalizeAsync(
+        IReadOnlyList<string> dispatchedWorkers,
+        DateTime startedAt,
+        CancellationTokenSource livePollingCts,
+        Task livePolling,
+        CancellationToken stoppingToken)
+    {
         // CancellationToken.None si aucun plafond absolu n'est configure : seule la detection par
         // heartbeat (MarkDeadIfStale, dans PollLiveReportsAsync) fait alors avancer cette attente
         // au-dela des rapports effectivement recus. Voir MasterOptions.ReportTimeoutSeconds pour
@@ -89,7 +140,7 @@ internal sealed class MasterOrchestrationHostedService(
         IReadOnlyList<WorkerReport> reports;
         try
         {
-            reports = await coordinator.WaitForReportsAsync(workers.Count, reportWaitCts.Token).ConfigureAwait(false);
+            reports = await coordinator.WaitForReportsAsync(dispatchedWorkers.Count, reportWaitCts.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
         {
@@ -109,7 +160,7 @@ internal sealed class MasterOrchestrationHostedService(
         // (ReportTimeoutSeconds) peut aussi rendre la main avant que le heartbeat n'ait declare
         // mort un worker toujours vivant mais dont le tir local est bloque.
         HashSet<string> reportedWorkerIds = [.. reports.Select(report => report.WorkerId)];
-        IReadOnlyList<string> lostWorkers = [.. workers.Where(worker => !reportedWorkerIds.Contains(worker))];
+        IReadOnlyList<string> lostWorkers = [.. dispatchedWorkers.Where(worker => !reportedWorkerIds.Contains(worker))];
 
         await StopLivePollingAsync(livePollingCts, livePolling).ConfigureAwait(false);
 
@@ -117,7 +168,7 @@ internal sealed class MasterOrchestrationHostedService(
         {
             logger.LogError(
                 "Tous les workers dispatches ({Count}) ont ete perdus en cours de tir : aucun rapport a fusionner.",
-                workers.Count);
+                dispatchedWorkers.Count);
             ExitIfConfigured(passed: false);
             return;
         }
@@ -256,6 +307,39 @@ internal sealed class MasterOrchestrationHostedService(
 
         int maxVirtualUsersPerWorker = Math.Max(1, (int)Math.Ceiling(tempestOptions.MaxVirtualUsers / (double)workerCount));
 
+        return BuildPrepareRequest(scaledProfile, maxVirtualUsersPerWorker);
+    }
+
+    /// <summary>
+    /// Chemin adaptatif : un worker qui rejoint au palier <paramref name="fromStageIndex"/> recoit
+    /// en une seule preparation tous les paliers restants (jamais de re-preparation d'un worker
+    /// deja lance, voir <see cref="WorkerCoordinator.Prepare"/>), chacun divise par le compte
+    /// <i>prevu</i> pour ce palier (<paramref name="stagePlan"/>) — pas par le nombre de workers
+    /// reellement actifs a cet instant, puisque ce compte anticipe des workers qui n'ont peut-etre
+    /// pas encore rejoint (voir <c>V1TestRun.AutoscalingSpec.ScaleAheadSeconds</c> cote operateur,
+    /// dans le projet <c>Tempest.Operator</c> — non reference depuis ce projet).
+    /// </summary>
+    private WorkerPrepareRequest BuildAdaptivePrepareRequest(int[] stagePlan, int fromStageIndex)
+    {
+        List<LoadStageOptions> scaledProfile = [];
+        for (int i = fromStageIndex; i < tempestOptions.Profile.Count; i++)
+        {
+            LoadStageOptions stage = tempestOptions.Profile[i];
+            scaledProfile.Add(new LoadStageOptions
+            {
+                FromRps = stage.FromRps / stagePlan[i],
+                ToRps = stage.ToRps / stagePlan[i],
+                DurationSeconds = stage.DurationSeconds,
+            });
+        }
+
+        int maxVirtualUsersPerWorker = Math.Max(1, (int)Math.Ceiling(tempestOptions.MaxVirtualUsers / (double)stagePlan[fromStageIndex]));
+
+        return BuildPrepareRequest(scaledProfile, maxVirtualUsersPerWorker);
+    }
+
+    private WorkerPrepareRequest BuildPrepareRequest(List<LoadStageOptions> scaledProfile, int maxVirtualUsersPerWorker)
+    {
         // Priorite au fichier de scenario, exactement comme en mode autonome (Tempest.Host/Program.cs) :
         // son contenu est lu ici, une seule fois, cote maitre — un worker distant n'a aucune
         // raison de partager le meme systeme de fichiers que lui.
@@ -280,6 +364,143 @@ internal sealed class MasterOrchestrationHostedService(
             TargetBaseUrl = tempestOptions.TargetBaseUrl,
             MaxVirtualUsers = maxVirtualUsersPerWorker,
         };
+    }
+
+    /// <summary>
+    /// Chemin adaptatif (autoscaling) : suit un plan de paliers pose par l'operateur Kubernetes
+    /// (<see cref="MasterOptions.StagePlannedWorkers"/>) plutot que d'attendre un nombre fixe de
+    /// workers une seule fois puis de figer la liste de travail pour tout le tir. Un nouveau
+    /// worker enregistre entre deux paliers est dispatche au debut du palier suivant (jamais
+    /// re-prepare un worker deja lance) ; un worker retire par le controleur (StatefulSet reduit)
+    /// tombe dans le meme filet de securite que dans le chemin fige
+    /// (<see cref="MasterCoordinator.MarkDeadIfStale"/>) s'il ne finit pas son arret propre a temps.
+    /// </summary>
+    private async Task ExecuteAdaptiveAsync(int[] stagePlan, CancellationToken stoppingToken)
+    {
+        if (logger.IsEnabled(LogLevel.Information))
+        {
+            logger.LogInformation(
+                "Orchestration adaptative : {StageCount} palier(s), {Initial} worker(s) requis pour le premier.",
+                stagePlan.Length,
+                stagePlan[0]);
+        }
+
+        IReadOnlyList<string> initialWorkers = await coordinator
+            .WaitForRegistrationsAsync(stagePlan[0], TimeSpan.FromSeconds(masterOptions.RegistrationTimeoutSeconds), stoppingToken)
+            .ConfigureAwait(false);
+
+        if (initialWorkers.Count == 0)
+        {
+            logger.LogError("Aucun worker enregistre : impossible de distribuer le tir.");
+            ExitIfConfigured(passed: false);
+            return;
+        }
+
+        HttpClient client = httpClientFactory.CreateClient(ClusterCertificatePinning.CLUSTER_CLIENT_NAME);
+        client.DefaultRequestHeaders.Authorization = ClusterAuthentication.BuildHeader(tempestOptions.ClusterSharedSecret);
+
+        Lock dispatchGate = new();
+        List<string> dispatchedWorkers = [];
+        DateTime startedAt = DateTime.UtcNow;
+
+        using CancellationTokenSource livePollingCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        Task livePolling = PollAdaptiveLiveReportsAsync(client, dispatchGate, dispatchedWorkers, startedAt, livePollingCts.Token);
+
+        for (int stageIndex = 0; stageIndex < stagePlan.Length; stageIndex++)
+        {
+            IReadOnlyList<string> newWorkers;
+            lock (dispatchGate)
+            {
+                newWorkers = [.. coordinator.RegisteredWorkers.Where(worker => !dispatchedWorkers.Contains(worker))];
+            }
+
+            if (newWorkers.Count > 0)
+            {
+                WorkerPrepareRequest request = BuildAdaptivePrepareRequest(stagePlan, stageIndex);
+                await Task.WhenAll(newWorkers.Select(worker => PrepareAsync(client, worker, request, stoppingToken))).ConfigureAwait(false);
+                await Task.WhenAll(newWorkers.Select(worker => StartAsync(client, worker, stoppingToken))).ConfigureAwait(false);
+
+                lock (dispatchGate)
+                {
+                    dispatchedWorkers.AddRange(newWorkers);
+                }
+
+                if (logger.IsEnabled(LogLevel.Information))
+                {
+                    logger.LogInformation(
+                        "Palier {Stage} : {Count} nouveau(x) worker(s) dispatche(s) : {Workers}.",
+                        stageIndex,
+                        newWorkers.Count,
+                        string.Join(", ", newWorkers));
+                }
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(tempestOptions.Profile[stageIndex].DurationSeconds), stoppingToken).ConfigureAwait(false);
+        }
+
+        IReadOnlyList<string> allDispatchedWorkers;
+        lock (dispatchGate)
+        {
+            allDispatchedWorkers = [.. dispatchedWorkers];
+        }
+
+        await FinalizeAsync(allDispatchedWorkers, startedAt, livePollingCts, livePolling, stoppingToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Meme role que <see cref="PollLiveReportsAsync"/> pour le chemin adaptatif : la liste des
+    /// workers a sonder grandit au fil des paliers (<paramref name="dispatchedWorkers"/> est
+    /// mutee par <see cref="ExecuteAdaptiveAsync"/> pendant que cette boucle tourne), d'ou le
+    /// verrou partage plutot qu'une liste figee comme dans le chemin fige. Les workers deja
+    /// dispatches sont aussi les seuls candidats a une mort declaree (voir le commentaire de
+    /// <see cref="MasterCoordinator.MarkDeadIfStale"/>) : un worker enregistre par avance par
+    /// l'operateur mais pas encore prepare ne doit jamais etre declare mort faute d'un rapport
+    /// qu'on ne lui a pas encore demande.
+    /// </summary>
+    private async Task PollAdaptiveLiveReportsAsync(HttpClient client, Lock dispatchGate, List<string> dispatchedWorkers, DateTime startedAt, CancellationToken cancellationToken)
+    {
+        TimeSpan interval = TimeSpan.FromSeconds(masterOptions.LivePollIntervalSeconds);
+        TimeSpan deadAfter = TimeSpan.FromSeconds(masterOptions.WorkerDeadAfterSeconds);
+
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                IReadOnlyList<string> workers;
+                lock (dispatchGate)
+                {
+                    workers = [.. dispatchedWorkers];
+                }
+
+                if (workers.Count > 0)
+                {
+                    WorkerReport?[] snapshots = await Task
+                        .WhenAll(workers.Select(worker => FetchRawReportAsync(client, worker, cancellationToken)))
+                        .ConfigureAwait(false);
+
+                    List<WorkerReport> received = [.. snapshots.OfType<WorkerReport>()];
+                    if (received.Count > 0)
+                    {
+                        coordinator.LiveReport = ClusterReportAggregator.Merge(received, DateTime.UtcNow - startedAt);
+                    }
+
+                    IReadOnlyList<string> newlyDead = coordinator.MarkDeadIfStale(deadAfter, workers);
+                    foreach (string worker in newlyDead)
+                    {
+                        logger.LogWarning(
+                            "Worker {WorkerUrl} declare perdu : aucun heartbeat depuis plus de {DeadAfter}s.",
+                            worker,
+                            masterOptions.WorkerDeadAfterSeconds);
+                    }
+                }
+
+                await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Arret normal du sondage : les rapports finaux ont pris le relais.
+        }
     }
 
     private static async Task PrepareAsync(HttpClient client, string workerUrl, WorkerPrepareRequest request, CancellationToken cancellationToken)

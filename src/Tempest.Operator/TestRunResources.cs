@@ -103,7 +103,7 @@ public static class TestRunResources
         Spec = new V1StatefulSetSpec
         {
             ServiceName = WorkerServiceName(entity),
-            Replicas = entity.Spec.WorkerReplicas,
+            Replicas = entity.Spec.Autoscaling is not null ? ComputeStageWorkerCounts(entity)[0] : entity.Spec.WorkerReplicas,
             Selector = new V1LabelSelector { MatchLabels = WorkerPodLabels(entity) },
             Template = new V1PodTemplateSpec
             {
@@ -116,6 +116,30 @@ public static class TestRunResources
             },
         },
     };
+
+    /// <summary>
+    /// Nombre de workers requis à chaque palier de <see cref="V1TestRun.TestRunSpec.Profile"/>,
+    /// à partir du débit cible de ce palier et de la capacité déclarée par worker
+    /// (<see cref="V1TestRun.AutoscalingSpec.MaxRequestsPerSecondPerWorker"/>) — prévisionnel,
+    /// calculé une seule fois à partir du profil complet, jamais mesuré en direct. Pure et
+    /// testable sans cluster, même idiome que la division plafonnée déjà utilisée pour
+    /// <c>maxVirtualUsersPerWorker</c> côté maître (<c>MasterOrchestrationHostedService.BuildPrepareRequest</c>).
+    /// </summary>
+    public static int[] ComputeStageWorkerCounts(V1TestRun entity)
+    {
+        V1TestRun.AutoscalingSpec autoscaling = entity.Spec.Autoscaling
+            ?? throw new InvalidOperationException("Spec.Autoscaling doit etre renseigne pour calculer un plan de paliers.");
+
+        return
+        [
+            .. entity.Spec.Profile.Select(stage =>
+            {
+                int peakRps = Math.Max(stage.FromRps, stage.ToRps);
+                int required = (int)Math.Ceiling(peakRps / (double)autoscaling.MaxRequestsPerSecondPerWorker);
+                return Math.Clamp(required, autoscaling.MinWorkerReplicas, autoscaling.MaxWorkerReplicas);
+            }),
+        ];
+    }
 
     private static Dictionary<string, string> MasterPodLabels(V1TestRun entity) => new()
     {
@@ -178,7 +202,19 @@ public static class TestRunResources
         env.Add(new V1EnvVar { Name = "ASPNETCORE_URLS", Value = $"http://+:{MASTER_PORT}" });
         env.Add(new V1EnvVar { Name = "Tempest__Role", Value = "master" });
         env.Add(new V1EnvVar { Name = "Tempest__ExitAfterRun", Value = "true" });
-        env.Add(new V1EnvVar { Name = "Master__ExpectedWorkers", Value = entity.Spec.WorkerReplicas.ToString() });
+
+        if (entity.Spec.Autoscaling is not null)
+        {
+            int[] stageWorkerCounts = ComputeStageWorkerCounts(entity);
+            for (int i = 0; i < stageWorkerCounts.Length; i++)
+            {
+                env.Add(new V1EnvVar { Name = $"Master__StagePlannedWorkers__{i}", Value = stageWorkerCounts[i].ToString() });
+            }
+        }
+        else
+        {
+            env.Add(new V1EnvVar { Name = "Master__ExpectedWorkers", Value = entity.Spec.WorkerReplicas.ToString() });
+        }
 
         if (entity.Spec.MaxVirtualUsers is { } maxVirtualUsers)
         {

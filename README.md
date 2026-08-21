@@ -2426,6 +2426,108 @@ publication d'image sur un registre (GHCR) : build et chargement locaux uniqueme
 `docker-compose.yml`. `TestRun.status` ne porte pas le contenu du rapport de tir — accès par
 `kubectl port-forward` sur le service du maître, comme aujourd'hui.
 
+### Autoscaling
+
+L'opérateur dimensionne `workerReplicas` une fois, à la création de la `TestRun` — pour un
+profil qui varie fortement (une rampe de 10 à 500 req/s, par exemple), ça oblige soit à
+sur-provisionner pour le pic dès le départ, soit à sous-dimensionner et à laisser la dette
+d'ordonnancement grimper. `spec.autoscaling` calcule le nombre de workers requis **palier par
+palier** à partir du débit cible du profil, déjà connu en entier à l'avance — pas d'un HPA/KEDA
+réactif à des métriques observées en direct : le plan est **prévisionnel**, produit une seule
+fois à partir de `spec.profile`, jamais mesuré.
+
+**Renseigné, `spec.autoscaling` prime sur `workerReplicas` (ignoré).** Trois champs :
+`maxRequestsPerSecondPerWorker` (capacité déclarée d'un seul worker — une hypothèse de
+l'opérateur du cluster, jamais une mesure), `minWorkerReplicas`/`maxWorkerReplicas` (plancher et
+garde-fou), `scaleAheadSeconds` (avance avec laquelle le `StatefulSet` est ajusté avant un palier
+plus exigeant, pour laisser le temps au pod de démarrer et de s'auto-enregistrer — best-effort,
+sans garantie si le pod met plus longtemps que prévu).
+
+```yaml
+spec:
+  autoscaling:
+    maxRequestsPerSecondPerWorker: 5
+    minWorkerReplicas: 1
+    maxWorkerReplicas: 6
+    scaleAheadSeconds: 5
+  profile:
+    - { fromRps: 0, toRps: 5, durationSeconds: 20 }   # 1 worker
+    - { fromRps: 5, toRps: 20, durationSeconds: 15 }  # 4 workers
+    - { fromRps: 20, toRps: 5, durationSeconds: 10 }  # encore 4 (pic a 20)
+    - { fromRps: 5, toRps: 0, durationSeconds: 5 }    # retombe a 1
+```
+
+**Ce que ce chantier a dû rouvrir pour que "live" soit honnête, pas seulement un
+dimensionnement statique au démarrage** : le mode distribué existant divise le profil **une
+seule fois**, à `/worker/prepare`, par le nombre de workers alors enregistrés — figé pour tout
+le tir. Autoscaling live demande deux choses que ce protocole ne permettait pas :
+
+- **Un worker qui rejoint en cours de route** : `MasterOrchestrationHostedService.ExecuteAdaptiveAsync`
+  suit le plan de paliers (`Master__StagePlannedWorkers`, posé par l'opérateur) plutôt que
+  d'attendre un nombre fixe de workers une seule fois. Un nouveau worker enregistré entre deux
+  paliers reçoit, au palier suivant, **une seule** préparation couvrant tous les paliers
+  restants — jamais de re-préparation d'un worker déjà lancé (`WorkerCoordinator.Prepare` ne le
+  permet pas). Chaque palier de cette préparation est divisé par le compte *prévu* pour ce
+  palier (le plan), pas par le nombre de workers réellement actifs à cet instant — c'est ce qui
+  permet à des workers dispatchés à des moments différents de contribuer le bon débit combiné une
+  fois tous arrivés.
+- **Un worker retiré proprement, pas juste tué** : quand le contrôleur réduit le `StatefulSet`
+  entre deux paliers moins exigeants, Kubernetes envoie SIGTERM au pod retiré —
+  `WorkerCoordinator` annule maintenant le jeton passé à `TargetRpsLoadEngine.RunAsync` sur
+  `ApplicationStopping` plutôt que de laisser le process mourir en silence : le tir local
+  s'arrête, un rapport **partiel mais réel** est quand même soumis (même chemin que
+  `RunAndReportAsync` en fin normale). Un worker qui ne finit pas cet arrêt propre avant
+  `terminationGracePeriodSeconds` tombe dans le filet de sécurité déjà existant
+  (`MarkDeadIfStale`/`LostWorkers`, chantier [Reprise sur perte d'un
+  worker](#reprise-sur-perte-dun-worker)) — réutilisé tel quel, pas réinventé.
+
+Le chemin figé existant (`spec.autoscaling` absent) n'exécute **aucune** des lignes ci-dessus :
+`MasterOptions.StagePlannedWorkers` reste `null`, `ExecuteAsync` continue exactement comme avant.
+
+Vérifié sur le vrai cluster Docker Desktop, pas de simulation. **Non-régression** : la démo
+existante sans `autoscaling` (`testrun-demo.yaml`) rejouée à l'identique — 2 workers fixes,
+`Pending → Running → Succeeded`, 0 % d'échec, scale-to-zero final — comportement inchangé.
+**Scale-up réel** avec `testrun-autoscaling-demo.yaml` (5 paliers, capacité 5 req/s/worker,
+besoins 1 → 4 → 4 → 4 → 1 workers) : le `StatefulSet` démarre à 1 réplique, grossit à 4 avant le
+palier exigeant, comme prévu — mais **pas toujours en un seul geste** : sur un tir, les trois
+nouveaux workers ont tous rejoint avant le palier suivant ; sur un autre, un seul pod a mis plus
+longtemps à démarrer et n'a rejoint qu'au palier d'après, confirmant en conditions réelles la
+limite documentée (`scaleAheadSeconds` best-effort, pas une garantie) sans jamais faire échouer
+le tir. **Scale-down réel** : le `StatefulSet` redescend de 4 à 1 *pendant* le tir (pas seulement
+au `Complete` final) ; les pods retirés (ordinaux les plus hauts, comportement natif du
+`StatefulSet`) reçoivent SIGTERM et soumettent bien un rapport partiel avant `SIGKILL`
+(confirmé par l'absence de `lostWorkers` et un rapport final cohérent) — le nouveau hook
+`ApplicationStopping` fonctionne. **Contre-épreuve** : un `kubectl delete pod --grace-period=0`
+sur un worker actif a été absorbé de la même façon (rapport partiel soumis, rien perdu) — plus
+robuste qu'attendu, la même mécanique de coupure propre s'applique à un retrait imprévu, pas
+seulement à celui piloté par le contrôleur ; le mécanisme de perte réelle (`MarkDeadIfStale`)
+reste couvert par un test dédié à son nouveau paramètre `candidates`, en plus de la preuve déjà
+apportée par [Reprise sur perte d'un worker](#reprise-sur-perte-dun-worker) (processus nu tué
+sans aucune grâce).
+
+**Deux vrais bugs trouvés en vérifiant, pas en supposant que ça marchait.** (1) Une résolution
+DNS transitoire d'un worker de `StatefulSet` tout juste créé (CoreDNS pas encore propagé)
+provoquait une exception non gérée dans `MasterOrchestrationHostedService` — le
+`BackgroundService` s'arrêtait alors *sans jamais positionner `Environment.ExitCode`*, si bien
+que le `Job` rapportait `Complete` (sortie 0) et `TestRun.status.phase` passait à tort à
+`Succeeded` sur un tir qui n'avait jamais eu lieu. Reproduit sur le chemin figé **et** le chemin
+adaptatif (même fonction `PrepareAsync`, inchangée) — corrigé une fois pour les deux par une
+mince enveloppe try/catch autour de `ExecuteAsync` qui positionne l'échec correctement plutôt que
+de crasher en silence ; le correctif lui-même vérifié en laissant la même panne DNS se reproduire
+organiquement une deuxième fois et observer le nouveau statut `Failed` correct. (2)
+`MasterOptions.Validate()` exigeait `ExpectedWorkers ≥ 1` sans condition, alors que l'opérateur
+ne l'émet jamais pour une `TestRun` avec `autoscaling` — le maître plantait au démarrage avant
+même d'atteindre `ExecuteAdaptiveAsync`. Corrigé en ignorant cette exigence quand un plan de
+paliers est présent.
+
+**Limites assumées, pas résolues ici** : prévisionnel, pas réactif à une métrique observée en
+direct (latence, taux d'erreur). `scaleAheadSeconds` est du best-effort — un pod plus lent que
+prévu à démarrer laisse le palier tourner temporairement sous-dimensionné, non corrigé
+rétroactivement. Le débit déjà figé chez un worker en cours de tir n'est jamais rééquilibré : un
+palier futur dont le compte change ne modifie que le nombre de workers qui rejoignent ou
+partent. Opérateur Kubernetes uniquement — `docker-compose`/mode autonome n'ont aucun moyen de
+créer ou détruire des workers.
+
 ## Conteneurisation
 
 Une seule image sert les trois rôles (autonome/maître/worker) — c'est `Tempest:Role`, pas

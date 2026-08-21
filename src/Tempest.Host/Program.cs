@@ -38,6 +38,13 @@ if (string.Equals(tempestOptions.Role, TempestHostOptions.ROLE_WORKER, StringCom
 
     WebApplication workerApp = builder.Build();
 
+    // Scale-down pilote par l'operateur Kubernetes (StatefulSet reduit) : Kubernetes envoie
+    // SIGTERM, ce qui declenche ApplicationStopping avant le SIGKILL de fin de grace — annuler
+    // ici plutot que de laisser le process mourir sans rapport soumet quand meme un rapport
+    // partiel (voir WorkerCoordinator.Stop()). Sans effet si aucun tir n'est en cours.
+    workerApp.Lifetime.ApplicationStopping.Register(() =>
+        workerApp.Services.GetRequiredService<WorkerCoordinator>().Stop());
+
     workerApp.MapPrometheusScrapingEndpoint();
 
     // Deux appels distincts (prepare, start) plutot qu'un seul : le maitre prepare tous les

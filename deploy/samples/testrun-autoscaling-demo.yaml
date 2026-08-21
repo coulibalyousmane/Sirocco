@@ -1,0 +1,61 @@
+# Demonstration de l'autoscaling (dernier bullet de la phase 7) : le nombre de workers n'est
+# plus fixe (workerReplicas) mais calcule palier par palier a partir du debit cible et d'une
+# capacite par worker declaree (autoscaling.maxRequestsPerSecondPerWorker). Avec une capacite de
+# 5 req/s/worker, ce profil a 5 paliers demande successivement 1, puis 4 workers (montee), puis
+# retombe a 1 (descente) — visible en suivant le StatefulSet pendant le tir.
+#
+# Prealable : sampletarget doit etre joignable a l'URL ci-dessous depuis le cluster (par exemple
+# "kubectl run sampletarget --image=tempest-sampletarget:local --port=5281 --expose").
+#
+#   kubectl apply -f deploy/samples/testrun-autoscaling-demo.yaml
+#   kubectl get testrun testrun-autoscaling-demo -w
+#   kubectl get statefulset -l tempest.dev/testrun=testrun-autoscaling-demo -w
+#   kubectl delete -f deploy/samples/testrun-autoscaling-demo.yaml
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: testrun-autoscaling-demo-secret
+type: Opaque
+stringData:
+  shared-secret: demo-cluster-secret
+
+---
+apiVersion: tempest.dev/v1alpha1
+kind: TestRun
+metadata:
+  name: testrun-autoscaling-demo
+spec:
+  image: tempest-host:local
+  targetBaseUrl: http://sampletarget:5281
+  maxVirtualUsers: 20
+  clusterSharedSecretRef:
+    name: testrun-autoscaling-demo-secret
+    key: shared-secret
+  # Autoscaling renseigne : prime sur workerReplicas (absent ici, sans effet s'il l'etait).
+  autoscaling:
+    maxRequestsPerSecondPerWorker: 5
+    minWorkerReplicas: 1
+    maxWorkerReplicas: 6
+    scaleAheadSeconds: 5
+  profile:
+    # Palier 1 : peak 5 req/s => 1 worker.
+    - fromRps: 0
+      toRps: 5
+      durationSeconds: 20
+    # Palier 2 : peak 20 req/s => 4 workers (montee attendue ~5s avant le debut de ce palier).
+    - fromRps: 5
+      toRps: 20
+      durationSeconds: 15
+    # Palier 3 : sustain a 20 req/s => toujours 4 workers.
+    - fromRps: 20
+      toRps: 20
+      durationSeconds: 10
+    # Palier 4 : encore un peak de 20 (debut de la descente) => toujours 4 workers.
+    - fromRps: 20
+      toRps: 5
+      durationSeconds: 10
+    # Palier 5 : peak 5 req/s => 1 worker (descente attendue ~5s avant le debut de ce palier).
+    - fromRps: 5
+      toRps: 0
+      durationSeconds: 5

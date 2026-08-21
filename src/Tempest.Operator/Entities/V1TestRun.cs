@@ -55,6 +55,15 @@ public partial class V1TestRun : CustomKubernetesEntity<V1TestRun.TestRunSpec, V
 
         /// <summary>Fréquence de sondage du tableau de bord live (<c>Master__LivePollIntervalSeconds</c>).</summary>
         public int? LivePollIntervalSeconds { get; set; }
+
+        /// <summary>
+        /// Plan de paliers calculé à partir du débit cible plutôt qu'un nombre de workers fixe
+        /// (voir <see cref="Tempest.Operator.TestRunResources.ComputeStageWorkerCounts"/>). Non
+        /// renseigné (par défaut) : <see cref="WorkerReplicas"/> garde son sens actuel, aucun
+        /// changement de comportement. Renseigné : prime sur <see cref="WorkerReplicas"/> (ignoré,
+        /// sans erreur de validation).
+        /// </summary>
+        public AutoscalingSpec? Autoscaling { get; set; }
     }
 
     public sealed class ProfileStage
@@ -64,6 +73,32 @@ public partial class V1TestRun : CustomKubernetesEntity<V1TestRun.TestRunSpec, V
         public int ToRps { get; set; }
 
         public int DurationSeconds { get; set; }
+    }
+
+    public sealed class AutoscalingSpec
+    {
+        /// <summary>
+        /// Capacité déclarée d'un seul worker, en requêtes/s — une hypothèse de l'opérateur du
+        /// cluster, jamais une mesure. Sert à calculer le nombre de workers requis à chaque
+        /// palier du profil (<c>ceil(max(FromRps, ToRps) / MaxRequestsPerSecondPerWorker)</c>).
+        /// </summary>
+        public int MaxRequestsPerSecondPerWorker { get; set; }
+
+        /// <summary>Plancher de workers, quel que soit le palier. Défaut 1.</summary>
+        public int MinWorkerReplicas { get; set; } = 1;
+
+        /// <summary>
+        /// Garde-fou contre un palier mal renseigné qui exploserait le nombre de pods créés.
+        /// </summary>
+        public int MaxWorkerReplicas { get; set; }
+
+        /// <summary>
+        /// Avance, en secondes, avec laquelle le <c>StatefulSet</c> est ajusté avant qu'un
+        /// palier plus exigeant ne démarre, pour laisser le temps au pod de démarrer et de
+        /// s'auto-enregistrer. Best-effort : aucune garantie que le worker soit prêt à l'instant
+        /// exact du palier si le démarrage du pod prend plus longtemps que ce délai.
+        /// </summary>
+        public int ScaleAheadSeconds { get; set; } = 15;
     }
 
     public sealed class TestRunStatus

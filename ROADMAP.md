@@ -393,7 +393,16 @@ atteignent ce plafond.
   (`Tempest.ClusterCertificateThumbprint`) côté client — le serveur (Kestrel) sert du HTTPS par
   pure configuration, sans code supplémentaire. Simplification assumée face à une PKI par nœud,
   renvoyée au chantier Kubernetes suivant (`cert-manager` y trouvera naturellement sa place).
-- **Autoscaling** des workers selon le débit cible.
+- ~~**Autoscaling**~~ — fait, voir [Autoscaling](README.md#autoscaling) : `spec.autoscaling`
+  calcule le nombre de workers requis palier par palier à partir du débit cible du profil (déjà
+  connu à l'avance), pas d'un HPA/KEDA réactif à des métriques observées. Live, pas seulement un
+  dimensionnement statique au démarrage : `MasterOrchestrationHostedService.ExecuteAdaptiveAsync`
+  suit le plan de paliers posé par l'opérateur (`Master__StagePlannedWorkers`), dispatche un
+  nouveau worker qui rejoint en cours de route avec les paliers restants, et un worker retiré par
+  le contrôleur (`StatefulSet` réduit) reçoit désormais SIGTERM proprement
+  (`WorkerCoordinator.Stop()` sur `ApplicationStopping`) et soumet un rapport partiel plutôt que
+  de disparaître en silence — tombant sinon dans le filet de sécurité déjà existant
+  (`MarkDeadIfStale`/`LostWorkers`). Chemin figé (`spec.autoscaling` absent) inchangé.
 - ~~**Reprise sur perte d'un worker**~~ — fait, voir [Reprise sur perte d'un
   worker](README.md#reprise-sur-perte-dun-worker) : un worker dispatché signale désormais qu'il
   est vivant en continu (`POST /master/heartbeat`, `WorkerLivenessHostedService`), pas seulement
@@ -518,16 +527,20 @@ guide d'écriture d'extension rassemble cette recette pour la cinquième extensi
 écrite par ce dépôt — vérifié en le suivant à la lettre depuis un dossier vide, jusqu'à un vrai tir
 à 0 % d'échec contre `Tempest.SampleTarget`.
 
-**La phase 7 est entamée**, malgré le principe énoncé plus haut ("ne lancer que lorsque des
-utilisateurs réels atteignent ce plafond") — choix explicite de l'utilisateur plutôt qu'attente
-passive. Trois bullets traités, dans l'ordre choisi : [Reprise sur perte d'un
-worker](README.md#reprise-sur-perte-dun-worker) d'abord, qui fermait un vrai trou de robustesse
-(un maître qui restait bloqué indéfiniment sur un worker mort) ; puis [TLS sur le control
-plane](README.md#tls-sur-le-control-plane), qui protège désormais la confidentialité du control
-plane, pas seulement son authentification ; puis l'[opérateur
+**La phase 7 est maintenant entièrement traitée**, malgré le principe énoncé plus haut ("ne
+lancer que lorsque des utilisateurs réels atteignent ce plafond") — choix explicite de
+l'utilisateur plutôt qu'attente passive. Quatre bullets, dans l'ordre choisi : [Reprise sur perte
+d'un worker](README.md#reprise-sur-perte-dun-worker) d'abord, qui fermait un vrai trou de
+robustesse (un maître qui restait bloqué indéfiniment sur un worker mort) ; puis [TLS sur le
+control plane](README.md#tls-sur-le-control-plane), qui protège désormais la confidentialité du
+control plane, pas seulement son authentification ; puis l'[opérateur
 Kubernetes](README.md#opérateur-kubernetes), qui remplace le déploiement manuel via
-`docker-compose` par une ressource `TestRun` déclarative. Reste, dans l'ordre choisi :
-l'autoscaling, qui dépend logiquement de l'opérateur.
+`docker-compose` par une ressource `TestRun` déclarative ; enfin l'[autoscaling](README.md#autoscaling),
+qui rouvre le protocole maître/worker pour que le nombre de workers suive vraiment le débit cible
+en direct, pas seulement au démarrage — a mis au jour et corrigé au passage deux vrais bugs
+(exception non gérée masquant un échec en faux `Succeeded`, validation de configuration
+incompatible avec le nouveau chemin adaptatif), trouvés en vérifiant sur un vrai cluster plutôt
+qu'en supposant que ça marchait.
 
 ## Sources
 

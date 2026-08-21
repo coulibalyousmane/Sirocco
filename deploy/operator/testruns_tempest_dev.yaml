@@ -19,6 +19,22 @@ spec:
         properties:
           spec:
             properties:
+              autoscaling:
+                nullable: true
+                properties:
+                  maxRequestsPerSecondPerWorker:
+                    format: int32
+                    type: integer
+                  maxWorkerReplicas:
+                    format: int32
+                    type: integer
+                  minWorkerReplicas:
+                    format: int32
+                    type: integer
+                  scaleAheadSeconds:
+                    format: int32
+                    type: integer
+                type: object
               clusterSharedSecretRef:
                 nullable: true
                 properties:

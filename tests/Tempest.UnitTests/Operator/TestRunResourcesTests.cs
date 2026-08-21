@@ -132,6 +132,89 @@ public sealed class TestRunResourcesTests
         Assert.Equal("5", Assert.Single(env, e => e.Name == "Tempest__Profile__1__DurationSeconds").Value);
     }
 
+    [Fact]
+    public void Stage_worker_counts_round_up_and_take_the_peak_of_each_stage()
+    {
+        V1TestRun testRun = CreateTestRun();
+        testRun.Spec.Autoscaling = new V1TestRun.AutoscalingSpec { MaxRequestsPerSecondPerWorker = 5, MinWorkerReplicas = 1, MaxWorkerReplicas = 10 };
+        testRun.Spec.Profile =
+        [
+            new V1TestRun.ProfileStage { FromRps = 0, ToRps = 5, DurationSeconds = 10 },
+            new V1TestRun.ProfileStage { FromRps = 5, ToRps = 21, DurationSeconds = 15 },
+            new V1TestRun.ProfileStage { FromRps = 20, ToRps = 5, DurationSeconds = 10 },
+        ];
+
+        int[] stageWorkerCounts = TestRunResources.ComputeStageWorkerCounts(testRun);
+
+        Assert.Equal([1, 5, 4], stageWorkerCounts);
+    }
+
+    [Fact]
+    public void Stage_worker_counts_are_clamped_between_min_and_max()
+    {
+        V1TestRun testRun = CreateTestRun();
+        testRun.Spec.Autoscaling = new V1TestRun.AutoscalingSpec { MaxRequestsPerSecondPerWorker = 5, MinWorkerReplicas = 2, MaxWorkerReplicas = 3 };
+        testRun.Spec.Profile =
+        [
+            new V1TestRun.ProfileStage { FromRps = 0, ToRps = 1, DurationSeconds = 10 },
+            new V1TestRun.ProfileStage { FromRps = 0, ToRps = 100, DurationSeconds = 10 },
+        ];
+
+        int[] stageWorkerCounts = TestRunResources.ComputeStageWorkerCounts(testRun);
+
+        Assert.Equal([2, 3], stageWorkerCounts);
+    }
+
+    [Fact]
+    public void The_worker_stateful_set_starts_at_the_first_stage_s_worker_count_when_autoscaling_is_set()
+    {
+        V1TestRun testRun = CreateTestRun(workerReplicas: 99);
+        testRun.Spec.Autoscaling = new V1TestRun.AutoscalingSpec { MaxRequestsPerSecondPerWorker = 5, MinWorkerReplicas = 1, MaxWorkerReplicas = 10 };
+        testRun.Spec.Profile =
+        [
+            new V1TestRun.ProfileStage { FromRps = 0, ToRps = 5, DurationSeconds = 10 },
+            new V1TestRun.ProfileStage { FromRps = 5, ToRps = 20, DurationSeconds = 10 },
+        ];
+
+        V1StatefulSet statefulSet = TestRunResources.BuildWorkerStatefulSet(testRun);
+
+        // Le pic global (20 req/s => 4 workers) est ignore au demarrage : seul le premier palier
+        // (1 worker) compte, c'est le geste "live" plutot qu'un dimensionnement statique pour le
+        // pic. workerReplicas (99) est egalement ignore : Autoscaling prime.
+        Assert.Equal(1, statefulSet.Spec.Replicas);
+    }
+
+    [Fact]
+    public void Master_receives_a_stage_planned_workers_env_var_per_stage_when_autoscaling_is_set()
+    {
+        V1TestRun testRun = CreateTestRun();
+        testRun.Spec.Autoscaling = new V1TestRun.AutoscalingSpec { MaxRequestsPerSecondPerWorker = 5, MinWorkerReplicas = 1, MaxWorkerReplicas = 10 };
+        testRun.Spec.Profile =
+        [
+            new V1TestRun.ProfileStage { FromRps = 0, ToRps = 5, DurationSeconds = 10 },
+            new V1TestRun.ProfileStage { FromRps = 5, ToRps = 20, DurationSeconds = 10 },
+        ];
+
+        V1Job job = TestRunResources.BuildMasterJob(testRun);
+        IList<V1EnvVar> env = job.Spec.Template.Spec.Containers[0].Env;
+
+        Assert.Equal("1", Assert.Single(env, e => e.Name == "Master__StagePlannedWorkers__0").Value);
+        Assert.Equal("4", Assert.Single(env, e => e.Name == "Master__StagePlannedWorkers__1").Value);
+        Assert.DoesNotContain(env, e => e.Name == "Master__ExpectedWorkers");
+    }
+
+    [Fact]
+    public void Master_expected_workers_is_used_instead_of_a_stage_plan_when_autoscaling_is_absent()
+    {
+        V1TestRun testRun = CreateTestRun(workerReplicas: 3);
+
+        V1Job job = TestRunResources.BuildMasterJob(testRun);
+        IList<V1EnvVar> env = job.Spec.Template.Spec.Containers[0].Env;
+
+        Assert.Equal("3", Assert.Single(env, e => e.Name == "Master__ExpectedWorkers").Value);
+        Assert.DoesNotContain(env, e => e.Name.StartsWith("Master__StagePlannedWorkers__", StringComparison.Ordinal));
+    }
+
     private static V1TestRun CreateTestRun(int workerReplicas = 2) => new()
     {
         Metadata = new V1ObjectMeta
