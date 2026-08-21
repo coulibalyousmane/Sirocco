@@ -12,6 +12,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
+    <!-- Les manifestes (deploy/operator/) sont generes une fois via `dotnet kubeops generate
+         operator`, en dehors du build, et committes comme un artefact revu — pas regeneres a
+         chaque build Release (KubeOps.Operator l'active par defaut en Release, ce qui echoue
+         si l'outil CLI n'est pas sur le PATH, comme en CI). -->
+    <GenerateOperatorResources>false</GenerateOperatorResources>
   </PropertyGroup>
 
 </Project>
