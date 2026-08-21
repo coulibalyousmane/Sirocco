@@ -7,6 +7,15 @@
 #
 # Le contexte de build reste la racine du depot (le Dockerfile de SampleTarget reference des
 # fichiers .proto en dehors de samples/), donc cette commande doit etre lancee depuis la racine.
+#
+# QUEUE_WAIT_MS est le seul reglage variable de cette cible, et c'est le pivot de l'article sur la
+# dette d'ordonnancement (docs/articles/) :
+#   - 50 ms (defaut, benchmark publie)  : la cible DELESTE — au-dela de 8 commandes simultanees,
+#     elle rend un 503 en 50 ms. Les utilisateurs virtuels sont liberes tout de suite, aucun
+#     injecteur ne prend de retard, et il n'y a donc aucune dette a observer.
+#   - 120000 ms (benchmark/saturation.sh) : la cible MET EN FILE — elle ne refuse jamais pendant le
+#     tir, elle fait attendre. C'est le comportement de la majorite des systemes reels, et c'est la
+#     que la dette d'ordonnancement apparait.
 
 services:
   sampletarget:
@@ -20,5 +29,6 @@ services:
       SampleTarget__MinLatencyMilliseconds: "80"
       SampleTarget__MaxLatencyMilliseconds: "150"
       SampleTarget__ErrorRate: "0"
+      SampleTarget__QueueWaitMilliseconds: "${QUEUE_WAIT_MS:-50}"
     ports:
       - "5281:5281"

@@ -56,6 +56,12 @@ vraie cible à chaque commit. Un exemple qui cesserait de fonctionner casse le b
 Voir aussi la [roadmap concurrentielle](ROADMAP.md), qui situe Tempest face à k6, Gatling et
 NBomber sans minimiser l'écart, et le [benchmark comparatif](benchmark/README.md) qui le mesure.
 
+**Article de fond** — [Zéro erreur, et pourtant inutilisable : la dette
+d'ordonnancement](docs/articles/dette-ordonnancement.md)
+([English](docs/articles/scheduling-debt.md)) : pourquoi un rapport de charge entièrement vert peut
+décrire un système que personne n'expédierait, mesuré sur les quatre outils par
+[`benchmark/saturation.sh`](benchmark/saturation.sh).
+
 ## État d'avancement
 
 - [x] **Étape 1** — Squelette Clean Architecture + couche Domain (contrats, métriques, profils de charge)

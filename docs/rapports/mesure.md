@@ -98,6 +98,10 @@ grimpe pendant que le débit stagne ou chute est la signature visuelle d'une sat
 dans un tableau de centiles, et le graphe qu'aucun outil qui ne corrige pas le *coordinated
 omission* ne peut produire.
 
+Pourquoi cette grandeur mérite son propre graphe, et ce qu'elle vaut face à ce que rapportent k6,
+Gatling et NBomber sur le même tir : [Zéro erreur, et pourtant inutilisable — la dette
+d'ordonnancement](../articles/dette-ordonnancement.md).
+
 Rendu uniquement à partir de deux points de trajectoire ou plus (une seule mesure ne fait pas une
 courbe) ; sans effet si `TimeSeries` est vide, même limite que la série temporelle elle-même.
 Vérifié par un vrai tir volontairement bridé bien en deçà de la demande (`--rps 300 --max-rps 20`,

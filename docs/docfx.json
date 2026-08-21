@@ -4,7 +4,11 @@
     "content": [
       {
         "files": ["**/*.md", "toc.yml"],
-        "exclude": ["_site/**", "examples/**"]
+        "exclude": [
+          "_site/**",
+          "examples/**",
+          "articles/_*.md"
+        ]
       }
     ],
     "output": "_site",

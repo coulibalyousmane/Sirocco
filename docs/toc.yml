@@ -51,6 +51,13 @@
     - name: Conteneurisation
       href: distribue/conteneurisation.md
 
+- name: Articles
+  items:
+    - name: La dette d'ordonnancement
+      href: articles/dette-ordonnancement.md
+    - name: Scheduling debt (English)
+      href: articles/scheduling-debt.md
+
 - name: Le projet
   items:
     - name: Architecture et décisions

@@ -17,6 +17,16 @@ using NBomber.Http.CSharp;
 // plutot que de contourner cette limite silencieusement, on serialise nous-memes les stats
 // retournees par NBomberRunner.Run() (NodeStats) vers benchmark/results/nbomber.json, au format
 // attendu par benchmark/normalize.
+//
+// Le profil est parametrable par l'environnement, avec pour defaut les valeurs du benchmark publie :
+// benchmark/run.sh n'en passe aucune et reproduit donc exactement le tir de results/RESULTS.md,
+// tandis que benchmark/saturation.sh les surcharge. START_RATE == TARGET_RATE donne un debit
+// constant (RampingInject vers le meme debit est plat), sans changer de simulation ici.
+//
+// Asymetrie assumee et exploitee par l'article sur la dette d'ordonnancement : comme injectOpen de
+// Gatling, Simulation.Inject/RampingInject n'expose aucun plafond de concurrence — le modele ferme
+// de NBomber (KeepConstant) en a un, mais ce n'est plus le meme modele de charge, donc pas une
+// option ici. Seuls k6 (maxVUs) et Tempest (--max-vus) bornent leur modele ouvert.
 
 // Ancre sur AppContext.BaseDirectory (bin/<config>/net10.0 sous ce projet), pas sur
 // Directory.GetCurrentDirectory() : ce dernier reste le repertoire d'ou `dotnet run` a ete
@@ -25,6 +35,9 @@ using NBomber.Http.CSharp;
 string benchmarkDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
 
 string targetUrl = Environment.GetEnvironmentVariable("TARGET_URL") ?? "http://localhost:5281";
+int startRate = ReadInt("START_RATE", 20);
+int targetRate = ReadInt("TARGET_RATE", 150);
+int durationSeconds = ReadInt("DURATION_SECONDS", 90);
 string resultsPath = Environment.GetEnvironmentVariable("RESULTS_PATH")
     ?? Path.Combine(benchmarkDir, "results", "nbomber.json");
 string reportFolder = Environment.GetEnvironmentVariable("REPORT_FOLDER")
@@ -72,8 +85,11 @@ var scenario = Scenario.Create("benchmark_checkout", async context =>
 })
 .WithoutWarmUp()
 .WithLoadSimulations(
-    Simulation.Inject(rate: 20, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromSeconds(1)),
-    Simulation.RampingInject(rate: 150, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromSeconds(89))
+    Simulation.Inject(rate: startRate, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromSeconds(1)),
+    Simulation.RampingInject(
+        rate: targetRate,
+        interval: TimeSpan.FromSeconds(1),
+        during: TimeSpan.FromSeconds(durationSeconds - 1))
 );
 
 var stats = NBomberRunner
@@ -83,6 +99,12 @@ var stats = NBomberRunner
     .Run();
 
 WriteJsonReport(stats, resultsPath);
+
+static int ReadInt(string name, int fallback)
+{
+    string? raw = Environment.GetEnvironmentVariable(name);
+    return string.IsNullOrWhiteSpace(raw) ? fallback : int.Parse(raw);
+}
 
 static void WriteJsonReport(NodeStats stats, string path)
 {

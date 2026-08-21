@@ -432,6 +432,13 @@ benchmark/results/*
 !benchmark/results/.gitkeep
 !benchmark/results/RESULTS.md
 
+# Meme regle pour l'experience de saturation (benchmark/saturation.sh) : seul SATURATION.md est
+# versionne. Les chiffres commentes par docs/articles/ ne dependent d'ailleurs pas de ce fichier —
+# ils sont dans docs/articles/_mesures-{fr,en}.md, generes par la meme commande et inclus par les
+# deux articles.
+benchmark/results-saturation/*
+!benchmark/results-saturation/SATURATION.md
+
 # content below from: https://github.com/github/gitignore/blob/main/Global/macOS.gitignore
 # General
 .DS_Store

@@ -49,6 +49,28 @@ isoler l'effet de chaque outil sur la même cible plutôt que de les faire conco
 8 emplacements en même temps), normalise les quatre sorties dans `results/RESULTS.md`, puis arrête
 la cible. Nécessite Docker et le SDK .NET 10.
 
+Sans aucune variable d'environnement, ce script reproduit exactement le tir publié : le profil, le
+plafond d'utilisateurs virtuels et le réglage de la cible sont paramétrables, mais leurs **défauts
+sont les valeurs du tir publié**. C'est ce qui permet au second protocole ci-dessous de réutiliser
+la même orchestration sans la dupliquer.
+
+## Le second protocole : saturer l'injecteur
+
+```bash
+./benchmark/saturation.sh
+```
+
+Le benchmark ci-dessus mesure une cible qui **déleste** (503 au bout de 50 ms), donc un système qui
+se protège : l'injecteur n'y prend jamais de retard, et la dette d'ordonnancement observée reste de
+l'ordre de 20 ms. `saturation.sh` change **une seule variable** — la cible **met en file** au lieu
+de refuser — et c'est là que le phénomène apparaît, à plusieurs dizaines de secondes.
+
+Deux passes (cible qui met en file avec les quatre outils, puis témoin sur la cible délesteuse avec
+Tempest seul), résultats dans `results-saturation/SATURATION.md`. Commenté en détail par
+[l'article sur la dette d'ordonnancement](../docs/articles/dette-ordonnancement.md)
+([English](../docs/articles/scheduling-debt.md)), dont les tableaux de mesures sont générés par la
+même commande.
+
 Prérequis réseau : télécharge l'image `grafana/k6`, le bundle Gatling OSS depuis Maven Central, et
 les paquets NuGet NBomber.
 

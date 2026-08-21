@@ -38,6 +38,10 @@ Tempest publie les deux mesures côte à côte, plus la dette d'ordonnancement m
 rejoue le même scénario contre la même cible saturée avec Tempest, k6, Gatling et NBomber, en une
 commande.
 
+Et parce que cet écart mérite mieux qu'une affirmation : [Zéro erreur, et pourtant inutilisable —
+la dette d'ordonnancement](articles/dette-ordonnancement.md) le mesure sur les quatre outils, sur un
+tir où le rapport reste vert alors que l'utilisateur attend des secondes.
+
 ## Par où commencer
 
 | Vous voulez… | Allez voir |

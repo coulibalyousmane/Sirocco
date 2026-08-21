@@ -13,6 +13,9 @@ on:
       - "scenarios/**"
       - "docker-compose.yml"
       - "deploy/samples/**"
+      # Les articles transcluent les configurations reelles du harnais de benchmark, et leurs
+      # tableaux de mesures sont generes par benchmark/normalize.
+      - "benchmark/**"
   workflow_dispatch:
 
 permissions:

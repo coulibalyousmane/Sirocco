@@ -431,8 +431,72 @@ qu'on ne peut pas ignorer. Tempest en a une à disposition, et elle est reproduc
   (rampe 20→150 req/s) pour Tempest, k6, Gatling et NBomber. Reproductible en une commande
   (`benchmark/run.sh`), méthode et limites documentées en toute honnêteté (y compris la variance
   observée d'un tir à l'autre sur une machine partagée).
-- **Article de fond** sur la dette d'ordonnancement résiduelle : le sujet a un public (SRE,
-  ingénieurs performance) et personne ne l'occupe.
+- ~~**Article de fond**~~ — fait, en deux versions complètes :
+  [Zéro erreur, et pourtant inutilisable](docs/articles/dette-ordonnancement.md) et
+  [Zero errors, and still unusable](docs/articles/scheduling-debt.md), adossées à une expérience
+  reproductible en une commande ([`benchmark/saturation.sh`](benchmark/saturation.sh)).
+
+  **Le chantier n'était pas d'écrire, c'était d'avoir quelque chose à montrer.** Le benchmark
+  publié affiche 19,1 ms de dette sur un p99 de 337,9 ms : une thèse forte étayée par une preuve
+  faible. La cause, trouvée en lisant le code plutôt qu'en la supposant, est que la cible du
+  benchmark **déleste** — `ConcurrencyGate` attend 50 ms puis rend un 503, ce qui libère les
+  utilisateurs virtuels et empêche tout retard d'injecteur. Le benchmark mesurait un système sain.
+
+  L'expérience change **une seule variable** (`QUEUE_WAIT_MS`, de 50 ms à 120 s : la cible met en
+  file au lieu de refuser), à débit constant de 100 req/s pendant 60 s, plafond de 50 utilisateurs
+  virtuels partout où il existe, plus une passe témoin sur la cible délesteuse. Résultat réel :
+  **Response p99 28 311 ms contre Service p99 819 ms, 0 % d'échec, dette maximale 27 796 ms**, sur
+  un profil de 60 s qui a demandé 88,6 s de temps réel. Le témoin, lui, retombe à 36,9 ms d'écart
+  au p99 — deux à trois ordres de grandeur en dessous, ce qui confirme que la faible dette du
+  benchmark publié venait de la cible et pas de la mesure. (Sa valeur exacte varie d'un tir à
+  l'autre sur une machine partagée : 19,1 ms puis 21,1 ms puis 188,4 ms de dette maximale selon la
+  charge de fond ; c'est l'ordre de grandeur qui porte la conclusion, pas le chiffre.)
+
+  **Ce que le tir a démenti, et qui a rendu l'article meilleur** : l'hypothèse de départ était que
+  Tempest serait le seul à voir la vérité. Faux, deux fois.
+
+  D'abord, NBomber (27 672 ms) ne borne pas sa concurrence, mesure donc cette attente
+  *directement* — sans aucune notion de dette d'ordonnancement — et retombe à 2 % du `Response` de
+  Tempest : c'est une **validation croisée** du chiffre par un mécanisme indépendant. Le vrai
+  clivage n'est pas Tempest contre les autres, c'est **borné contre non borné**.
+
+  Ensuite, la vraie leçon du tir est ailleurs, dans une colonne que personne ne lit : **un seul des
+  quatre outils a délivré les 6000 itérations demandées.** k6 en a livré 4092 (1907
+  `dropped_iterations`), Gatling 4827, NBomber 5958. Et le p99 rapporté suit exactement ce
+  classement à l'envers — 28 311 / 27 672 / 14 573 / 1 163 ms : **plus un outil a délivré peu, plus
+  son percentile est flatteur.** Deux causes distinctes derrière ce manque : k6 **abandonne**
+  délibérément (choix défendable, compteur explicite) ; Gatling, non borné, a épuisé les sockets de
+  la machine (1173 × `j.n.NoRouteToHostException`) — l'angle mort du modèle non borné, où
+  l'injecteur devient le goulot sans que la latence le dise. Aucun outil ne dissimule : chacun rend
+  compte de son manque, mais dans une monnaie que ni un SLO de latence ni un seuil de CI ne
+  regardent. L'article est écrit en créditant chaque outil, pas en les chargeant, et cette colonne
+  « charge délivrée » est devenue son diagnostic central — générée depuis les sorties réelles, y
+  compris les libellés d'erreur de Gatling, plutôt qu'affirmée en prose.
+
+  **Trois angles morts de Tempest mis au jour par cette expérience, et écrits dans l'article** :
+  `InjectorFellBehind` est resté faux (les 6000 jetons ont été émis, seulement en retard — ce
+  drapeau détecte un injecteur qui renonce, pas un qui traîne) ; `isTrustworthy` est resté vrai
+  (il ne regarde que les mesures perdues) ; et la dette n'est portée que par le **premier pas** de
+  l'itération, si bien que l'étape `checkout` lue seule affiche Response = Service et ne montre
+  rien.
+
+  **Un vrai bug corrigé**, trouvé en exécutant et pas en relisant : `benchmark/normalize` plantait
+  sur une sortie Gatling sans aucun échec, Gatling écrivant `-` et non `0` dans la colonne KO — cas
+  jamais atteint par le benchmark publié, qui sature toujours en 503.
+
+  Dispositif anti-dérive du choix « deux versions complètes » : aucun des deux articles n'écrit un
+  chiffre à la main. Les tableaux sont générés par `benchmark/normalize --saturation` en deux
+  fragments (`docs/articles/_mesures-{fr,en}.md`) issus d'**une seule structure de données**, et
+  inclus par les deux pages. Vérifié en comparant les 176 nombres des deux pages rendues : aucune
+  divergence.
+
+  Limites résiduelles assumées : une seule machine sans isolation — c'est elle qui a fait
+  épuiser les sockets à Gatling et tronqué son tir, donc les percentiles inter-outils démontrent un
+  mécanisme, pas un classement de vitesse ; harnais hors CI (comme le benchmark publié — Docker,
+  image k6, bundle Gatling, plusieurs minutes) ; pas de contre-épreuve « injecteur délibérément
+  goulot » ; Gatling et NBomber non bornables en modèle ouvert, donc la parité de plafond de VUs ne
+  vaut qu'entre Tempest et k6 ; sorties brutes non versionnées, seul
+  [SATURATION.md](benchmark/results-saturation/SATURATION.md) l'est.
 - ~~**Site de documentation**~~ — fait, publié sur <https://coulibalyousmane.github.io/Tempest/>
   (DocFX, déployé par [`.github/workflows/docs.yml`](.github/workflows/docs.yml)). Le README, qui
   faisait 2666 lignes et servait à la fois de page d'accueil, de manuel, de journal de
@@ -574,16 +638,19 @@ en direct, pas seulement au démarrage — a mis au jour et corrigé au passage 
 incompatible avec le nouveau chemin adaptatif), trouvés en vérifiant sur un vrai cluster plutôt
 qu'en supposant que ça marchait.
 
-**La phase 8 est à moitié faite.** Le [benchmark comparatif](benchmark/README.md) mesure le
-différenciateur ; le **site de documentation** le rend consultable
-(<https://coulibalyousmane.github.io/Tempest/>), avec des exemples qui ne peuvent pas mentir parce
-que la CI les exécute. Restent deux bullets, de nature très différente : l'**article de fond** sur
-la dette d'ordonnancement résiduelle, qui demanderait une vraie expérience de saturation
-complémentaire — le benchmark publié ne montre qu'une dette de 19,1 ms, l'injecteur ayant tenu la
-cadence, ce qui illustre mal le phénomène dont l'article traiterait ; et la **décision sur l'offre
-managée**, qui reste conditionnée à une adoption qui n'existe pas encore — la trancher aujourd'hui
-serait exactement le « construire le SaaS trop tôt » listé plus haut comme façon de perdre du
-temps.
+**Il ne reste qu'un bullet à la phase 8, et ce n'est pas un chantier technique.** Le
+[benchmark comparatif](benchmark/README.md) mesure le différenciateur ; le **site de
+documentation** le rend consultable (<https://coulibalyousmane.github.io/Tempest/>), avec des
+exemples qui ne peuvent pas mentir parce que la CI les exécute ; l'**article de fond**
+([FR](docs/articles/dette-ordonnancement.md) · [EN](docs/articles/scheduling-debt.md)) le démontre
+enfin sur un régime où il est massif — 28 311 ms de `Response` contre 819 ms de `Service`, à 0 %
+d'échec — après avoir établi que la dette de 19,1 ms du benchmark publié venait de la cible, qui
+déleste, et pas de la mesure.
+
+Reste la **décision sur l'offre managée**, conditionnée à une adoption qui n'existe pas encore.
+La trancher aujourd'hui serait exactement le « construire le SaaS trop tôt » listé plus haut comme
+façon de perdre du temps — et la décision la plus défendable est sans doute d'écrire noir sur blanc
+que c'est prématuré, plutôt que de laisser le bullet ouvert indéfiniment.
 
 ## Sources
 
