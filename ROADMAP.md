@@ -542,7 +542,56 @@ qu'on ne peut pas ignorer. Tempest en a une à disposition, et elle est reproduc
   de versionnement de la doc, pas de traduction, et les exemples Kubernetes (`deploy/samples/`)
   comme les extensions SQL/MQTT ne sont pas exécutés en CI — ils demandent respectivement un
   cluster et un `dotnet publish` du plugin.
-- **Décider de l'offre managée** — seulement si l'adoption open source la justifie.
+- ~~**Décision sur l'offre managée**~~ — tranchée le 22 août 2026 : **non**, et la question ne se
+  rouvrira que sur les conditions nommées plus bas. Ce bullet était conditionné (« seulement si
+  l'adoption open source la justifie ») : le trancher demandait donc de **mesurer** cette adoption
+  avant de conclure, pas de la supposer.
+
+  **Ce que la mesure donne**, dépôt public depuis le 5 août 2026, soit 17 jours : 0 étoile, 0 fork,
+  0 abonné, 0 issue ; **0 release** — aucun tag, ni local ni distant, et
+  [`release.yml`](.github/workflows/release.yml) ne se déclenchant que sur un tag `v*`, il n'a
+  jamais tourné ; **0 paquet sur nuget.org** — les cinq identifiants `Tempest.*` y renvoient 404 ;
+  site de documentation en ligne depuis la veille.
+
+  **Ce que ces zéros ne disent pas.** La condition n'est pas *non remplie*, elle est
+  **inévaluable** : les trois canaux par lesquels une adoption pourrait arriver sont fermés — rien
+  à télécharger, rien à installer, et jusqu'à la veille rien à lire. Zéro étoile en 17 jours dans
+  ces conditions n'est pas un signal sur la demande, c'est l'absence de mesure. La réponse reste
+  donc « non », mais le motif honnête n'est pas « personne n'en veut » : c'est « rien n'a encore
+  été distribué ». Conclure l'inverse aurait donné une décision juste appuyée sur un motif faux —
+  et un motif faux se retourne, le jour où quelqu'un demande sur quoi la décision reposait.
+
+  **Conditions de réouverture**, dans cet ordre, la première rendant les deux autres mesurables :
+
+  1. Les deux gestes de distribution encore ouverts de la phase 1 sont faits — paquets publiés sur
+     nuget.org, et une première release `vX.Y.Z` réellement poussée. Sans eux, il n'y a rien à
+     observer. Trouvaille de cette mesure, à traiter au passage : le paquet `Tempest` existe déjà
+     sur nuget.org (générateur de templates sans rapport, 80 021 téléchargements), donc les cinq
+     identifiants `Tempest.*` sont libres mais **non réservables** en préfixe — publier, c'est
+     aussi revendiquer l'identité avant quelqu'un d'autre.
+  2. L'usage se **répète** au lieu d'être un pic : des installations de `Tempest.Cli` qui suivent
+     les versions successives, et des issues ouvertes par des inconnus décrivant un usage réel.
+     C'est le signal le plus honnête disponible : une étoile coûte un clic, une issue coûte du
+     temps.
+  3. La demande porte sur l'**hébergement**, pas sur la fonctionnalité — flotte d'injecteurs sans
+     cluster à opérer, historique retenu entre les tirs, tableau de bord d'équipe. Tant qu'elle
+     porte sur ce que le binaire ne *fait* pas, la bonne réponse reste un ajout au produit open
+     source, jamais un service.
+
+  Pas de date de réexamen : une décision conditionnée à des signaux se relit quand les signaux
+  arrivent, pas au calendrier.
+
+  **Risque accepté plutôt que passé sous silence** : si une offre hébergée devait un jour être la
+  seule source de financement viable, décider tard laisse le terrain à qui décide tôt — et NBomber
+  Studio occupe déjà cette place sur .NET, comme le note « Le paysage concurrentiel » en tête de ce
+  document. C'est assumé : l'alternative — la construire maintenant — est exactement le
+  « construire le SaaS trop tôt » que « Trois façons de perdre du temps » liste comme deuxième
+  façon d'en perdre, et elle coûterait précisément le temps qui manque encore à la distribution.
+
+  **Ce que cette décision n'engage pas**, délibérément : aucune promesse publique n'est faite aux
+  adoptants sur la licence, ni sur un éventuel modèle open-core — ni dans le README, ni sur le
+  site. La décision est stratégique et vit dans cette roadmap seule ; toutes les options
+  commerciales restent ouvertes. C'est un choix explicite, pas un oubli.
 
 ## Trois façons de perdre du temps
 
@@ -650,19 +699,29 @@ en direct, pas seulement au démarrage — a mis au jour et corrigé au passage 
 incompatible avec le nouveau chemin adaptatif), trouvés en vérifiant sur un vrai cluster plutôt
 qu'en supposant que ça marchait.
 
-**Il ne reste qu'un bullet à la phase 8, et ce n'est pas un chantier technique.** Le
-[benchmark comparatif](benchmark/README.md) mesure le différenciateur ; le **site de
-documentation** le rend consultable (<https://coulibalyousmane.github.io/Tempest/>), avec des
-exemples qui ne peuvent pas mentir parce que la CI les exécute ; l'**article de fond**
-([FR](docs/articles/dette-ordonnancement.md) · [EN](docs/articles/scheduling-debt.md)) le démontre
-enfin sur un régime où il est massif — 28 311 ms de `Response` contre 819 ms de `Service`, à 0 %
-d'échec — après avoir établi que la dette de 19,1 ms du benchmark publié venait de la cible, qui
-déleste, et pas de la mesure.
+**La phase 8 est maintenant entièrement traitée.** Le [benchmark comparatif](benchmark/README.md)
+mesure le différenciateur ; le **site de documentation** le rend consultable
+(<https://coulibalyousmane.github.io/Tempest/>), avec des exemples qui ne peuvent pas mentir parce
+que la CI les exécute ; l'**article de fond** ([FR](docs/articles/dette-ordonnancement.md) ·
+[EN](docs/articles/scheduling-debt.md)) le démontre enfin sur un régime où il est massif —
+28 311 ms de `Response` contre 819 ms de `Service`, à 0 % d'échec — après avoir établi que la dette
+de 19,1 ms du benchmark publié venait de la cible, qui déleste, et pas de la mesure.
 
-Reste la **décision sur l'offre managée**, conditionnée à une adoption qui n'existe pas encore.
-La trancher aujourd'hui serait exactement le « construire le SaaS trop tôt » listé plus haut comme
-façon de perdre du temps — et la décision la plus défendable est sans doute d'écrire noir sur blanc
-que c'est prématuré, plutôt que de laisser le bullet ouvert indéfiniment.
+Le dernier bullet n'était pas un chantier technique et n'a pas été traité comme tel : la
+**décision sur l'offre managée** est tranchée, et c'est **non**. Le motif compte autant que la
+réponse. L'adoption a été mesurée avant d'être conclue, et elle est nulle sur tous les compteurs —
+mais elle l'est parce que **rien n'a encore été distribué**, pas parce que rien n'intéresse
+personne : ni release, ni paquet sur nuget.org, et un site en ligne depuis la veille. Le bullet
+détaille les trois conditions qui rouvriraient la question, ainsi que le risque accepté en
+décidant ainsi.
+
+**Les huit phases de cette roadmap sont donc traitées, à deux gestes près** — publier les paquets
+sur nuget.org et pousser une première release `vX.Y.Z` — tous deux dans la phase 1, tous deux de
+distribution, et jusqu'ici qualifiés de « non bloquants pour la suite ». Ils ne le sont plus : ce
+sont eux qui rendraient mesurable la seule décision encore devant, celle que ce document vient
+justement de refuser de prendre à l'aveugle. Le préambule ouvrait sur *« l'écart avec les leaders
+est à 70 % un problème de distribution, pas de moteur »* ; après huit phases, c'est encore la
+phrase la plus juste du document.
 
 ## Sources
 
