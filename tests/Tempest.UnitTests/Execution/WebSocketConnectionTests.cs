@@ -13,7 +13,14 @@ namespace Tempest.UnitTests.Execution;
 /// </summary>
 public sealed class WebSocketConnectionTests
 {
-    private static readonly TimeSpan _guardTimeout = TimeSpan.FromSeconds(5);
+    /// <summary>
+    /// Garde-fou contre un blocage indefini (l'appariement client/serveur de la fermeture, que
+    /// cette classe verifie, bloque pour toujours quand il est faux), <b>pas</b> une assertion de
+    /// latence. Volontairement genereux : a 5 s, c'etait en pratique une borne de performance
+    /// deguisee, que la contention CPU de la suite en parallele faisait sauter sur la poignee de
+    /// main WebSocket — un faux echec rouge en CI pour une machine chargee, jamais pour un bug.
+    /// </summary>
+    private static readonly TimeSpan _guardTimeout = TimeSpan.FromSeconds(30);
 
     private static async Task EchoOnceThenCloseAsync(WebSocket socket, CancellationToken cancellationToken)
     {

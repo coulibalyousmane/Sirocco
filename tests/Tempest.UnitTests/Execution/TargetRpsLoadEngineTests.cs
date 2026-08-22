@@ -163,16 +163,26 @@ public sealed class TargetRpsLoadEngineTests
             $"La dette devrait etre visible, mesuree : {summary.MaxSchedulingDelayMilliseconds:F1} ms.");
 
         StepId iterationStep = engine.Steps.Register(WellKnownSteps.ITERATION);
-        double worstResponse = sink.For(iterationStep).Max(m => m.ResponseMilliseconds);
+
+        // L'ecart response - service, mesure SUR LA MEME iteration, EST le temps passe en file.
+        // C'est la seule formulation insensible a la charge de la machine : une borne absolue sur
+        // le temps de service ne tenait pas, car sous contention CPU (la suite tourne en parallele
+        // et les tests de tir y saturent des coeurs, PrecisionWait faisant de l'attente active) le
+        // Task.Delay(25 ms) du scenario derive au-dela de 100 ms sans que la these change d'un
+        // iota. La contention rend d'ailleurs cet ecart PLUS grand, jamais plus petit : elle
+        // allonge chaque iteration, donc le retard accumule par les jetons suivants.
+        double worstOmission = sink.For(iterationStep).Max(m => m.ResponseMilliseconds - m.ServiceMilliseconds);
         double worstService = sink.For(iterationStep).Max(m => m.ServiceMilliseconds);
 
-        // Le temps de service reste proche de 25 ms : c'est la mesure trompeuse.
-        Assert.True(worstService < 100d, $"Temps de service inattendu : {worstService:F1} ms.");
-
-        // Le temps de reponse corrige, lui, revele les centaines de millisecondes d'attente.
+        // Le temps de reponse corrige revele les centaines de millisecondes d'attente...
         Assert.True(
-            worstResponse > (worstService * 2d),
-            $"Correction absente : {worstResponse:F1} ms contre {worstService:F1} ms.");
+            worstOmission > 100d,
+            $"Correction absente : l'ecart response/service plafonne a {worstOmission:F1} ms (service {worstService:F1} ms).");
+
+        // ...que le temps de service, la mesure trompeuse, n'absorbe pas : l'attente domine.
+        Assert.True(
+            worstService < worstOmission,
+            $"Temps de service inattendu : {worstService:F1} ms pour une attente de {worstOmission:F1} ms.");
     }
 
     [Fact]

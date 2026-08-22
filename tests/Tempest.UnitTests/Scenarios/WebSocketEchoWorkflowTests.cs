@@ -8,7 +8,10 @@ namespace Tempest.UnitTests.Scenarios;
 
 public sealed class WebSocketEchoWorkflowTests
 {
-    private static readonly TimeSpan _guardTimeout = TimeSpan.FromSeconds(5);
+    // Garde-fou contre un blocage indefini, pas une borne de latence : genereux a dessein, car a
+    // 5 s la contention CPU de la suite en parallele le faisait sauter sur une poignee de main ou
+    // un refus de connexion, produisant un echec rouge sans aucun bug derriere.
+    private static readonly TimeSpan _guardTimeout = TimeSpan.FromSeconds(30);
 
     private static async Task EchoLoopAsync(WebSocket socket, CancellationToken cancellationToken)
     {

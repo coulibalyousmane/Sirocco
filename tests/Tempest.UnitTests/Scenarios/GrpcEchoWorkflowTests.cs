@@ -7,7 +7,10 @@ namespace Tempest.UnitTests.Scenarios;
 
 public sealed class GrpcEchoWorkflowTests
 {
-    private static readonly TimeSpan _guardTimeout = TimeSpan.FromSeconds(5);
+    // Garde-fou contre un blocage indefini, pas une borne de latence : genereux a dessein, car a
+    // 5 s la contention CPU de la suite en parallele le faisait sauter sur le demarrage d'un vrai
+    // serveur gRPC, produisant un echec rouge sans aucun bug derriere.
+    private static readonly TimeSpan _guardTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Reproduit exactement ce que fait <c>VirtualUserWorker</c> : ouverture, execution du
