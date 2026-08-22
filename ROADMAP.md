@@ -393,6 +393,18 @@ atteignent ce plafond.
   (`Tempest.ClusterCertificateThumbprint`) côté client — le serveur (Kestrel) sert du HTTPS par
   pure configuration, sans code supplémentaire. Simplification assumée face à une PKI par nœud,
   renvoyée au chantier Kubernetes suivant (`cert-manager` y trouvera naturellement sa place).
+
+  Vérifié par un vrai tir distribué (1 maître, 2 workers, certificat auto-signé partagé) : 224
+  itérations fusionnées, 0 % d'échec, code de sortie 0. Contre-épreuve avec une empreinte
+  volontairement fausse : la poignée de main échoue dès l'enregistrement (`AuthenticationException`),
+  donc l'épinglage n'est pas un no-op. **Tir témoin en HTTP** rejoué depuis, cette fois chiffré au
+  lieu d'être affirmé : même topologie et même profil sans aucun certificat ni empreinte, 224
+  itérations elles aussi, 0 % d'échec sur les quatre étapes, p95 87,04 ms, seuils respectés, code
+  0 — le chemin historique est intact et l'option à `null` n'a réellement aucun effet. Le chantier
+  avait aussi mis au jour un vrai bug : `WorkerCoordinator.SubmitReportAsync` utilisait un client
+  HTTP différent des deux autres points d'appel, si bien que le rapport final échouait en
+  `RemoteCertificateNameMismatch` alors que le reste du control plane passait — trouvé en observant
+  un tir qui ne se terminait jamais, pas en relisant le code.
 - ~~**Autoscaling**~~ — fait, voir [Autoscaling](docs/distribue/kubernetes.md#autoscaling) : `spec.autoscaling`
   calcule le nombre de workers requis palier par palier à partir du débit cible du profil (déjà
   connu à l'avance), pas d'un HPA/KEDA réactif à des métriques observées. Live, pas seulement un

@@ -245,6 +245,18 @@ code de sortie 0 — enregistrement, heartbeat, préparation/départ, sondage li
 circulent tous en HTTPS avec l'empreinte validée. Contre-épreuve : un worker configuré avec une
 empreinte volontairement fausse échoue la poignée de main TLS dès la première tentative
 d'enregistrement (`AuthenticationException`, `SSL connection could not be established`),
-preuve que l'épinglage est réellement appliqué, pas un no-op silencieux. Tir témoin sans TLS
-(comme avant ce chantier) : mêmes résultats, aucune régression sur le mode HTTP existant.
+preuve que l'épinglage est réellement appliqué, pas un no-op silencieux.
+
+**Tir témoin sans TLS**, chiffré plutôt qu'affirmé : même topologie (1 maître, 2 workers en
+process réels), même profil que [`docker-compose.yml`](https://github.com/coulibalyousmane/Tempest/blob/main/docker-compose.yml)
+(rampe 0 → 10 → 0 req/s sur 30 s), et cette fois **aucun certificat ni empreinte configurés** —
+`ClusterCertificateThumbprint` laissé à `null`, tout le control plane en clair. Résultat :
+**224 itérations fusionnées** — le même compte que le tir HTTPS, le profil étant déterministe —
+**0 % d'échec sur les quatre étapes**, p95 de 87,04 ms sur `__iteration`, les deux seuils
+respectés et **code de sortie 0**. Les deux workers ont bien enregistré, battu le cœur, sondé en
+direct et soumis leur rapport final.
+
+Autrement dit, le chemin HTTP historique est intact : l'option laissée à `null` ne pose aucun
+callback de validation et n'a donc réellement aucun effet, plutôt que d'être neutralisée par
+chance.
 
