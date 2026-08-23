@@ -4,7 +4,7 @@ using System.Text.Json;
 
 // Normalise les 4 sorties du benchmark comparatif (voir benchmark/README.md) en un seul
 // RESULTS.md. Parsing manuel volontaire (pas de nouvelle dependance lourde), meme choix que
-// tools/Tempest.Compare — mais ici en JsonDocument brut plutot qu'un DTO type, car les 4 formats
+// tools/Sirocco.Compare — mais ici en JsonDocument brut plutot qu'un DTO type, car les 4 formats
 // sont trop heterogenes pour un seul schema commun (JSON structure, JSON k6, texte console
 // Gatling, JSON maison NBomber).
 //
@@ -24,15 +24,15 @@ bool saturation = args.Contains("--saturation");
 long plannedRequests = ReadLongArgument(args, "--planned");
 int maxVirtualUsers = (int)ReadLongArgument(args, "--max-vus");
 
-string tempestPath = Path.Combine(resultsDir, "tempest.json");
+string siroccoPath = Path.Combine(resultsDir, "sirocco.json");
 string k6Path = Path.Combine(resultsDir, "k6.json");
 string gatlingConsolePath = Path.Combine(resultsDir, "gatling", "console.log");
 string nbomberPath = Path.Combine(resultsDir, "nbomber.json");
-string controlTempestPath = Path.Combine(resultsDir, "temoin", "tempest.json");
+string controlSiroccoPath = Path.Combine(resultsDir, "temoin", "sirocco.json");
 
 string[] required = saturation
-    ? [tempestPath, k6Path, gatlingConsolePath, nbomberPath, controlTempestPath]
-    : [tempestPath, k6Path, gatlingConsolePath, nbomberPath];
+    ? [siroccoPath, k6Path, gatlingConsolePath, nbomberPath, controlSiroccoPath]
+    : [siroccoPath, k6Path, gatlingConsolePath, nbomberPath];
 
 foreach (string path in required)
 {
@@ -43,14 +43,14 @@ foreach (string path in required)
     }
 }
 
-TempestResult tempest = ParseTempest(tempestPath);
+SiroccoResult sirocco = ParseSirocco(siroccoPath);
 K6Result k6 = ParseK6(k6Path);
 GatlingResult gatling = ParseGatlingConsole(gatlingConsolePath);
 NBomberResult nbomber = ParseNBomber(nbomberPath);
 
 if (!saturation)
 {
-    string markdown = GenerateMarkdown(tempest, k6, gatling, nbomber);
+    string markdown = GenerateMarkdown(sirocco, k6, gatling, nbomber);
     string outputPath = Path.Combine(resultsDir, "RESULTS.md");
     File.WriteAllText(outputPath, markdown);
     Console.WriteLine($"Rapport ecrit : {outputPath}");
@@ -62,8 +62,8 @@ if (!saturation)
 // chiffre a la main, ils incluent ces fragments — un chiffre juste dans une langue et faux dans
 // l'autre devient structurellement impossible.
 SaturationData data = new(
-    Tempest: tempest,
-    Control: ParseTempest(controlTempestPath),
+    Sirocco: sirocco,
+    Control: ParseSirocco(controlSiroccoPath),
     K6: k6,
     Gatling: gatling,
     NBomber: nbomber,
@@ -94,9 +94,9 @@ static JsonDocument LoadJson(string path) => JsonDocument.Parse(File.ReadAllText
 
 static CheckoutCounts Counts(long total, long ok, long fail) => new(total, ok, fail);
 
-// ---- Tempest (benchmark/results/tempest.json, forme LoadTestReport exportee par /report) ----
+// ---- Sirocco (benchmark/results/sirocco.json, forme LoadTestReport exportee par /report) ----
 
-static TempestResult ParseTempest(string path)
+static SiroccoResult ParseSirocco(string path)
 {
     using JsonDocument doc = LoadJson(path);
     JsonElement root = doc.RootElement;
@@ -120,7 +120,7 @@ static TempestResult ParseTempest(string path)
             MaxSchedulingDelayMs: step.GetProperty("maxSchedulingDelayMilliseconds").GetDouble()));
     }
 
-    return new TempestResult(
+    return new SiroccoResult(
         Iteration: Counts(
             iteration.GetProperty("count").GetInt64(),
             iteration.GetProperty("successCount").GetInt64(),
@@ -347,14 +347,14 @@ static NBomberResult ParseNBomber(string path)
 
 // ---- Rendu Markdown ----
 
-static string GenerateMarkdown(TempestResult tempest, K6Result k6, GatlingResult gatling, NBomberResult nbomber)
+static string GenerateMarkdown(SiroccoResult sirocco, K6Result k6, GatlingResult gatling, NBomberResult nbomber)
 {
     var sb = new StringBuilder();
 
     sb.AppendLine("# Résultats du benchmark comparatif");
     sb.AppendLine();
     sb.AppendLine("Généré par `benchmark/normalize` à partir des sorties réelles de");
-    sb.AppendLine("`benchmark/results/{tempest.json,k6.json,gatling/console.log,nbomber.json}`.");
+    sb.AppendLine("`benchmark/results/{sirocco.json,k6.json,gatling/console.log,nbomber.json}`.");
     sb.AppendLine("Méthodologie complète, protocole exact et limites : voir [README](README.md).");
     sb.AppendLine();
 
@@ -362,7 +362,7 @@ static string GenerateMarkdown(TempestResult tempest, K6Result k6, GatlingResult
     sb.AppendLine();
     sb.AppendLine("| Outil | Requêtes | OK | Échecs | Taux d'échec |");
     sb.AppendLine("|---|---:|---:|---:|---:|");
-    AppendCountsRow(sb, "Tempest", tempest.Checkout);
+    AppendCountsRow(sb, "Sirocco", sirocco.Checkout);
     AppendCountsRow(sb, "k6", k6.Checkout);
     AppendCountsRow(sb, "Gatling", gatling.Checkout);
     AppendCountsRow(sb, "NBomber", nbomber.Checkout);
@@ -377,8 +377,8 @@ static string GenerateMarkdown(TempestResult tempest, K6Result k6, GatlingResult
     sb.AppendLine();
     sb.AppendLine("| Outil | Métrique | p50 (ms) | p95 (ms) | p99 (ms) |");
     sb.AppendLine("|---|---|---:|---:|---:|");
-    AppendLatencyRowWithMetric(sb, "Tempest", "Response (avec attente d'ordonnancement)", tempest.IterationResponse);
-    sb.AppendLine($"| Tempest | Service (p99 seul, traitement pur) | — | — | {tempest.IterationServiceP99Ms:F1} |");
+    AppendLatencyRowWithMetric(sb, "Sirocco", "Response (avec attente d'ordonnancement)", sirocco.IterationResponse);
+    sb.AppendLine($"| Sirocco | Service (p99 seul, traitement pur) | — | — | {sirocco.IterationServiceP99Ms:F1} |");
     AppendLatencyRowWithMetric(sb, "k6", "iteration_duration", k6.IterationDuration);
     AppendLatencyRowWithMetric(sb, "Gatling", "Global Information (colonne Total)", gatling.GlobalLatency);
     sb.AppendLine("| NBomber | — (voir note ci-dessus) | — | — | — |");
@@ -386,28 +386,28 @@ static string GenerateMarkdown(TempestResult tempest, K6Result k6, GatlingResult
 
     sb.AppendLine("## Latence de l'étape checkout seule");
     sb.AppendLine();
-    sb.AppendLine("Tempest et NBomber exposent un percentile par étape nommée. k6 (sans tags/groupes");
+    sb.AppendLine("Sirocco et NBomber exposent un percentile par étape nommée. k6 (sans tags/groupes");
     sb.AppendLine("par requête dans `benchmark/k6/checkout.js`) et Gatling (dont la console ne détaille");
     sb.AppendLine("les percentiles que globalement, pas par nom de requête) ne le permettent pas avec les");
     sb.AppendLine("artefacts capturés ici — limite réelle documentée plutôt que contournée.");
     sb.AppendLine();
     sb.AppendLine("| Outil | p50 (ms) | p95 (ms) | p99 (ms) |");
     sb.AppendLine("|---|---:|---:|---:|");
-    AppendLatencyRow(sb, "Tempest", tempest.CheckoutResponse);
+    AppendLatencyRow(sb, "Sirocco", sirocco.CheckoutResponse);
     sb.AppendLine("| k6 | — | — | — |");
     sb.AppendLine("| Gatling | — | — | — |");
     AppendLatencyRow(sb, "NBomber", nbomber.CheckoutLatency);
     sb.AppendLine();
 
-    sb.AppendLine("## Le différenciateur Tempest : Response vs Service, et la dette d'ordonnancement");
+    sb.AppendLine("## Le différenciateur Sirocco : Response vs Service, et la dette d'ordonnancement");
     sb.AppendLine();
     sb.AppendLine("Aucun des trois autres outils ne publie cette distinction. Sur l'itération complète :");
     sb.AppendLine();
     sb.AppendLine($"- **Response p99** (ce que l'appelant attend réellement, file d'attente incluse) : " +
-                  $"{tempest.IterationResponse.P99:F1} ms");
+                  $"{sirocco.IterationResponse.P99:F1} ms");
     sb.AppendLine($"- **Service p99** (temps de traitement pur, une fois la requête prise en charge) : " +
-                  $"{tempest.IterationServiceP99Ms:F1} ms");
-    sb.AppendLine($"- **Dette d'ordonnancement maximale observée** : {tempest.MaxSchedulingDelayMs:F1} ms");
+                  $"{sirocco.IterationServiceP99Ms:F1} ms");
+    sb.AppendLine($"- **Dette d'ordonnancement maximale observée** : {sirocco.MaxSchedulingDelayMs:F1} ms");
     sb.AppendLine();
     sb.AppendLine("L'écart entre Response et Service sous charge est exactement le signal que k6, Gatling");
     sb.AppendLine("et NBomber ne rendent jamais visible : le moment où les chiffres qu'ils annoncent ne");
@@ -459,7 +459,7 @@ static string GenerateSaturationReport(SaturationData data)
 static string GenerateFrenchFragment(SaturationData data)
 {
     CultureInfo c = CultureInfo.GetCultureInfo("fr-FR");
-    TempestResult t = data.Tempest;
+    SiroccoResult t = data.Sirocco;
     StringBuilder sb = new();
 
     sb.AppendLine("## Ce que chaque outil rapporte de ce tir");
@@ -470,7 +470,7 @@ static string GenerateFrenchFragment(SaturationData data)
     sb.AppendLine();
     sb.AppendLine("| Outil | Modèle ouvert | Plafond VUs | Requêtes | Échecs | Latence rapportée (p99) | Attente d'ordonnancement |");
     sb.AppendLine("|---|---|---:|---:|---:|---:|---|");
-    sb.AppendLine($"| **Tempest** | borné | {Num(data.MaxVirtualUsers, c)} | {Num(t.Checkout.Total, c)} | " +
+    sb.AppendLine($"| **Sirocco** | borné | {Num(data.MaxVirtualUsers, c)} | {Num(t.Checkout.Total, c)} | " +
                   $"{Rate(t.Checkout.FailRate, c)} | **{Ms(t.IterationResponse.P99, c)} ms** | " +
                   $"**mesurée** : dette max {Ms(t.MaxSchedulingDelayMs, c)} ms |");
     sb.AppendLine($"| k6 | borné | {Num(data.MaxVirtualUsers, c)} | {Num(data.K6.Checkout.Total, c)} | " +
@@ -484,7 +484,7 @@ static string GenerateFrenchFragment(SaturationData data)
                   $"non (aucune file interne) |");
     sb.AppendLine();
     sb.AppendLine("La colonne latence n'est pas la même grandeur partout, et c'est documenté plutôt que");
-    sb.AppendLine("lissé : `__iteration` Response pour Tempest, `iteration_duration` pour k6, bloc");
+    sb.AppendLine("lissé : `__iteration` Response pour Sirocco, `iteration_duration` pour k6, bloc");
     sb.AppendLine("`Global Information` pour Gatling — trois façons de dire « l'itération complète ». Pour");
     sb.AppendLine("NBomber, c'est l'étape `checkout` seule : il n'agrège pas par itération.");
     sb.AppendLine();
@@ -496,7 +496,7 @@ static string GenerateFrenchFragment(SaturationData data)
     sb.AppendLine();
     sb.AppendLine("| Outil | Délivrées | Manquantes | Ce que l'outil en dit |");
     sb.AppendLine("|---|---:|---:|---|");
-    AppendDeliveryRow(sb, c, "**Tempest**", data.PlannedRequests, t.Checkout.Ok,
+    AppendDeliveryRow(sb, c, "**Sirocco**", data.PlannedRequests, t.Checkout.Ok,
         $"`droppedCount` = {Num(t.IterationDropped, c)} ; dette publiée séparément");
     AppendDeliveryRow(sb, c, "k6", data.PlannedRequests, data.K6.Checkout.Ok,
         $"`dropped_iterations` = {Num(data.K6.DroppedIterations, c)}");
@@ -506,7 +506,7 @@ static string GenerateFrenchFragment(SaturationData data)
         $"`failCount` = {Num(data.NBomber.ScenarioFailCount, c)} sur le scénario");
     sb.AppendLine();
 
-    sb.AppendLine("## Le même tir, les deux mesures de Tempest");
+    sb.AppendLine("## Le même tir, les deux mesures de Sirocco");
     sb.AppendLine();
     sb.AppendLine("| Mesure | p50 | p95 | p99 |");
     sb.AppendLine("|---|---:|---:|---:|");
@@ -538,7 +538,7 @@ static string GenerateFrenchFragment(SaturationData data)
 
     sb.AppendLine("## Témoin : le même profil contre une cible qui déleste");
     sb.AppendLine();
-    sb.AppendLine("Tempest seul, exactement les mêmes paramètres. Une seule variable change : la cible");
+    sb.AppendLine("Sirocco seul, exactement les mêmes paramètres. Une seule variable change : la cible");
     sb.AppendLine("refuse au bout de 50 ms au lieu de faire attendre.");
     sb.AppendLine();
     sb.AppendLine("| Cible | Échecs | Service p99 | Response p99 | Écart p99 | Dette max |");
@@ -564,7 +564,7 @@ static string FormatGatlingErrors(GatlingResult gatling, CultureInfo c, string n
         ? none
         : string.Join(" ; ", gatling.Errors.Select(error => $"{Num(error.Count, c)} × `{error.Label}`"));
 
-static void AppendControlRow(StringBuilder sb, CultureInfo c, string label, TempestResult result) =>
+static void AppendControlRow(StringBuilder sb, CultureInfo c, string label, SiroccoResult result) =>
     sb.AppendLine($"| {label} | {Rate(result.Iteration.FailRate, c)} | {Ms(result.IterationService.P99, c)} ms | " +
                   $"{Ms(result.IterationResponse.P99, c)} ms | {Ms(result.OmissionP99Ms, c)} ms | " +
                   $"{Ms(result.MaxSchedulingDelayMs, c)} ms |");
@@ -572,7 +572,7 @@ static void AppendControlRow(StringBuilder sb, CultureInfo c, string label, Temp
 static string GenerateEnglishFragment(SaturationData data)
 {
     CultureInfo c = CultureInfo.GetCultureInfo("en-US");
-    TempestResult t = data.Tempest;
+    SiroccoResult t = data.Sirocco;
     StringBuilder sb = new();
 
     sb.AppendLine("## What each tool reports about this run");
@@ -582,7 +582,7 @@ static string GenerateEnglishFragment(SaturationData data)
     sb.AppendLine();
     sb.AppendLine("| Tool | Open model | VU ceiling | Requests | Failures | Reported latency (p99) | Scheduling wait |");
     sb.AppendLine("|---|---|---:|---:|---:|---:|---|");
-    sb.AppendLine($"| **Tempest** | bounded | {Num(data.MaxVirtualUsers, c)} | {Num(t.Checkout.Total, c)} | " +
+    sb.AppendLine($"| **Sirocco** | bounded | {Num(data.MaxVirtualUsers, c)} | {Num(t.Checkout.Total, c)} | " +
                   $"{Rate(t.Checkout.FailRate, c)} | **{Ms(t.IterationResponse.P99, c)} ms** | " +
                   $"**measured**: max debt {Ms(t.MaxSchedulingDelayMs, c)} ms |");
     sb.AppendLine($"| k6 | bounded | {Num(data.MaxVirtualUsers, c)} | {Num(data.K6.Checkout.Total, c)} | " +
@@ -596,7 +596,7 @@ static string GenerateEnglishFragment(SaturationData data)
                   $"no (no internal queue) |");
     sb.AppendLine();
     sb.AppendLine("The latency column is not the same quantity everywhere, and that is documented rather");
-    sb.AppendLine("than smoothed over: `__iteration` Response for Tempest, `iteration_duration` for k6, the");
+    sb.AppendLine("than smoothed over: `__iteration` Response for Sirocco, `iteration_duration` for k6, the");
     sb.AppendLine("`Global Information` block for Gatling — three ways of saying \"the whole iteration\". For");
     sb.AppendLine("NBomber it is the `checkout` step alone: it does not aggregate per iteration.");
     sb.AppendLine();
@@ -608,7 +608,7 @@ static string GenerateEnglishFragment(SaturationData data)
     sb.AppendLine();
     sb.AppendLine("| Tool | Delivered | Missing | What the tool says about it |");
     sb.AppendLine("|---|---:|---:|---|");
-    AppendDeliveryRow(sb, c, "**Tempest**", data.PlannedRequests, t.Checkout.Ok,
+    AppendDeliveryRow(sb, c, "**Sirocco**", data.PlannedRequests, t.Checkout.Ok,
         $"`droppedCount` = {Num(t.IterationDropped, c)}; debt published separately");
     AppendDeliveryRow(sb, c, "k6", data.PlannedRequests, data.K6.Checkout.Ok,
         $"`dropped_iterations` = {Num(data.K6.DroppedIterations, c)}");
@@ -618,7 +618,7 @@ static string GenerateEnglishFragment(SaturationData data)
         $"`failCount` = {Num(data.NBomber.ScenarioFailCount, c)} on the scenario");
     sb.AppendLine();
 
-    sb.AppendLine("## The same run, Tempest's two measurements");
+    sb.AppendLine("## The same run, Sirocco's two measurements");
     sb.AppendLine();
     sb.AppendLine("| Measurement | p50 | p95 | p99 |");
     sb.AppendLine("|---|---:|---:|---:|");
@@ -650,7 +650,7 @@ static string GenerateEnglishFragment(SaturationData data)
 
     sb.AppendLine("## Control: the same profile against a target that sheds load");
     sb.AppendLine();
-    sb.AppendLine("Tempest alone, exactly the same parameters. One single variable changes: the target");
+    sb.AppendLine("Sirocco alone, exactly the same parameters. One single variable changes: the target");
     sb.AppendLine("refuses after 50 ms instead of making the caller wait.");
     sb.AppendLine();
     sb.AppendLine("| Target | Failures | Service p99 | Response p99 | Gap at p99 | Max debt |");
@@ -676,7 +676,7 @@ readonly record struct StepLatency(
     double ServiceP99Ms,
     double MaxSchedulingDelayMs);
 
-readonly record struct TempestResult(
+readonly record struct SiroccoResult(
     CheckoutCounts Iteration,
     LatencyMs IterationResponse,
     double IterationServiceP99Ms,
@@ -701,8 +701,8 @@ readonly record struct K6Result(
 /// recopie a la main, donc aucun ne peut diverger d'une langue a l'autre.
 /// </summary>
 readonly record struct SaturationData(
-    TempestResult Tempest,
-    TempestResult Control,
+    SiroccoResult Sirocco,
+    SiroccoResult Control,
     K6Result K6,
     GatlingResult Gatling,
     NBomberResult NBomber,

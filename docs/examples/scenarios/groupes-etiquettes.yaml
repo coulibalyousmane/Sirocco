@@ -1,4 +1,4 @@
-# Groupes d'étapes et étiquettes de scénario, contre Tempest.SampleTarget.
+# Groupes d'étapes et étiquettes de scénario, contre Sirocco.SampleTarget.
 #
 # Deux dimensions de découpage, volontairement distinctes :
 #   - group, par étape : préfixé au nom pour former le nom qualifié (« checkout / login »).
@@ -12,7 +12,7 @@
 # une clé d'agrégation à part entière. Une étape sans group garde son nom nu (« browse »).
 #
 # Exécution, depuis la racine du dépôt :
-#   tempest run docs/examples/scenarios/groupes-etiquettes.yaml \
+#   sirocco run docs/examples/scenarios/groupes-etiquettes.yaml \
 #     --target-url http://localhost:5281 --rps 10 --duration 5s
 
 name: groupes-etiquettes

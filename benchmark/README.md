@@ -1,10 +1,10 @@
-# Benchmark comparatif — Tempest, k6, Gatling, NBomber
+# Benchmark comparatif — Sirocco, k6, Gatling, NBomber
 
 Ce dossier démontre, sur une cible volontairement saturée, ce que
 [ROADMAP.md](../ROADMAP.md#le-différenciateur-réel-nest-pas-celui-quon-croit) a établi comme le
-vrai différenciateur de Tempest : **pas** « nous évitons le biais de *coordinated omission* »
+vrai différenciateur de Sirocco : **pas** « nous évitons le biais de *coordinated omission* »
 (faux — k6, Gatling et JMeter ont tous un modèle ouvert), mais **« nous sommes le seul outil qui
-vous dit quand vos propres chiffres ne sont plus fiables »**. Tempest est le seul des quatre à
+vous dit quand vos propres chiffres ne sont plus fiables »**. Sirocco est le seul des quatre à
 publier à la fois `Response` (ce que l'appelant attend, file d'attente incluse) et `Service`
 (le traitement pur une fois pris en charge) — l'écart entre les deux, sous saturation, est
 exactement le signal que les trois autres ne montrent jamais.
@@ -13,7 +13,7 @@ Résultats du dernier tir : **[RESULTS.md](results/RESULTS.md)**.
 
 ## Le mécanisme
 
-`Tempest.SampleTarget` a un `ConcurrencyGate` sur `POST /api/checkout` (voir
+`Sirocco.SampleTarget` a un `ConcurrencyGate` sur `POST /api/checkout` (voir
 [docker-compose.yml](docker-compose.yml)) réglé pour saturer à un débit modeste et reproductible
 sur une seule machine :
 
@@ -26,7 +26,7 @@ profil : une rampe de 20 à 150 req/s sur 90 s, qui traverse clairement ce seuil
 
 ## Le scénario, identique dans les quatre outils
 
-Un scénario dédié (pas le workflow `dynamic-checkout` intégré de Tempest, qui fait plus d'étapes),
+Un scénario dédié (pas le workflow `dynamic-checkout` intégré de Sirocco, qui fait plus d'étapes),
 reproduit à l'identique dans chaque outil pour garantir une comparaison à séquence de requêtes
 strictement égale :
 
@@ -34,7 +34,7 @@ strictement égale :
 2. `POST /api/checkout` — `{"items":[{"productId":1,"quantity":2}]}`,
    `Authorization: Bearer <jeton>`.
 
-Modèle ouvert (arrival-rate) pour les quatre : [scenarios/tempest-checkout.yaml](scenarios/tempest-checkout.yaml),
+Modèle ouvert (arrival-rate) pour les quatre : [scenarios/sirocco-checkout.yaml](scenarios/sirocco-checkout.yaml),
 [k6/checkout.js](k6/checkout.js), [gatling/CheckoutSimulation.java](gatling/CheckoutSimulation.java),
 [nbomber/Program.cs](nbomber/Program.cs).
 
@@ -66,7 +66,7 @@ l'ordre de 20 ms. `saturation.sh` change **une seule variable** — la cible **m
 de refuser — et c'est là que le phénomène apparaît, à plusieurs dizaines de secondes.
 
 Deux passes (cible qui met en file avec les quatre outils, puis témoin sur la cible délesteuse avec
-Tempest seul), résultats dans `results-saturation/SATURATION.md`. Commenté en détail par
+Sirocco seul), résultats dans `results-saturation/SATURATION.md`. Commenté en détail par
 [l'article sur la dette d'ordonnancement](../docs/articles/dette-ordonnancement.md)
 ([English](../docs/articles/scheduling-debt.md)), dont les tableaux de mesures sont générés par la
 même commande.
@@ -79,12 +79,12 @@ les paquets NuGet NBomber.
 Les quatre outils n'ont pas la même granularité de rapport. Documenté dans
 [RESULTS.md](results/RESULTS.md) plutôt que masqué :
 
-- **Latence par itération complète (login + checkout ensemble)** : Tempest (`__iteration`), k6
+- **Latence par itération complète (login + checkout ensemble)** : Sirocco (`__iteration`), k6
   (`iteration_duration`) et Gatling (bloc `Global Information`, colonne `Total`) l'exposent tous
   les trois. **NBomber non** : ses statistiques de scénario agrègent les échantillons de latence
   de chaque étape entre elles (un pool), pas en sommant les étapes d'une même itération — ce
   n'est pas la même grandeur, donc ce chiffre n'est pas fabriqué par extrapolation.
-- **Latence de l'étape checkout seule** : Tempest et NBomber exposent un percentile par étape
+- **Latence de l'étape checkout seule** : Sirocco et NBomber exposent un percentile par étape
   nommée. **k6 et Gatling non**, avec les artefacts capturés ici : le script k6
   ([k6/checkout.js](k6/checkout.js)) ne tague pas les requêtes par nom, et la console Gatling ne
   détaille les percentiles que globalement (le rapport HTML complet le permettrait, mais son
@@ -115,7 +115,7 @@ Documentées ici plutôt que contournées silencieusement, conformément à la d
 - **Licence NBomber.** La version actuelle (6.x) est sous licence commerciale (« NBomber License
   Agreement v3.0 », effective 2025-09-01), payante pour un usage **organisationnel**. Elle contient
   une clause explicite d'usage gratuit qui couvre ce dépôt : *« NBomber is free for personal use,
-  including personal or hobby projects, benchmarks, tutorials... »* Tempest étant un projet
+  including personal or hobby projects, benchmarks, tutorials... »* Sirocco étant un projet
   personnel et ceci étant littéralement un benchmark, l'usage ici est couvert par cette clause —
   vérifié en lisant le fichier `LICENSE` réel du paquet NuGet, pas supposé depuis la documentation
   marketing.

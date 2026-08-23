@@ -5,7 +5,7 @@
 Un `ThresholdRule` transforme un rapport en verdict binaire : grandeur, comparaison, limite.
 Volontairement absent de la liste des grandeurs disponibles : toute variante `Service*` (le
 temps brut, non corrigé). Gater un pipeline sur le temps de service reviendrait à faire
-confiance à la mesure même que Tempest existe pour corriger — un seuil ne peut porter que sur
+confiance à la mesure même que Sirocco existe pour corriger — un seuil ne peut porter que sur
 la latence de réponse déjà corrigée, le taux d'erreur, la dette d'ordonnancement ou le nombre
 de mesures.
 
@@ -36,7 +36,7 @@ Il se lance comme les autres fragments de configuration — voir
 et le piège du chemin absolu :
 
 ```bash
-dotnet src/Tempest.Host/bin/Release/net10.0/Tempest.Host.dll \
+dotnet src/Sirocco.Host/bin/Release/net10.0/Sirocco.Host.dll \
   --contentRoot "$(pwd)/docs/examples/config" --environment seuils-ci
 ```
 
@@ -44,13 +44,13 @@ dotnet src/Tempest.Host/bin/Release/net10.0/Tempest.Host.dll \
 ## Comparaison entre tirs
 
 Un `ThresholdRule` gate sur une limite **absolue**, à redéfinir manuellement à chaque évolution
-légitime de la cible. `tools/Tempest.Compare` répond à une question différente — "a-t-on
+légitime de la cible. `tools/Sirocco.Compare` répond à une question différente — "a-t-on
 régressé *depuis le dernier tir de référence*, indépendamment de la limite absolue ?" — à
 partir de deux rapports `/report` exportés en JSON, sans qu'aucun autre seuil n'ait besoin
 d'être redéfini :
 
 ```bash
-dotnet run --project tools/Tempest.Compare -- reference.json actuel.json \
+dotnet run --project tools/Sirocco.Compare -- reference.json actuel.json \
   --html comparaison.html --max-regression-percent 20
 ```
 
@@ -61,7 +61,7 @@ code de sortie 1 si une étape régresse au-delà de ce pourcentage de p95 par r
 référence. Les étapes sont appariées par nom : une étape apparue ou disparue entre les deux
 tirs est signalée comme telle, jamais ignorée en silence.
 
-`Tempest.Compare` ne déserialise pas directement vers `LoadTestReport` : comme
+`Sirocco.Compare` ne déserialise pas directement vers `LoadTestReport` : comme
 `ScenarioDefinitionDto` côté scénarios déclaratifs, `System.Text.Json` ne sait pas construire un
 `IReadOnlyList<T>` par réflexion — un DTO à types concrets fait la frontière avant de mapper
 vers le type Domain réel.

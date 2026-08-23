@@ -4,7 +4,7 @@
 #
 #   docker compose up --build --exit-code-from master
 #
-# Le maitre s'arrete seul une fois le tir termine (Tempest__ExitAfterRun=true) ; les workers
+# Le maitre s'arrete seul une fois le tir termine (Sirocco__ExitAfterRun=true) ; les workers
 # restent actifs (services long-vivants, comme en production) — "docker compose down" pour
 # tout arreter.
 
@@ -12,7 +12,7 @@ services:
   sampletarget:
     build:
       context: .
-      dockerfile: samples/Tempest.SampleTarget/Dockerfile
+      dockerfile: samples/Sirocco.SampleTarget/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:5281
       SampleTarget__GrpcPort: "5287"
@@ -22,23 +22,23 @@ services:
   master:
     build:
       context: .
-      dockerfile: src/Tempest.Host/Dockerfile
+      dockerfile: src/Sirocco.Host/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:5299
-      Tempest__Role: master
-      Tempest__TargetBaseUrl: http://sampletarget:5281
-      Tempest__MaxVirtualUsers: "20"
-      Tempest__ExitAfterRun: "true"
-      Tempest__ClusterSharedSecret: "demo-cluster-secret"
-      Tempest__Profile__0__FromRps: "0"
-      Tempest__Profile__0__ToRps: "10"
-      Tempest__Profile__0__DurationSeconds: "10"
-      Tempest__Profile__1__FromRps: "10"
-      Tempest__Profile__1__ToRps: "10"
-      Tempest__Profile__1__DurationSeconds: "15"
-      Tempest__Profile__2__FromRps: "10"
-      Tempest__Profile__2__ToRps: "0"
-      Tempest__Profile__2__DurationSeconds: "5"
+      Sirocco__Role: master
+      Sirocco__TargetBaseUrl: http://sampletarget:5281
+      Sirocco__MaxVirtualUsers: "20"
+      Sirocco__ExitAfterRun: "true"
+      Sirocco__ClusterSharedSecret: "demo-cluster-secret"
+      Sirocco__Profile__0__FromRps: "0"
+      Sirocco__Profile__0__ToRps: "10"
+      Sirocco__Profile__0__DurationSeconds: "10"
+      Sirocco__Profile__1__FromRps: "10"
+      Sirocco__Profile__1__ToRps: "10"
+      Sirocco__Profile__1__DurationSeconds: "15"
+      Sirocco__Profile__2__FromRps: "10"
+      Sirocco__Profile__2__ToRps: "0"
+      Sirocco__Profile__2__DurationSeconds: "5"
       Master__ExpectedWorkers: "2"
       Master__RegistrationTimeoutSeconds: "30"
     ports:
@@ -49,12 +49,12 @@ services:
   worker1:
     build:
       context: .
-      dockerfile: src/Tempest.Host/Dockerfile
+      dockerfile: src/Sirocco.Host/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:5300
-      Tempest__Role: worker
-      Tempest__TargetBaseUrl: http://sampletarget:5281
-      Tempest__ClusterSharedSecret: "demo-cluster-secret"
+      Sirocco__Role: worker
+      Sirocco__TargetBaseUrl: http://sampletarget:5281
+      Sirocco__ClusterSharedSecret: "demo-cluster-secret"
       Worker__MasterUrl: http://master:5299
       Worker__SelfUrl: http://worker1:5300
     depends_on:
@@ -64,12 +64,12 @@ services:
   worker2:
     build:
       context: .
-      dockerfile: src/Tempest.Host/Dockerfile
+      dockerfile: src/Sirocco.Host/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:5300
-      Tempest__Role: worker
-      Tempest__TargetBaseUrl: http://sampletarget:5281
-      Tempest__ClusterSharedSecret: "demo-cluster-secret"
+      Sirocco__Role: worker
+      Sirocco__TargetBaseUrl: http://sampletarget:5281
+      Sirocco__ClusterSharedSecret: "demo-cluster-secret"
       Worker__MasterUrl: http://master:5299
       Worker__SelfUrl: http://worker2:5300
     depends_on:

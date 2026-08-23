@@ -1,10 +1,10 @@
 # Roadmap concurrentielle
 
 > État au 6 août 2026, après l'étape 21. Ce document est **prospectif** : il traite de ce qui
-> manque à Tempest pour exister face aux outils établis. Pour ce qui est déjà fait, voir
+> manque à Sirocco pour exister face aux outils établis. Pour ce qui est déjà fait, voir
 > [État d'avancement](README.md#état-davancement) dans le README.
 
-Tempest tient 100 000 requêtes par seconde sur une machine, avec une mesure de latence plus
+Sirocco tient 100 000 requêtes par seconde sur une machine, avec une mesure de latence plus
 honnête que la plupart de ses concurrents, 299 tests unitaires et une CI verte. Mais personne
 ne peut l'installer, personne ne peut écrire un scénario réaliste avec, et il n'a jamais tourné
 ailleurs que sur la machine de son auteur.
@@ -20,13 +20,13 @@ Kubernetes).
 
 Légende : ● solide · ◐ partiel · ○ absent
 
-| Capacité | Tempest | k6 | Gatling | NBomber |
+| Capacité | Sirocco | k6 | Gatling | NBomber |
 |---|---|---|---|---|
 | Modèle de charge ouvert (*arrival rate*) | ● natif, seul modèle | ● executors dédiés | ● `injectOpen` | ● |
 | Modèle fermé (utilisateurs concurrents, itérations) | ● `--vus`/`--vus-from`/`--vus-to`/`--iterations`/`--iterations-per-vu`, mise en garde explicite | ● | ● `injectClosed` | ● |
 | Dette d'ordonnancement mesurée et publiée | ● `Response` + `Service` | ○ | ○ | ○ |
 | Scénarios programmables (branchement, boucle) | ◐ C# recompilé, ou YAML linéaire | ● JavaScript/TS | ● DSL Scala/Java/Kotlin | ● C#/F# |
-| Scénarios concurrents dans un même tir | ● `Tempest:Scenarios`, isolement complet par scénario | ● plusieurs `scenario` par script | ● plusieurs `scenario()` par simulation | ● |
+| Scénarios concurrents dans un même tir | ● `Sirocco:Scenarios`, isolement complet par scénario | ● plusieurs `scenario` par script | ● plusieurs `scenario()` par simulation | ● |
 | Jeux de données (CSV, JSON, SQL) | ◐ CSV/JSON, pas SQL | ● `SharedArray` | ● *feeders* | ● *data feed* |
 | Checks, groupes, étiquettes, métriques custom, rythme | ● checks, groupes, étiquettes, métriques custom, temps de réflexion | ● | ● | ◐ |
 | Rapport avec séries temporelles | ◐ tableau HTML ; temporel via Prometheus | ● Grafana natif | ● référence du marché | ● HTML + temps réel |
@@ -40,13 +40,13 @@ Légende : ● solide · ◐ partiel · ○ absent
 
 En vérifiant l'état du marché pour ce document, un point s'est révélé faux : **k6, Gatling et
 JMeter proposent tous un modèle de charge ouvert** — respectivement `constant-arrival-rate`,
-`injectOpen`, et l'Open Model Thread Group (JMeter 5.5+). L'argument « Tempest corrige le
+`injectOpen`, et l'Open Model Thread Group (JMeter 5.5+). L'argument « Sirocco corrige le
 *coordinated omission*, contrairement aux autres » est donc **faux** et ne doit plus être formulé
 ainsi : il se ferait démonter immédiatement.
 
 Ce qui reste vrai et défendable : un modèle ouvert *évite* le biais au niveau de l'injection
 **tant que l'injecteur tient la cadence**. Dès qu'il sature, l'écart réapparaît — et aucun des
-trois ne le montre. Tempest est le seul à publier `Response` (corrigé) et `Service` (brut) côte à
+trois ne le montre. Sirocco est le seul à publier `Response` (corrigé) et `Service` (brut) côte à
 côte, plus la dette d'ordonnancement maximale. **L'écart entre les deux est la mesure du problème
 résiduel.**
 
@@ -60,20 +60,20 @@ Les phases 1 à 3 sont séquentielles : chacune est bloquée par la précédente
 peuvent se paralléliser une fois la 3 terminée. Les phases 7 et 8 supposent des utilisateurs
 réels — les lancer avant serait construire pour personne.
 
-### Phase 1 — Rendre Tempest installable
+### Phase 1 — Rendre Sirocco installable
 
 *Effort faible · impact existentiel*
 
-Tant qu'il faut cloner un dépôt privé et compiler une solution pour lancer un tir, Tempest n'a pas
+Tant qu'il faut cloner un dépôt privé et compiler une solution pour lancer un tir, Sirocco n'a pas
 d'utilisateurs possibles, quelle que soit la qualité du moteur. C'est le seul point de cette liste
 qui bloque littéralement tout le reste, et c'est aussi le moins cher à traiter.
 
-- ~~**Une vraie CLI**~~ — fait (`Tempest.Cli`, voir [Interface de ligne de
-  commande](docs/demarrer/cli.md#interface-de-ligne-de-commande)) : `tempest run scenario.yaml --rps 50
+- ~~**Une vraie CLI**~~ — fait (`Sirocco.Cli`, voir [Interface de ligne de
+  commande](docs/demarrer/cli.md#interface-de-ligne-de-commande)) : `sirocco run scenario.yaml --rps 50
   --duration 30s`, options qui priment sur la configuration. Le modèle fermé (`--vus`) suit la
   phase 3 ; en attendant, le profil se pilote en débit (`--rps` ou `--from-rps`/`--to-rps`).
-- ~~**Packaging `dotnet tool`**~~ — fait (`PackAsTool`, commande `tempest`, voir
-  [Installation](docs/demarrer/installation.md#installation)) : `dotnet tool install -g Tempest.Cli` fonctionne
+- ~~**Packaging `dotnet tool`**~~ — fait (`PackAsTool`, commande `sirocco`, voir
+  [Installation](docs/demarrer/installation.md#installation)) : `dotnet tool install -g Sirocco.Cli` fonctionne
   aujourd'hui depuis une source locale ou un flux privé, faute de publication sur nuget.org (le
   dépôt reste privé — bullet suivant).
 - ~~**Binaires autonomes**~~ — fait pour Windows, Linux et macOS (x64 et arm64), voir [Binaires
@@ -83,8 +83,8 @@ qui bloque littéralement tout le reste, et c'est aussi le moins cher à traiter
   `ScenarioDefinitionLoader` échouent la compilation AOT (`IL3050`/`IL2026`) — le graphe de
   dépendances actuel ne le permet pas sans réécrire ce pipeline.
 - ~~**Paquets NuGet bibliothèque**~~ — fait, voir [Paquets NuGet](docs/demarrer/installation.md#paquets-nuget) :
-  élargi de `Tempest.Domain` et `Tempest.Scenarios` (le texte initial de ce bullet) à
-  `Tempest.Application` et `Tempest.Infrastructure` aussi — sans le moteur ni la chaîne de
+  élargi de `Sirocco.Domain` et `Sirocco.Scenarios` (le texte initial de ce bullet) à
+  `Sirocco.Application` et `Sirocco.Infrastructure` aussi — sans le moteur ni la chaîne de
   mesure, un projet externe pouvait écrire un scénario mais pas le lancer, contrairement à
   NBomber, cité en référence quelques lignes plus haut. Vérifié par un vrai tir depuis un projet
   xUnit externe qui ne référence que ces quatre paquets (aucun `ProjectReference` vers ce dépôt).
@@ -92,7 +92,7 @@ qui bloque littéralement tout le reste, et c'est aussi le moins cher à traiter
   seule la visibilité GitHub reste un geste manuel).
 - ~~**Rendre le dépôt public**~~ — fait, licence ([Apache License 2.0](LICENSE), celle de k6 et
   Gatling), README d'accueil et démarrage rapide en trois commandes faits, et le dépôt est
-  désormais public sur GitHub (`github.com/coulibalyousmane/Tempest`). **Clôt entièrement la
+  désormais public sur GitHub (`github.com/coulibalyousmane/Sirocco`). **Clôt entièrement la
   phase 1.**
 
 ### Phase 2 — Des scénarios qu'on peut réellement écrire
@@ -105,7 +105,7 @@ n'interrompent pas le tir, et des dimensions pour découper les résultats. C'es
 fonctionnel.
 
 - ~~**Jeux de données**~~ — fait, voir [Jeux de données](docs/scenarios/donnees-assertions.md#jeux-de-données) : `DataSet`
-  (`Tempest.Domain.Data`) + `DataSetLoader` CSV/JSON (`Tempest.Scenarios.Data`), trois stratégies
+  (`Sirocco.Domain.Data`) + `DataSetLoader` CSV/JSON (`Sirocco.Scenarios.Data`), trois stratégies
   (circulaire, aléatoire, unique par utilisateur virtuel), accessible depuis le format déclaratif
   (`{{jeu.colonne}}`) et depuis un scénario scripté. Réduit à CSV/JSON pour ce premier tour — SQL
   écarté : une source de données arbitraire (requête, pool de connexions, ré-exécution par tir)
@@ -114,7 +114,7 @@ fonctionnel.
 - ~~**Checks**~~ — fait, voir [Checks](docs/scenarios/donnees-assertions.md#checks) : `CheckRule` (même vocabulaire
   Regex/XPath/JsonPath que l'extraction), section `checks` par étape. Chaque check devient sa
   propre étape du rapport — reutilise `StepId`/`StepScope` tels quels, aucun changement dans
-  `Tempest.Application`/`Tempest.Infrastructure`. Une assertion qui échoue ne fait jamais échouer
+  `Sirocco.Application`/`Sirocco.Infrastructure`. Une assertion qui échoue ne fait jamais échouer
   la requête HTTP dont elle dérive, mais compte comme n'importe quelle étape pour l'issue de
   l'itération. Sans effet sur les scénarios scriptés, qui pouvaient déjà publier ce genre
   d'assertion directement via `StepRegistry`/`StepScope`. Vérifié par de vrais tirs.
@@ -150,7 +150,7 @@ fonctionnel.
 >
 > Un scénario scripté devient un
 > `IWorkflow` compilé à la volée (`Microsoft.CodeAnalysis.CSharp.Scripting`) : zéro couche
-> d'interop à concevoir, réutilisation directe de `Tempest.Domain`/`Application`/`Infrastructure`,
+> d'interop à concevoir, réutilisation directe de `Sirocco.Domain`/`Application`/`Infrastructure`,
 > déjà publiés en paquets NuGet (voir [Paquets NuGet](docs/demarrer/installation.md#paquets-nuget)) — un script
 > scénario et une bibliothèque scénario deviennent le même code, à la compilation près. L'AOT
 > était déjà hors de portée pour d'autres raisons (`YamlDotNet`/JSON par réflexion dans
@@ -175,7 +175,7 @@ fonctionnel.
 
 *Effort moyen · impact fort*
 
-Tempest ne sait piloter qu'un débit cible. C'est le bon modèle par défaut, mais beaucoup de besoins
+Sirocco ne sait piloter qu'un débit cible. C'est le bon modèle par défaut, mais beaucoup de besoins
 réels s'expriment autrement — « exactement 50 utilisateurs simultanés », « 1 000 itérations
 réparties », « ce scénario à 10 RPS pendant que celui-là monte en charge ». Refuser le modèle fermé
 par purisme coûterait des utilisateurs.
@@ -195,7 +195,7 @@ par purisme coûterait des utilisateurs.
   `--vus <n> --iterations-per-vu <k>`, `IterationCountScheduler`). Les quatre partagent la même
   mise en garde de rapport, faute d'échéancier théorique à comparer.
 - ~~**Scénarios concurrents**~~ — fait, voir [Scénarios concurrents](docs/charge/scenarios-concurrents.md#scénarios-concurrents) :
-  `Tempest:Scenarios` dans un `appsettings.json` (comme `Tempest:RampVus`, pas d'équivalent CLI
+  `Sirocco:Scenarios` dans un `appsettings.json` (comme `Sirocco:RampVus`, pas d'équivalent CLI
   plat), chaque scénario avec son propre profil/modèle de charge, ses étiquettes et ses seuils.
   Chaque scénario construit sa propre chaîne de mesure à la main (pas via le conteneur
   d'injection de dépendances, qui ne loge qu'un singleton par type) : c'est cet isolement complet
@@ -204,11 +204,11 @@ par purisme coûterait des utilisateurs.
   alimentés — seuls `/report`, `/report.html` et `/thresholds` le sont, une fois le tir terminé.
   Vérifié par un vrai tir à deux scénarios concurrents.
 - ~~**Bridage**~~ — fait, voir [Bridage](docs/charge/modeles.md#bridage) : `RateCappedScheduler`
-  (`Tempest.Application.Execution`), décorateur d'`ILoadScheduler` qui retarde la transmission des
+  (`Sirocco.Application.Execution`), décorateur d'`ILoadScheduler` qui retarde la transmission des
   jetons plutôt que de réécrire leur échéance planifiée — le retard qu'il impose se mesure donc
   comme une dette d'ordonnancement ordinaire, pas comme un cas particulier masqué. `--max-rps`
   n'est un cinquième modèle mutuellement exclusif avec rien : il compose avec tous les modèles
-  précédents et avec `Tempest:Scenarios` (`ScenarioOptions.MaxRequestsPerSecond`, avec repli sur le
+  précédents et avec `Sirocco:Scenarios` (`ScenarioOptions.MaxRequestsPerSecond`, avec repli sur le
   plafond global). **Clôt entièrement la phase 3.** Vérifié par de vrais tirs : modèle ouvert à
   100 RPS ramené à 20, modèle fermé à 176 RPS naturels ramené à 15, plafond par scénario et repli
   global tous deux respectés dans un tir à deux scénarios concurrents.
@@ -218,7 +218,7 @@ par purisme coûterait des utilisateurs.
 *Effort moyen · impact fort*
 
 Le rapport de Gatling est la raison pour laquelle beaucoup d'équipes le choisissent. Celui de
-Tempest est un tableau statique : il donne l'état final, jamais la trajectoire. Or c'est la
+Sirocco est un tableau statique : il donne l'état final, jamais la trajectoire. Or c'est la
 trajectoire — le moment où les centiles décrochent — qui explique une dégradation.
 
 - ~~**Séries temporelles**~~ — fait, voir [Série temporelle](docs/rapports/mesure.md#série-temporelle) :
@@ -233,7 +233,7 @@ trajectoire — le moment où les centiles décrochent — qui explique une dég
 - ~~**Courbe de dette d'ordonnancement**~~ — fait : `LoadTestReport.ToHtml` superpose désormais
   débit et dette d'ordonnancement sur le même axe de temps (`LoadTestReport.TimeSeries`), chacun à
   l'échelle de son propre maximum, en SVG inline — le graphe que personne d'autre ne peut produire.
-- ~~**Interface web temps réel**~~ — fait : `/report/live.html` (`TempestHostOptions.LiveDashboardRefreshSeconds`,
+- ~~**Interface web temps réel**~~ — fait : `/report/live.html` (`SiroccoHostOptions.LiveDashboardRefreshSeconds`,
   3 s par défaut) rend le même rapport HTML sur la fenêtre glissante, avec une balise
   `<meta http-equiv="refresh">` qui le recharge seul pendant le tir — au-delà du JSON brut de
   `/report/live`. **Clôt entièrement la phase 4.**
@@ -247,17 +247,17 @@ sont le levier d'adoption le moins cher du marché : on part d'un trafic déjà 
 d'une page blanche.
 
 - ~~**HAR vers scénario**~~ — fait, voir [Convertisseur HAR](docs/convertisseurs/index.md#convertisseur-har) :
-  `tools/Tempest.HarConvert` traduit un export du navigateur en scénario **scripté** C# (`.csx`),
+  `tools/Sirocco.HarConvert` traduit un export du navigateur en scénario **scripté** C# (`.csx`),
   conformément à la décision structurante ci-dessus — jouable sans aucun câblage supplémentaire.
   Actifs statiques ignorés par extension, hôte cible retenu par fréquence (pas par ordre
   d'apparition — un bug réel de la première version, trouvé et corrigé en vérifiant un vrai HAR
   où un appel tiers sans extension reconnue precédait le premier appel à la cible). Limite
   documentée : authentification/cookies capturés à revoir manuellement (valeurs de session
   probablement expirées), corps multipart non pris en charge. Vérifié par un vrai tir : HAR
-  reconstitué d'un aller-retour réel login/catalogue/checkout contre `Tempest.SampleTarget`,
-  mêlé à un actif statique et un hôte secondaire, converti puis exécuté par `tempest run`.
+  reconstitué d'un aller-retour réel login/catalogue/checkout contre `Sirocco.SampleTarget`,
+  mêlé à un actif statique et un hôte secondaire, converti puis exécuté par `sirocco run`.
 - ~~**OpenAPI vers scénario**~~ — fait, voir [Convertisseur OpenAPI](docs/convertisseurs/index.md#convertisseur-openapi) :
-  `tools/Tempest.OpenApiConvert` traduit une spécification OpenAPI 3.x (JSON) en **squelette**
+  `tools/Sirocco.OpenApiConvert` traduit une spécification OpenAPI 3.x (JSON) en **squelette**
   scripté C# (`.csx`) — un step par opération, corps JSON d'exemple dérivé du schéma (`$ref`
   résolues contre `components/schemas`, garde anti-cycle). Différence assumée avec le
   convertisseur HAR : une spécification ne décrit que la forme d'une API, jamais de données
@@ -265,12 +265,12 @@ d'une page blanche.
   trafic capturé. Limites documentées : JSON seul (pas de YAML dans cette première version),
   `application/json` seul comme type de corps, paramètres de requête optionnels omis, aucun
   schéma d'authentification traduit (même raison que pour le HAR : une vraie valeur ne peut venir
-  que d'un humain). Vérifié par deux vrais tirs contre `Tempest.SampleTarget` à partir d'une
+  que d'un humain). Vérifié par deux vrais tirs contre `Sirocco.SampleTarget` à partir d'une
   spécification décrivant fidèlement ses trois routes réelles : le squelette brut échoue le
   checkout (placeholder d'authentification, comme documenté) ; complété à la main avec le jeton
   et l'identifiant de produit lus dans les réponses précédentes, les 3 étapes réussissent.
 - ~~**Collection Postman vers scénario**~~ — fait, voir [Convertisseur
-  Postman](docs/convertisseurs/index.md#convertisseur-postman) : `tools/Tempest.PostmanConvert` traduit une
+  Postman](docs/convertisseurs/index.md#convertisseur-postman) : `tools/Sirocco.PostmanConvert` traduit une
   collection Postman (v2.1) en squelette scripté C# (`.csx`), même nature que le convertisseur
   OpenAPI — une collection décrit des requêtes construites à la main, pas des données réelles.
   Dossiers imbriqués parcourus récursivement, variables de collection (`{{nom}}`) substituées
@@ -280,18 +280,18 @@ d'une page blanche.
   (convention Postman pour injecter un nombre) casse la syntaxe — documenté, pas corrigé en
   silence, une variable Postman n'ayant pas de schéma pour deviner son type. **Clôt entièrement
   la phase 5**, hors proxy enregistreur (bullet suivant, conditionné à un vrai public). Vérifié
-  par deux vrais tirs contre `Tempest.SampleTarget` : squelette brut en échec sur le checkout
+  par deux vrais tirs contre `Sirocco.SampleTarget` : squelette brut en échec sur le checkout
   (placeholders), squelette complété à la main aux 3 étapes réussies.
 - ~~**Proxy enregistreur**~~ — fait, voir [Proxy enregistreur](docs/convertisseurs/index.md#proxy-enregistreur) :
-  `tools/Tempest.RecorderProxy` capture du trafic HTTP en direct, sans export manuel — seul
+  `tools/Sirocco.RecorderProxy` capture du trafic HTTP en direct, sans export manuel — seul
   convertisseur/outil de la phase à dépendre d'un autre (`ProjectReference` vers
-  `Tempest.HarConvert`, dont il reutilise `HarConverter.Convert` tel quel : une capture en direct
+  `Sirocco.HarConvert`, dont il reutilise `HarConverter.Convert` tel quel : une capture en direct
   alimente la meme forme `HarEntry` qu'un export HAR de navigateur). Scope volontairement réduit
   face au *recorder* de Gatling : reverse proxy à cible unique, HTTP seul, pas d'interception TLS
-  (MITM) — cohérent avec le modèle `--target-url` unique de `tempest run`, évite le chantier
+  (MITM) — cohérent avec le modèle `--target-url` unique de `sirocco run`, évite le chantier
   certificat/confiance d'un vrai proxy HTTPS pour une fonctionnalité qui restait conditionnée à un
   vrai public. **Clôt entièrement la phase 5.** Vérifié par un vrai tir de bout en bout : session
-  réelle login/catalogue/checkout enregistrée à travers le proxy contre `Tempest.SampleTarget`,
+  réelle login/catalogue/checkout enregistrée à travers le proxy contre `Sirocco.SampleTarget`,
   scénario généré puis rejoué immédiatement — les 4 étapes à 0 % d'échec, le jeton capturé
   encore valide (contrairement au HAR, où l'export manuel laisse le temps à un jeton d'expirer).
 
@@ -304,31 +304,31 @@ seul SQL, Kafka, MQTT, AMQP et le reste est un puits sans fond. Le modèle d'ext
 **avant** les protocoles, pas après — chaque protocole écrit dans le cœur est une dette permanente.
 
 - ~~**Contrat de plugin** stable~~ — fait, voir [Contrat de plugin](docs/extensions/contrat.md#contrat-de-plugin) :
-  `PluginWorkflowLoader` (`Tempest.Scenarios`) charge un `IWorkflow` depuis une assembly `.dll`
+  `PluginWorkflowLoader` (`Sirocco.Scenarios`) charge un `IWorkflow` depuis une assembly `.dll`
   compilée independamment de ce depot (`Assembly.LoadFrom`, type resolu par `--plugin-type` ou
   candidat unique, constructeur public sans parametre). Le contrat lui-meme (`IWorkflow`/
   `IVirtualUserContext`/`StepScope`) existait deja, agnostique du protocole — ce qui manquait
   etait un moyen de le charger sans `ProjectReference` vers ce depot. Limites documentees :
   aucune configuration injectee dans le type instancie (un plugin gere la sienne), pas de
   resolution NuGet dans cette version (bullet suivant), mode distribue non pris en charge (meme
-  limite que le scripte). `samples/Tempest.SamplePlugin` est la preuve reelle du decouplage :
-  compile separement, jamais reference par `Tempest.Host`/`Tempest.Cli`/`Tempest.Scenarios`.
-  Verifie par deux vrais tirs contre `Tempest.SampleTarget` : selection automatique du seul type
+  limite que le scripte). `samples/Sirocco.SamplePlugin` est la preuve reelle du decouplage :
+  compile separement, jamais reference par `Sirocco.Host`/`Sirocco.Cli`/`Sirocco.Scenarios`.
+  Verifie par deux vrais tirs contre `Sirocco.SampleTarget` : selection automatique du seul type
   disponible, puis selection explicite via `--plugin-type` — les deux a 0 % d'echec.
 - ~~**Chargement dynamique** d'extensions et résolution depuis NuGet~~ — fait, voir [Résolution
-  NuGet](docs/extensions/contrat.md#résolution-nuget) : `NuGetPluginResolver` (`Tempest.Scenarios`,
+  NuGet](docs/extensions/contrat.md#résolution-nuget) : `NuGetPluginResolver` (`Sirocco.Scenarios`,
   `NuGet.Protocol`) resout un plugin par identifiant de paquet (`--plugin-package`/
   `--plugin-package-version`/`--plugin-source`) plutot qu'un chemin de fichier deja present sur le
   disque — telecharge le `.nupkg` depuis la premiere source qui le connait, extrait le groupe
   `lib/<tfm>` le plus proche de `net10.0` (`FrameworkReducer`), cache local persistant entre les
   tirs (une version explicite deja en cache ne redeclenche aucun trafic reseau). Limite
   documentee : aucune resolution de dependances transitives du paquet. Verifie par un vrai tir :
-  `Tempest.SamplePlugin` empaquete via `dotnet pack` dans un dossier local (flux NuGet a part
-  entiere), resolu puis execute contre `Tempest.SampleTarget` — 0 % d'echec.
+  `Sirocco.SamplePlugin` empaquete via `dotnet pack` dans un dossier local (flux NuGet a part
+  entiere), resolu puis execute contre `Sirocco.SampleTarget` — 0 % d'echec.
 - ~~**Protocoles de référence**~~ écrits comme extensions pour valider le contrat : SQL, SSE, MQTT,
   GraphQL. **Les quatre sont faits.**
   - ~~**SQL**~~ — fait, voir [Protocoles de référence — SQL](docs/extensions/contrat.md#sql) :
-    `extensions/Tempest.Extensions.Sql` interroge une vraie base SQLite (deux etapes reelles par
+    `extensions/Sirocco.Extensions.Sql` interroge une vraie base SQLite (deux etapes reelles par
     iteration, SELECT parametre et INSERT) plutot que le client HTTP partage — referme le SQL
     explicitement ecarte des jeux de donnees en phase 2, sous un angle different. Trouvaille
     reelle documentee plutot que corrigee dans le coeur : un plugin charge par `Assembly.LoadFrom`
@@ -336,19 +336,19 @@ seul SQL, Kafka, MQTT, AMQP et le reste est un puits sans fond. Le modèle d'ext
     en plus etre cherchee par le plugin lui-meme (`NativeLibrary.SetDllImportResolver`), le
     resolveur par defaut de `SQLitePCLRaw` cherchant a cote de l'hote plutot qu'a cote du plugin.
   - ~~**SSE**~~ — fait, voir [Protocoles de référence — SSE](docs/extensions/contrat.md#sse) :
-    `extensions/Tempest.Extensions.Sse` valide le contrat sous un angle different de SQL — pas un
+    `extensions/Sirocco.Extensions.Sse` valide le contrat sous un angle different de SQL — pas un
     protocole different de HTTP, mais un usage different d'`IVirtualUserContext.HttpClient` : une
     reponse en flux continu (`text/event-stream`) lue evenement par evenement, plutot que
     l'aller-retour requete/reponse unique du reste du depot. Contrairement a SQL, utilise
-    `--target-url` normalement et ne depend d'aucun paquet NuGet au-dela de `Tempest.Domain` — un
+    `--target-url` normalement et ne depend d'aucun paquet NuGet au-dela de `Sirocco.Domain` — un
     simple `dotnet build` suffit, confirmant par contraste que l'exigence de publication de SQL
     tenait a sa dependance externe, pas au contrat lui-meme. Nouveau point d'ecoute
-    `GET /api/events/stream` sur `Tempest.SampleTarget`.
+    `GET /api/events/stream` sur `Sirocco.SampleTarget`.
   - ~~**MQTT**~~ — fait, voir [Protocoles de référence — MQTT](docs/extensions/contrat.md#mqtt) :
-    `extensions/Tempest.Extensions.Mqtt` revient a un protocole reellement different de HTTP comme
+    `extensions/Sirocco.Extensions.Mqtt` revient a un protocole reellement different de HTTP comme
     SQL, mais oriente publication/abonnement : chaque iteration s'abonne a un sujet qui lui est
     propre, y publie un message, puis attend sa propre reception (round-trip complet, pas un
-    simple accuse de publication). `Tempest.SampleTarget` heberge desormais son propre courtier
+    simple accuse de publication). `Sirocco.SampleTarget` heberge desormais son propre courtier
     MQTT embarque (`MQTTnet.Server`) pour rester sans infrastructure externe, meme logique que
     SQLite pour SQL. Confirmation reelle plutot que nouvelle trouvaille : ce plugin doit lui aussi
     etre publie (`dotnet publish`), pas seulement compile, meme si sa seule dependance ajoutee
@@ -358,21 +358,21 @@ seul SQL, Kafka, MQTT, AMQP et le reste est un puits sans fond. Le modèle d'ext
     SSE, reste au-dessus de HTTP mais valide un autre aspect du contrat — succes/echec se lit dans
     le corps JSON (`errors`), jamais dans le code de statut qui reste 200 meme pour une mutation en
     echec metier. Deux etapes reelles, memes natures d'operation que SQL (lecture/ecriture) sous
-    revetement HTTP. `Tempest.SampleTarget` heberge un vrai schema GraphQL (`GraphQL`, moteur
+    revetement HTTP. `Sirocco.SampleTarget` heberge un vrai schema GraphQL (`GraphQL`, moteur
     GraphQL.NET, pas une simulation par correspondance de chaine). Aucune dependance NuGet au-dela
-    de `Tempest.Domain` cote plugin : un simple `dotnet build` suffit, comme SSE. **Clot
+    de `Sirocco.Domain` cote plugin : un simple `dotnet build` suffit, comme SSE. **Clot
     entierement le bullet des quatre protocoles de reference.**
 - ~~**Guide d'écriture d'extension**~~ — fait, voir [Guide d'écriture d'extension](docs/extensions/guide.md#guide-décriture-dextension) :
   sans documentation, un modèle de plugin restait théorique. Le contrat lui-même n'a pas changé —
   ce chantier est purement documentaire, contrairement à tous les précédents de la phase. Contenu :
   quand écrire une extension plutôt qu'un scénario scripté, le contrat minimal (`IWorkflow` en
   détail, ordre d'appel des cinq méthodes, discipline du chemin chaud), un premier plugin pas à pas
-  (même forme que `samples/Tempest.SamplePlugin`), le choix `dotnet build`/`dotnet publish` selon la
+  (même forme que `samples/Sirocco.SamplePlugin`), le choix `dotnet build`/`dotnet publish` selon la
   nature de la dépendance ajoutée, la distribution par paquet NuGet, la discipline de test (vrai
   double, jamais un mock) et un tableau récapitulatif des quatre protocoles de référence comme
   exemples travaillés. **Clôt entièrement la phase 6.** Vérifié en suivant le guide à la lettre
   depuis un dossier vide, sans rien copier depuis ce dépôt : un plugin minimal construit par un
-  simple `dotnet build` puis chargé par `tempest run` contre `Tempest.SampleTarget` réellement
+  simple `dotnet build` puis chargé par `sirocco run` contre `Sirocco.SampleTarget` réellement
   démarré — sélection automatique du seul type disponible, puis `--plugin-type` explicite — les
   deux à 0 % d'échec. Dossier jetable, jamais commité.
 
@@ -385,12 +385,12 @@ de quelques dizaines de workers, ça ne tient plus. À ne lancer que lorsque des
 atteignent ce plafond.
 
 - ~~**Opérateur Kubernetes**~~ — fait, voir [Opérateur Kubernetes](docs/distribue/kubernetes.md#opérateur-kubernetes) :
-  une ressource `TestRun` (`tempest.dev/v1alpha1`, construite avec KubeOps), workers en
+  une ressource `TestRun` (`sirocco.dev/v1alpha1`, construite avec KubeOps), workers en
   `StatefulSet` + service headless, maître en `Job` — créés à l'application de la ressource,
   workers détruits automatiquement (réplicas ramenés à 0) une fois le tir terminé.
 - ~~**TLS sur le control plane**~~ — fait, voir [TLS sur le control plane](docs/distribue/mode-distribue.md#tls-sur-le-control-plane) :
   un seul certificat auto-signé partagé par le maître et les workers, épinglé par empreinte
-  (`Tempest.ClusterCertificateThumbprint`) côté client — le serveur (Kestrel) sert du HTTPS par
+  (`Sirocco.ClusterCertificateThumbprint`) côté client — le serveur (Kestrel) sert du HTTPS par
   pure configuration, sans code supplémentaire. Simplification assumée face à une PKI par nœud,
   renvoyée au chantier Kubernetes suivant (`cert-manager` y trouvera naturellement sa place).
 
@@ -435,12 +435,12 @@ atteignent ce plafond.
 *Effort faible · impact sur la notoriété*
 
 Un outil technique inconnu ne se diffuse pas par ses fonctionnalités mais par une démonstration
-qu'on ne peut pas ignorer. Tempest en a une à disposition, et elle est reproductible.
+qu'on ne peut pas ignorer. Sirocco en a une à disposition, et elle est reproductible.
 
 - ~~**Benchmark comparatif publié**~~ — fait : [benchmark/README.md](benchmark/README.md) et
   [benchmark/results/RESULTS.md](benchmark/results/RESULTS.md). Même cible saturée
-  (`Tempest.SampleTarget`, `ConcurrencyGate` réglé), même scénario et même profil de charge
-  (rampe 20→150 req/s) pour Tempest, k6, Gatling et NBomber. Reproductible en une commande
+  (`Sirocco.SampleTarget`, `ConcurrencyGate` réglé), même scénario et même profil de charge
+  (rampe 20→150 req/s) pour Sirocco, k6, Gatling et NBomber. Reproductible en une commande
   (`benchmark/run.sh`), méthode et limites documentées en toute honnêteté (y compris la variance
   observée d'un tir à l'autre sur une machine partagée).
 - ~~**Article de fond**~~ — fait, en deux versions complètes :
@@ -465,12 +465,12 @@ qu'on ne peut pas ignorer. Tempest en a une à disposition, et elle est reproduc
   charge de fond ; c'est l'ordre de grandeur qui porte la conclusion, pas le chiffre.)
 
   **Ce que le tir a démenti, et qui a rendu l'article meilleur** : l'hypothèse de départ était que
-  Tempest serait le seul à voir la vérité. Faux, deux fois.
+  Sirocco serait le seul à voir la vérité. Faux, deux fois.
 
   D'abord, NBomber (27 672 ms) ne borne pas sa concurrence, mesure donc cette attente
   *directement* — sans aucune notion de dette d'ordonnancement — et retombe à 2 % du `Response` de
-  Tempest : c'est une **validation croisée** du chiffre par un mécanisme indépendant. Le vrai
-  clivage n'est pas Tempest contre les autres, c'est **borné contre non borné**.
+  Sirocco : c'est une **validation croisée** du chiffre par un mécanisme indépendant. Le vrai
+  clivage n'est pas Sirocco contre les autres, c'est **borné contre non borné**.
 
   Ensuite, la vraie leçon du tir est ailleurs, dans une colonne que personne ne lit : **un seul des
   quatre outils a délivré les 6000 itérations demandées.** k6 en a livré 4092 (1907
@@ -485,7 +485,7 @@ qu'on ne peut pas ignorer. Tempest en a une à disposition, et elle est reproduc
   « charge délivrée » est devenue son diagnostic central — générée depuis les sorties réelles, y
   compris les libellés d'erreur de Gatling, plutôt qu'affirmée en prose.
 
-  **Trois angles morts de Tempest mis au jour par cette expérience, et écrits dans l'article** :
+  **Trois angles morts de Sirocco mis au jour par cette expérience, et écrits dans l'article** :
   `InjectorFellBehind` est resté faux (les 6000 jetons ont été émis, seulement en retard — ce
   drapeau détecte un injecteur qui renonce, pas un qui traîne) ; `isTrustworthy` est resté vrai
   (il ne regarde que les mesures perdues) ; et la dette n'est portée que par le **premier pas** de
@@ -507,9 +507,9 @@ qu'on ne peut pas ignorer. Tempest en a une à disposition, et elle est reproduc
   mécanisme, pas un classement de vitesse ; harnais hors CI (comme le benchmark publié — Docker,
   image k6, bundle Gatling, plusieurs minutes) ; pas de contre-épreuve « injecteur délibérément
   goulot » ; Gatling et NBomber non bornables en modèle ouvert, donc la parité de plafond de VUs ne
-  vaut qu'entre Tempest et k6 ; sorties brutes non versionnées, seul
+  vaut qu'entre Sirocco et k6 ; sorties brutes non versionnées, seul
   [SATURATION.md](benchmark/results-saturation/SATURATION.md) l'est.
-- ~~**Site de documentation**~~ — fait, publié sur <https://coulibalyousmane.github.io/Tempest/>
+- ~~**Site de documentation**~~ — fait, publié sur <https://coulibalyousmane.github.io/Sirocco/>
   (DocFX, déployé par [`.github/workflows/docs.yml`](.github/workflows/docs.yml)). Le README, qui
   faisait 2666 lignes et servait à la fois de page d'accueil, de manuel, de journal de
   vérification et de doc d'architecture, est réduit à une page d'accueil de ~115 lignes ; son
@@ -518,21 +518,21 @@ qu'on ne peut pas ignorer. Tempest en a une à disposition, et elle est reproduc
 
   **« Exemples exécutables » est pris au mot** : aucune page ne recopie un exemple dans son
   markdown, chacune **transclut** un vrai fichier du dépôt (`[!code-yaml[](...)]`), et la CI
-  **exécute** chacun d'eux contre un `Tempest.SampleTarget` réellement démarré, avec un seuil sur
-  le taux d'erreur — sans seuil, `tempest run` sortirait 0 même à 100 % d'échec et la CI validerait
+  **exécute** chacun d'eux contre un `Sirocco.SampleTarget` réellement démarré, avec un seuil sur
+  le taux d'erreur — sans seuil, `sirocco run` sortirait 0 même à 100 % d'échec et la CI validerait
   un exemple cassé. Un exemple qui cesse de fonctionner casse donc le build, et ne peut plus
   dériver en silence de ce que le moteur fait réellement.
 
   Ce chantier a surtout révélé combien la doc avait déjà dérivé : **aucun** fichier du dépôt ne
   contenait `datasets:`, `checks:`, `group:`, `tags:`, `metrics:`, `thinkTime:`,
-  `Tempest:Scenarios`, `Tempest:Workflow` ni la section `GrpcEcho`, alors que chaque section
-  correspondante affirmait avoir été vérifiée par un vrai tir ; l'exemple `Tempest:Scenarios`
+  `Sirocco:Scenarios`, `Sirocco:Workflow` ni la section `GrpcEcho`, alors que chaque section
+  correspondante affirmait avoir été vérifiée par un vrai tir ; l'exemple `Sirocco:Scenarios`
   référençait `checkout.yaml` et `browse.yaml`, qui n'existaient nulle part ; et l'exemple de
   métrique personnalisée mesurait une jauge sur `$.cartSize`, un champ absent de la réponse réelle
   de la cible. D'où 12 nouveaux fichiers d'exemple dans [`docs/examples/`](docs/examples), tous
   exécutés pour de bon.
 
-  Piège d'usage rencontré en écrivant les pages, documenté plutôt que contourné : `Tempest.Host`
+  Piège d'usage rencontré en écrivant les pages, documenté plutôt que contourné : `Sirocco.Host`
   n'a pas d'option pour désigner un fichier de configuration (il lit `appsettings.<env>.json` de sa
   racine de contenu), et le chemin passé à `--contentRoot` doit être **absolu** — un chemin relatif
   est résolu depuis le dossier du binaire, pas depuis le répertoire courant.
@@ -550,7 +550,7 @@ qu'on ne peut pas ignorer. Tempest en a une à disposition, et elle est reproduc
   **Ce que la mesure donne**, dépôt public depuis le 5 août 2026, soit 17 jours : 0 étoile, 0 fork,
   0 abonné, 0 issue ; **0 release** — aucun tag, ni local ni distant, et
   [`release.yml`](.github/workflows/release.yml) ne se déclenchant que sur un tag `v*`, il n'a
-  jamais tourné ; **0 paquet sur nuget.org** — les cinq identifiants `Tempest.*` y renvoient 404 ;
+  jamais tourné ; **0 paquet sur nuget.org** — les cinq identifiants `Sirocco.*` y renvoient 404 ;
   site de documentation en ligne depuis la veille.
 
   **Ce que ces zéros ne disent pas.** La condition n'est pas *non remplie*, elle est
@@ -565,11 +565,12 @@ qu'on ne peut pas ignorer. Tempest en a une à disposition, et elle est reproduc
 
   1. Les deux gestes de distribution encore ouverts de la phase 1 sont faits — paquets publiés sur
      nuget.org, et une première release `vX.Y.Z` réellement poussée. Sans eux, il n'y a rien à
-     observer. Trouvaille de cette mesure, à traiter au passage : le paquet `Tempest` existe déjà
-     sur nuget.org (générateur de templates sans rapport, 80 021 téléchargements), donc les cinq
-     identifiants `Tempest.*` sont libres mais **non réservables** en préfixe — publier, c'est
-     aussi revendiquer l'identité avant quelqu'un d'autre.
-  2. L'usage se **répète** au lieu d'être un pic : des installations de `Tempest.Cli` qui suivent
+     observer. C'est cette mesure qui a déclenché le renommage du projet, alors appelé Tempest :
+     l'identifiant `Tempest` était déjà occupé sur nuget.org par un générateur de templates sans
+     rapport (dernier envoi en février 2017, jamais sorti de preview), ce qui rendait improbable
+     la réservation du préfixe `Tempest.*`. `Sirocco` et ses cinq `Sirocco.*` sont libres, préfixe
+     réservable compris — publier, c'est désormais aussi revendiquer l'identité.
+  2. L'usage se **répète** au lieu d'être un pic : des installations de `Sirocco.Cli` qui suivent
      les versions successives, et des issues ouvertes par des inconnus décrivant un usage réel.
      C'est le signal le plus honnête disponible : une étoile coûte un clic, une issue coûte du
      temps.
@@ -600,7 +601,7 @@ fonctionnelle de k6 fonctionnalité par fonctionnalité est perdu d'avance. La s
 est d'être meilleur sur un axe étroit et défendable, puis d'élargir.
 
 **Construire le SaaS trop tôt.** C'est le réflexe qui tue les outils open source naissants :
-monétiser avant d'avoir des utilisateurs. Tant que personne n'utilise Tempest gratuitement,
+monétiser avant d'avoir des utilisateurs. Tant que personne n'utilise Sirocco gratuitement,
 personne ne le paiera.
 
 **Ajouter des protocoles avant le modèle d'extension.** La phase 6 place volontairement le contrat
@@ -616,6 +617,20 @@ son auteur. Deux gestes restent ouverts, non bloquants pour la suite : publier l
 sur nuget.org (actuellement installables depuis une source locale ou un flux privé seulement) et
 déclencher le workflow de release GitHub pour les binaires autonomes (`vX.Y.Z`, prêt mais jamais
 poussé).
+
+**Le projet s'appelait Tempest jusqu'au 23 août 2026**, et le renommage en **Sirocco** est sorti
+de la mesure du premier de ces deux gestes. L'identifiant `Tempest` était occupé sur nuget.org, ce
+qui ne bloquait rien — les cinq `Tempest.*` étaient libres, et le paquet occupant n'était même pas
+un `dotnet tool` — mais interdisait en pratique la réservation du préfixe. La vraie collision était
+ailleurs et plus sérieuse : `tempest` sur PyPI est **OpenStack Integration Testing** (v46,
+activement maintenu), un outil de test dans l'infrastructure cloud, c'est-à-dire exactement le
+public visé ici ; et TEMPEST, nom de code des émanations compromettantes, domine le sens du mot
+dans une recherche technique — trois des six dépôts GitHub « tempest » les plus étoilés en
+relèvent. Aucun outil de **test de charge** ne portait ce nom, donc rien n'était cassé : c'est le
+coût du renommage, pas l'urgence, qui commandait la date. Fait à 0 étoile, 0 fork, 0 release et
+0 paquet publié, il n'a invalidé aucune installation existante ; après le premier `nuget push` et
+le premier tag, il serait devenu un changement cassant à traîner avec des identifiants dépréciés.
+`Sirocco` est libre partout — nom nu et cinq `Sirocco.*` sur nuget.org, préfixe donc réservable.
 
 **La décision de la phase 2 est tranchée et le moteur de script existe** : Roslyn (C# scripté),
 voir [Scénarios scriptés](docs/scenarios/scripte.md#scénarios-scriptés-roslyn). C'était le seul choix de cette
@@ -633,7 +648,7 @@ par itérations sont faits, voir [Modèle fermé](docs/charge/modeles.md#modèle
 et [Itérations partagées et itérations par
 utilisateur](docs/charge/modeles.md#itérations-partagées-et-itérations-par-utilisateur) (`--iterations <n>`,
 `--vus <n> --iterations-per-vu <k>`) — mise en garde explicite dans le rapport pour les quatre.
-[Scénarios concurrents](docs/charge/scenarios-concurrents.md#scénarios-concurrents) (`Tempest:Scenarios`) fait tourner
+[Scénarios concurrents](docs/charge/scenarios-concurrents.md#scénarios-concurrents) (`Sirocco:Scenarios`) fait tourner
 plusieurs de ces modèles en parallèle dans le même tir, chacun isolé jusque dans sa propre chaîne
 de mesure. [Bridage](docs/charge/modeles.md#bridage) (`--max-rps`) plafonne le débit réel par-dessus n'importe
 lequel de ces modèles, y compris par scénario dans un tir à scénarios concurrents.
@@ -651,8 +666,8 @@ seul pendant le tir.
 [Convertisseur HAR](docs/convertisseurs/index.md#convertisseur-har), [Convertisseur
 OpenAPI](docs/convertisseurs/index.md#convertisseur-openapi), [Convertisseur
 Postman](docs/convertisseurs/index.md#convertisseur-postman) et [Proxy enregistreur](docs/convertisseurs/index.md#proxy-enregistreur) :
-`tools/Tempest.HarConvert`, `tools/Tempest.OpenApiConvert`, `tools/Tempest.PostmanConvert` et
-`tools/Tempest.RecorderProxy` traduisent respectivement un export du navigateur, une
+`tools/Sirocco.HarConvert`, `tools/Sirocco.OpenApiConvert`, `tools/Sirocco.PostmanConvert` et
+`tools/Sirocco.RecorderProxy` traduisent respectivement un export du navigateur, une
 spécification d'API, une collection Postman et une capture de trafic en direct en scénario
 scripté C# (`.csx`), conformément à la décision structurante prise en phase 2 — pas de YAML/JSON
 généré. Différence de nature assumée dans la doc : HAR et proxy enregistreur rejouent du trafic
@@ -668,21 +683,21 @@ SQL](docs/extensions/contrat.md#sql), [— SSE](docs/extensions/contrat.md#sse),
 GraphQL](docs/extensions/contrat.md#graphql) et [Guide d'écriture d'extension](docs/extensions/guide.md#guide-décriture-dextension).
 `PluginWorkflowLoader` charge un `IWorkflow` compilé indépendamment de ce dépôt depuis un chemin de
 fichier, `NuGetPluginResolver` fait de même depuis un identifiant de paquet NuGet, et
-`samples/Tempest.SamplePlugin` prouve les deux par une assembly qui n'est justement référencée par
+`samples/Sirocco.SamplePlugin` prouve les deux par une assembly qui n'est justement référencée par
 aucun projet du cœur. Les quatre protocoles de référence valident chacun une facette différente du
-contrat : `extensions/Tempest.Extensions.Sql` contre un protocole réellement différent de HTTP
+contrat : `extensions/Sirocco.Extensions.Sql` contre un protocole réellement différent de HTTP
 (trouvaille réelle sur le chargement de dépendances natives, documentée, pas corrigée dans le
-cœur) ; `extensions/Tempest.Extensions.Sse` sous l'angle d'un usage différent du client HTTP
+cœur) ; `extensions/Sirocco.Extensions.Sse` sous l'angle d'un usage différent du client HTTP
 partagé (flux continu plutôt qu'aller-retour unique), confirmant par contraste que l'exigence de
 publication de SQL tenait à sa dépendance externe, pas au contrat lui-même ;
-`extensions/Tempest.Extensions.Mqtt` en revenant à un protocole réellement différent comme SQL,
+`extensions/Sirocco.Extensions.Mqtt` en revenant à un protocole réellement différent comme SQL,
 mais orienté publication/abonnement (round-trip complet sujet→courtier→sujet), confirmant que
 l'exigence de publication s'applique à toute dépendance externe, gérée ou native ;
-`extensions/Tempest.Extensions.GraphQl` enfin, sous un autre usage HTTP comme SSE — succès/échec
+`extensions/Sirocco.Extensions.GraphQl` enfin, sous un autre usage HTTP comme SSE — succès/échec
 porté par le corps JSON, jamais par le code de statut. Dernier bullet, purement documentaire : le
 guide d'écriture d'extension rassemble cette recette pour la cinquième extension, pas encore
 écrite par ce dépôt — vérifié en le suivant à la lettre depuis un dossier vide, jusqu'à un vrai tir
-à 0 % d'échec contre `Tempest.SampleTarget`.
+à 0 % d'échec contre `Sirocco.SampleTarget`.
 
 **La phase 7 est maintenant entièrement traitée**, malgré le principe énoncé plus haut ("ne
 lancer que lorsque des utilisateurs réels atteignent ce plafond") — choix explicite de
@@ -701,7 +716,7 @@ qu'en supposant que ça marchait.
 
 **La phase 8 est maintenant entièrement traitée.** Le [benchmark comparatif](benchmark/README.md)
 mesure le différenciateur ; le **site de documentation** le rend consultable
-(<https://coulibalyousmane.github.io/Tempest/>), avec des exemples qui ne peuvent pas mentir parce
+(<https://coulibalyousmane.github.io/Sirocco/>), avec des exemples qui ne peuvent pas mentir parce
 que la CI les exécute ; l'**article de fond** ([FR](docs/articles/dette-ordonnancement.md) ·
 [EN](docs/articles/scheduling-debt.md)) le démontre enfin sur un régime où il est massif —
 28 311 ms de `Response` contre 819 ms de `Service`, à 0 % d'échec — après avoir établi que la dette

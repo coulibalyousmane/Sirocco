@@ -19,26 +19,26 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Restaurer
-        run: dotnet restore Tempest.sln
+        run: dotnet restore Sirocco.sln
 
       - name: Compiler (Release)
-        run: dotnet build Tempest.sln --configuration Release --no-restore
+        run: dotnet build Sirocco.sln --configuration Release --no-restore
 
       - name: Tests unitaires
-        run: dotnet test tests/Tempest.UnitTests --configuration Release --no-build
+        run: dotnet test tests/Sirocco.UnitTests --configuration Release --no-build
 
-      - name: Empaqueter Tempest.Cli (outil dotnet)
-        run: dotnet pack src/Tempest.Cli --configuration Release --no-build
+      - name: Empaqueter Sirocco.Cli (outil dotnet)
+        run: dotnet pack src/Sirocco.Cli --configuration Release --no-build
 
       - name: Empaqueter les paquets NuGet bibliotheque
         run: |
-          dotnet pack src/Tempest.Domain --configuration Release --no-build
-          dotnet pack src/Tempest.Application --configuration Release --no-build
-          dotnet pack src/Tempest.Infrastructure --configuration Release --no-build
-          dotnet pack src/Tempest.Scenarios --configuration Release --no-build
+          dotnet pack src/Sirocco.Domain --configuration Release --no-build
+          dotnet pack src/Sirocco.Application --configuration Release --no-build
+          dotnet pack src/Sirocco.Infrastructure --configuration Release --no-build
+          dotnet pack src/Sirocco.Scenarios --configuration Release --no-build
 
       - name: Verifier le formatage
-        run: dotnet format Tempest.sln --verify-no-changes --severity info
+        run: dotnet format Sirocco.sln --verify-no-changes --severity info
 
   smoke-e2e:
     runs-on: ubuntu-latest
@@ -59,17 +59,17 @@ jobs:
 
       - name: Compiler la cible de demonstration et l'hote (Release)
         run: |
-          dotnet build samples/Tempest.SampleTarget --configuration Release
-          dotnet build src/Tempest.Host --configuration Release
+          dotnet build samples/Sirocco.SampleTarget --configuration Release
+          dotnet build src/Sirocco.Host --configuration Release
 
-      - name: Demarrer Tempest.SampleTarget en arriere-plan
+      - name: Demarrer Sirocco.SampleTarget en arriere-plan
         run: |
-          nohup dotnet samples/Tempest.SampleTarget/bin/Release/net10.0/Tempest.SampleTarget.dll > sampletarget.log 2>&1 &
+          nohup dotnet samples/Sirocco.SampleTarget/bin/Release/net10.0/Sirocco.SampleTarget.dll > sampletarget.log 2>&1 &
           for i in $(seq 1 30); do
             curl -sf http://localhost:5281/api/catalog/products > /dev/null && exit 0
             sleep 1
           done
-          echo "Tempest.SampleTarget n'a jamais repondu :"
+          echo "Sirocco.SampleTarget n'a jamais repondu :"
           cat sampletarget.log
           exit 1
         env:
@@ -77,37 +77,37 @@ jobs:
           SampleTarget__GrpcPort: "5287"
 
       - name: Tir de fumee avec seuils CI (echoue si la chaine seuils/code de sortie casse)
-        run: dotnet src/Tempest.Host/bin/Release/net10.0/Tempest.Host.dll
+        run: dotnet src/Sirocco.Host/bin/Release/net10.0/Sirocco.Host.dll
         env:
           ASPNETCORE_URLS: http://localhost:5299
-          Tempest__TargetBaseUrl: http://localhost:5281
-          Tempest__MaxVirtualUsers: "20"
-          Tempest__ExitAfterRun: "true"
-          Tempest__Profile__0__FromRps: "0"
-          Tempest__Profile__0__ToRps: "10"
-          Tempest__Profile__0__DurationSeconds: "5"
-          Tempest__Profile__1__FromRps: "10"
-          Tempest__Profile__1__ToRps: "10"
-          Tempest__Profile__1__DurationSeconds: "10"
-          Tempest__Profile__2__FromRps: "10"
-          Tempest__Profile__2__ToRps: "0"
-          Tempest__Profile__2__DurationSeconds: "3"
-          Tempest__Thresholds__0__StepName: "__iteration"
-          Tempest__Thresholds__0__Metric: "ResponseP95Milliseconds"
-          Tempest__Thresholds__0__Comparison: "LessThan"
-          Tempest__Thresholds__0__Limit: "1000"
-          Tempest__Thresholds__1__StepName: "__iteration"
-          Tempest__Thresholds__1__Metric: "ErrorRate"
-          Tempest__Thresholds__1__Comparison: "LessThanOrEqual"
-          Tempest__Thresholds__1__Limit: "0.01"
+          Sirocco__TargetBaseUrl: http://localhost:5281
+          Sirocco__MaxVirtualUsers: "20"
+          Sirocco__ExitAfterRun: "true"
+          Sirocco__Profile__0__FromRps: "0"
+          Sirocco__Profile__0__ToRps: "10"
+          Sirocco__Profile__0__DurationSeconds: "5"
+          Sirocco__Profile__1__FromRps: "10"
+          Sirocco__Profile__1__ToRps: "10"
+          Sirocco__Profile__1__DurationSeconds: "10"
+          Sirocco__Profile__2__FromRps: "10"
+          Sirocco__Profile__2__ToRps: "0"
+          Sirocco__Profile__2__DurationSeconds: "3"
+          Sirocco__Thresholds__0__StepName: "__iteration"
+          Sirocco__Thresholds__0__Metric: "ResponseP95Milliseconds"
+          Sirocco__Thresholds__0__Comparison: "LessThan"
+          Sirocco__Thresholds__0__Limit: "1000"
+          Sirocco__Thresholds__1__StepName: "__iteration"
+          Sirocco__Thresholds__1__Metric: "ErrorRate"
+          Sirocco__Thresholds__1__Comparison: "LessThanOrEqual"
+          Sirocco__Thresholds__1__Limit: "0.01"
 
       - name: Tir de fumee avec le binaire autonome linux-x64 (verifie la publication self-contained)
         run: |
-          dotnet publish src/Tempest.Cli --configuration Release --runtime linux-x64 \
+          dotnet publish src/Sirocco.Cli --configuration Release --runtime linux-x64 \
             --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
             -o publish/linux-x64
-          chmod +x publish/linux-x64/tempest
-          ./publish/linux-x64/tempest run --target-url http://localhost:5281 --rps 10 --duration 5s
+          chmod +x publish/linux-x64/sirocco
+          ./publish/linux-x64/sirocco run --target-url http://localhost:5281 --rps 10 --duration 5s
 
       - name: Tir de fumee d'un scenario scripte (verifie le moteur Roslyn de la phase 2)
         # Depend du framework, pas le binaire self-contained fichier unique publie ci-dessus :
@@ -117,26 +117,26 @@ jobs:
         # que d'echouer silencieusement. C'est un IL3000/echec de publication qui a casse ce job
         # une premiere fois avant d'etre trouve et corrige ici.
         run: |
-          dotnet build src/Tempest.Cli --configuration Release -o build/framework-dependent
-          dotnet build/framework-dependent/tempest.dll run scenarios/scripted-checkout.csx \
+          dotnet build src/Sirocco.Cli --configuration Release -o build/framework-dependent
+          dotnet build/framework-dependent/sirocco.dll run scenarios/scripted-checkout.csx \
             --target-url http://localhost:5281 --rps 15 --duration 5s --max-vus 10
 
       - name: Tir reel de chaque scenario d'exemple de la documentation
         # Ce qui rend "exemples executables" verifie plutot que declaratif : chaque scenario
         # transclus par une page du site est reellement joue ici, avec un seuil sur le taux
-        # d'erreur — sans seuil, tempest run sortirait 0 meme a 100 % d'echec et la CI
+        # d'erreur — sans seuil, sirocco run sortirait 0 meme a 100 % d'echec et la CI
         # validerait un exemple casse.
         run: |
           for f in docs/examples/scenarios/*.yaml; do
             echo "::group::$f"
-            dotnet build/framework-dependent/tempest.dll run "$f" \
+            dotnet build/framework-dependent/sirocco.dll run "$f" \
               --target-url http://localhost:5281 --rps 10 --duration 5s --max-vus 40 \
               --threshold "__iteration:ErrorRate:LessThanOrEqual:0.01"
             echo "::endgroup::"
           done
 
       - name: Tir reel de chaque fragment de configuration de la documentation
-        # Tempest.Host n'a pas d'option pour designer un fichier de configuration : il lit
+        # Sirocco.Host n'a pas d'option pour designer un fichier de configuration : il lit
         # appsettings.<environnement>.json de sa racine de contenu. Le chemin doit etre absolu
         # (un chemin relatif est resolu depuis le dossier du binaire) ; le repertoire courant
         # reste la racine du depot, ce dont dependent les ScenarioFile de l'exemple a scenarios
@@ -145,7 +145,7 @@ jobs:
         run: |
           for environment in seuils-ci scenarios-concurrents grpc; do
             echo "::group::appsettings.$environment.json"
-            dotnet src/Tempest.Host/bin/Release/net10.0/Tempest.Host.dll \
+            dotnet src/Sirocco.Host/bin/Release/net10.0/Sirocco.Host.dll \
               --contentRoot "$PWD/docs/examples/config" --environment "$environment"
             echo "::endgroup::"
           done

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    Troisieme protocole de reference de la roadmap phase 6 (MQTT, apres SQL et SSE, avant GraphQL) :
+    revient a un protocole reellement different de HTTP comme SQL, mais oriente publication/abonnement
+    plutot que requete/reponse — un utilisateur virtuel publie sur un sujet puis attend sa propre
+    reception via un abonnement, round-trip complet mesure par StepScope. Seule dependance au-dela de
+    Sirocco.Domain : le client MQTTnet lui-meme, aucun serveur externe requis pour la verification
+    end-to-end (voir samples/Sirocco.SampleTarget, qui heberge son propre broker embarque).
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Sirocco.Domain\Sirocco.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MQTTnet" Version="5.2.0.1603" />
+  </ItemGroup>
+
+</Project>

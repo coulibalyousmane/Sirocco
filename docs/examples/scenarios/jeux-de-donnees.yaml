@@ -1,4 +1,4 @@
-# Jeux de données CSV et JSON, contre Tempest.SampleTarget.
+# Jeux de données CSV et JSON, contre Sirocco.SampleTarget.
 #
 # Chaque itération pioche une ligne par jeu et l'expose à toutes ses étapes via {{jeu.colonne}} —
 # une ligne par itération, pas par étape, comme les variables extraites.
@@ -14,7 +14,7 @@
 # l'emplacement de ce fichier : lancer la commande ci-dessous depuis la racine du dépôt.
 #
 # Exécution, depuis la racine du dépôt :
-#   tempest run docs/examples/scenarios/jeux-de-donnees.yaml \
+#   sirocco run docs/examples/scenarios/jeux-de-donnees.yaml \
 #     --target-url http://localhost:5281 --rps 10 --duration 5s --max-vus 4
 
 name: jeux-de-donnees

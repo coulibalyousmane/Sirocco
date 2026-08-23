@@ -2,7 +2,7 @@
 
 ## Jeux de données
 
-Premier bullet de la [roadmap phase 2](https://github.com/coulibalyousmane/Tempest/blob/main/ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) :
+Premier bullet de la [roadmap phase 2](https://github.com/coulibalyousmane/Sirocco/blob/main/ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) :
 sans jeu de données, tous les utilisateurs virtuels envoient les mêmes identifiants — le pool
 généré par Bogus dans `DynamicCheckoutWorkflow` ne couvrait ce besoin que pour ce seul scénario,
 codé en dur. Un scénario déclaratif peut désormais charger un fichier CSV ou JSON et piocher une
@@ -24,7 +24,7 @@ Un JSON de jeu de données est un **tableau d'objets plats**. Une valeur numéri
 telle quelle : `{{panier.quantity}}` donne `3`, pas `"3"` — donc utilisable sans guillemets dans un
 corps JSON, comme ci-dessus.
 
-Trois stratégies de choix d'une ligne, portées par `DataSet` (`Tempest.Domain.Data`) :
+Trois stratégies de choix d'une ligne, portées par `DataSet` (`Sirocco.Domain.Data`) :
 
 - **`circular`** (défaut) — parcourt les lignes dans l'ordre, en boucle, un curseur **partagé**
   par tous les utilisateurs virtuels (`Interlocked.Increment`, sans verrou).
@@ -39,7 +39,7 @@ d'une même itération voient la même ligne, comme les variables extraites. Le 
 une seule fois dans `IWorkflow.SetUpAsync`, jamais sur le chemin critique — un jeu de données
 volumineux ne coûte rien pendant le tir.
 
-Vérifié par de vrais tirs contre `Tempest.SampleTarget` : un scénario déclaratif dont `checkout`
+Vérifié par de vrais tirs contre `Sirocco.SampleTarget` : un scénario déclaratif dont `checkout`
 substitue `productId`/`quantity` depuis un CSV avec `uniquePerVirtualUser` passe à 0 % d'échec
 sur 3 utilisateurs virtuels, chacun recevant sa propre ligne à chaque itération (confirmé par
 instrumentation temporaire) ; `scenarios/scripted-checkout.csx` (voir plus bas) recevant de même
@@ -47,7 +47,7 @@ un identifiant distinct par utilisateur virtuel depuis `scenarios/users.csv`.
 
 ## Checks
 
-Deuxième bullet de la [roadmap phase 2](https://github.com/coulibalyousmane/Tempest/blob/main/ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) :
+Deuxième bullet de la [roadmap phase 2](https://github.com/coulibalyousmane/Sirocco/blob/main/ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) :
 une assertion logique sur la réponse d'une étape, qui enregistre un échec **sans jamais faire
 échouer la requête HTTP** dont elle dérive — `checkout` reste un 200 même si un check sur son
 corps échoue. Chaque check devient sa **propre étape** dans le rapport (même table, mêmes
@@ -71,7 +71,7 @@ ensemble (`__iteration`) — seule la requête HTTP dont il dérive reste inchan
 avec l'extraction manquée (étape 9) : un problème logique reste visible dans le signal global,
 sans être imputé à tort au transport.
 
-Vérifié par de vrais tirs contre `Tempest.SampleTarget`. D'abord le cas qui échoue, celui qui
+Vérifié par de vrais tirs contre `Sirocco.SampleTarget`. D'abord le cas qui échoue, celui qui
 importe : `login` avec un check qui trouve toujours son jeton (`has-token`, 0 % d'échec) et un
 second qui ne trouve jamais le champ qu'il cherche (`status-ok`, absent de la réponse réelle,
 100 % d'échec) — `login` lui-même reste à 0 % d'échec sur les 15 itérations, confirmant qu'un
@@ -91,7 +91,7 @@ assertion comme sa propre étape (`registry.Register(...)` puis `context.BeginSt
 
 ## Groupes et étiquettes
 
-Troisième bullet de la [roadmap phase 2](https://github.com/coulibalyousmane/Tempest/blob/main/ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) :
+Troisième bullet de la [roadmap phase 2](https://github.com/coulibalyousmane/Sirocco/blob/main/ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) :
 une hiérarchie d'étapes (`endpoint`) et des métadonnées de tir (`région`, `version`) dans le
 rapport. Les deux couvrent des besoins distincts et n'ont volontairement pas la même portée.
 
@@ -104,8 +104,8 @@ deux dimensions à la fois, groupes et étiquettes.*
 
 Ce scénario produit deux lignes `checkout/login` et `checkout/pay` dans le rapport — la même
 `StepId`/`StepScope` que n'importe quelle étape, donc les mêmes `/metrics` Prometheus et les
-mêmes seuils via `--threshold`, sans aucun changement dans `Tempest.Application`/
-`Tempest.Infrastructure`. Deux étapes de même nom dans deux groupes différents (`checkout/pay`,
+mêmes seuils via `--threshold`, sans aucun changement dans `Sirocco.Application`/
+`Sirocco.Infrastructure`. Deux étapes de même nom dans deux groupes différents (`checkout/pay`,
 `refund/pay`) restent deux lignes distinctes : la collision est vérifiée sur le nom qualifié, pas
 sur le nom seul.
 
@@ -133,17 +133,17 @@ Scénario **scripté** : `IWorkflow.Tags` est une propriété d'interface à dé
 qui en a besoin la surcharge directement dans sa classe, sans mécanisme supplémentaire.
 
 Limite assumée : en mode distribué (maître/workers), les étiquettes ne sont pas encore
-propagées jusqu'au rapport fusionné — seul le mode autonome (`tempest run` sans rôle) les affiche
+propagées jusqu'au rapport fusionné — seul le mode autonome (`sirocco run` sans rôle) les affiche
 aujourd'hui. À traiter si le besoin se présente.
 
-Vérifié par un vrai tir contre `Tempest.SampleTarget` : un scénario avec `login`/`pay` groupés
+Vérifié par un vrai tir contre `Sirocco.SampleTarget` : un scénario avec `login`/`pay` groupés
 sous `checkout` et une étape `browse` sans groupe affiche `checkout/login`, `checkout/pay` et
 `browse` dans la même table, et l'en-tête du rapport (texte et HTML) affiche
 `etiquettes : region=eu-west, version=v2`.
 
 ## Métriques personnalisées
 
-Dernier bullet réellement nouveau de la [roadmap phase 2](https://github.com/coulibalyousmane/Tempest/blob/main/ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) :
+Dernier bullet réellement nouveau de la [roadmap phase 2](https://github.com/coulibalyousmane/Sirocco/blob/main/ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) :
 un compteur, une jauge, un taux ou une tendance métier, alimentés depuis une réponse de scénario
 et agrégés comme les métriques natives — même vocabulaire que les `Counter`/`Gauge`/`Rate`/`Trend`
 de k6. Contrairement aux checks et aux groupes/étiquettes, cette fonctionnalité ne pouvait pas se
@@ -172,7 +172,7 @@ endroits différents), à condition de garder le même type partout où elle app
 incohérent est rejeté au chargement.
 
 Rendue dans le rapport (texte et HTML) sous une section dédiée, et dans Prometheus sous quatre
-instruments (`tempest.custom.counter`, `.gauge`, `.rate`, `.trend`), étiquetés par `metric` (et
+instruments (`sirocco.custom.counter`, `.gauge`, `.rate`, `.trend`), étiquetés par `metric` (et
 par `stat` pour la tendance : `min`/`mean`/`max`). Limites assumées pour ce premier tour, dans le
 même esprit que les précédentes : pas de centiles pour la tendance (`LatencyHistogram` est bâti
 pour une durée non négative bornée, pas pour une valeur métier de plage arbitraire — voir son
@@ -180,11 +180,11 @@ commentaire), pas de fenêtre glissante (une seule photographie cumulée), et pa
 inter-workers en mode distribué.
 
 Scénario **scripté** : aucun changement nécessaire — `CustomMetricRegistry`/`CustomMetricId` sont
-déjà dans les imports par défaut (`Tempest.Domain.Metrics`), et `IWorkflow.RegisterMetrics` a un
+déjà dans les imports par défaut (`Sirocco.Domain.Metrics`), et `IWorkflow.RegisterMetrics` a un
 défaut vide qu'un script surcharge s'il en a besoin, exactement comme il enregistre déjà ses
 propres étapes.
 
-Vérifié par de vrais tirs contre `Tempest.SampleTarget` — confirmés à la fois dans le rapport
+Vérifié par de vrais tirs contre `Sirocco.SampleTarget` — confirmés à la fois dans le rapport
 texte et dans `/metrics`. L'exemple ci-dessus, rejoué tel quel sur 50 itérations, donne les
 quatre types côte à côte :
 
@@ -201,7 +201,7 @@ un panier fixe, min, moyenne et max coïncideraient et n'illustreraient aucune d
 
 ## Temps de réflexion et rythme
 
-Dernier bullet de la [roadmap phase 2](https://github.com/coulibalyousmane/Tempest/blob/main/ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) :
+Dernier bullet de la [roadmap phase 2](https://github.com/coulibalyousmane/Sirocco/blob/main/ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) :
 une pause après une étape, avant la suivante — le `sleep()` de k6 ou le `pause()` de Gatling, sans
 lequel un parcours utilisateur simulé enchaîne ses requêtes plus vite qu'aucun humain ne le ferait
 jamais.
@@ -226,7 +226,7 @@ ralentir le rythme d'émission des jetons eux-mêmes.
 Scénario **scripté** : sans effet et sans besoin d'API dédiée — une pause s'écrit directement via
 `await Task.Delay(...)` dans le script, ce que Roslyn permettait déjà avant ce chantier.
 
-Vérifié par de vrais tirs contre `Tempest.SampleTarget` : avec un seul utilisateur virtuel, une
+Vérifié par de vrais tirs contre `Sirocco.SampleTarget` : avec un seul utilisateur virtuel, une
 pause fixe de 500 ms et un débit cible de 20 req/s (irréaliste pour un seul utilisateur virtuel
 avec cette pause), le débit effectif tombe à ~2 itérations/s — exactement `1 / (pause + latence)`
 — et la dette d'ordonnancement grimpe en conséquence, pendant que la latence brute de l'étape HTTP
@@ -240,6 +240,6 @@ L'exemple ci-dessus le montre d'un coup d'œil, rejoué tel quel : l'itération 
 549 ms de p50 (les deux pauses, ~300 à 600 ms, s'y ajoutent), alors que chacune des trois étapes
 HTTP reste à ~31 ms. La pause est bien hors de la portée de mesure de l'étape.
 
-Avec ce chantier, le contenu de la [roadmap phase 2](https://github.com/coulibalyousmane/Tempest/blob/main/ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire)
+Avec ce chantier, le contenu de la [roadmap phase 2](https://github.com/coulibalyousmane/Sirocco/blob/main/ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire)
 est entièrement traité.
 

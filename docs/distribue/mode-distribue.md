@@ -1,15 +1,15 @@
 # Mode distribué (Master/Workers)
 
-Plusieurs `Tempest.Host` peuvent tirer en parallèle, coordonnés par un maître qui fusionne
+Plusieurs `Sirocco.Host` peuvent tirer en parallèle, coordonnés par un maître qui fusionne
 leurs résultats en un seul rapport :
 
 ```json
-"Tempest": { "Role": "master" },
+"Sirocco": { "Role": "master" },
 "Master": { "ExpectedWorkers": 2, "RegistrationTimeoutSeconds": 30 }
 ```
 
 ```json
-"Tempest": { "Role": "worker" },
+"Sirocco": { "Role": "worker" },
 "Worker": { "MasterUrl": "http://master:5299", "SelfUrl": "http://worker1:5300" }
 ```
 
@@ -64,7 +64,7 @@ distribué en `grpc-echo` était cassé en pratique — chaque worker construisa
 clair sans le port dédié (limite Kestrel déjà documentée à l'étape 8). Aucun test ne l'avait
 révélé puisque personne n'avait encore tiré `grpc-echo` en mode distribué.
 
-Vérifié par deux vrais tirs (1 maître, 2 workers, contre `Tempest.SampleTarget`) :
+Vérifié par deux vrais tirs (1 maître, 2 workers, contre `Sirocco.SampleTarget`) :
 - Scénario déclaratif (`scenarios/smoke-test.yaml`, référencé uniquement par le maître) :
   154 itérations fusionnées, `login`/`browse`/`checkout` à **0 % d'échec** — jeton
   d'authentification extrait et propagé correctement d'une étape à l'autre sur les deux
@@ -73,12 +73,12 @@ Vérifié par deux vrais tirs (1 maître, 2 workers, contre `Tempest.SampleTarge
   fusionnées, **0 % d'échec** — confirme que le port gRPC dédié est bien atteint par les
   workers, là où le bug ci-dessus aurait échoué.
 
-Vérifié par un vrai tir (1 maître, 2 workers, contre `Tempest.SampleTarget`) : `/report/live`
+Vérifié par un vrai tir (1 maître, 2 workers, contre `Sirocco.SampleTarget`) : `/report/live`
 interrogé à mi-parcours affichait déjà 188 itérations combinées et cohérentes ; le rapport
 final en comptait 274, **0 échec** sur toutes les étapes, seuils respectés — une progression
 continue, pas un saut brutal entre "rien" et "tout" à la fin.
 
-Autre vérification (1 maître, 2 workers, contre `Tempest.SampleTarget`) : les deux
+Autre vérification (1 maître, 2 workers, contre `Sirocco.SampleTarget`) : les deux
 workers se sont enregistrés, préparés, démarrés, ont tiré et remonté leur rapport, fusionné
 en un total de 74 itérations, **0 échec** sur toutes les étapes, seuils respectés — le rapport
 combiné se lit comme s'il venait d'un seul processus.
@@ -88,7 +88,7 @@ et `/worker/start` — les quatre appels qui peuvent détourner un tir distribu�
 faux worker, imposer un scénario, falsifier un rapport) — acceptent un secret partagé optionnel :
 
 ```json
-"Tempest": { "ClusterSharedSecret": "un-secret-partage" }
+"Sirocco": { "ClusterSharedSecret": "un-secret-partage" }
 ```
 
 Exigé en `Authorization: Bearer <secret>` dès qu'il est configuré, comparé en temps constant
@@ -100,7 +100,7 @@ périmètre réseau (ne pas la lier à `0.0.0.0`) ; son mode distribué via `k6-
 pas non plus de jeton entre l'opérateur et les pods, la sécurité y reposant sur l'isolation
 Kubernetes. Le seul jeton de l'écosystème k6 est celui de l'API k6 Cloud (SaaS Grafana) — un
 client s'authentifiant vers le service cloud, pas un mécanisme entre les composants d'un tir.
-Tempest applique cette même idée de jeton Bearer directement entre maître et workers, ce que
+Sirocco applique cette même idée de jeton Bearer directement entre maître et workers, ce que
 k6 lui-même ne fait pas.
 
 Vérifié par un vrai tir (1 maître, 2 workers, secret partagé configuré des deux côtés) :
@@ -114,24 +114,24 @@ maintenant aussi maître et workers, chacun sur son `/metrics` habituel — pas 
 pas de nouvelle configuration à activer.
 
 - Chaque **worker** expose ses propres métriques locales, exactement comme le mode autonome :
-  `TempestMeter` est construit à la main dans `WorkerCoordinator.Prepare()`, une fois le
+  `SiroccoMeter` est construit à la main dans `WorkerCoordinator.Prepare()`, une fois le
   `MetricsAggregator` du tir connu (il n'existe pas avant, voir plus haut) — jusque-là,
-  `/metrics` répond, mais sans aucune série `tempest_*`.
+  `/metrics` répond, mais sans aucune série `sirocco_*`.
 - Le **maître** expose une vue **agrégée** de tout le cluster, pas un simple proxy vers un
-  worker : `TempestMeter` y est câblé sur `MasterCoordinator.Snapshot`, qui renvoie
+  worker : `SiroccoMeter` y est câblé sur `MasterCoordinator.Snapshot`, qui renvoie
   `FinalReport` une fois le tir terminé, `LiveReport` pendant qu'il tourne (le même rapport que
   `/report/live`), ou un rapport vide avant le premier sondage. Simplification assumée : le
   maître n'a pas de fenêtre glissante propre (il ne fait que fusionner des rapports déjà
-  construits par les workers), donc `tempest_latency_milliseconds` y reflète le même rapport
+  construits par les workers), donc `sirocco_latency_milliseconds` y reflète le même rapport
   fusionné que les compteurs cumulés, sans distinction glissant/cumulé.
-- `TempestMeter` a été découplé de `MetricsAggregator` pour rendre ça possible : son
+- `SiroccoMeter` a été découplé de `MetricsAggregator` pour rendre ça possible : son
   constructeur accepte maintenant n'importe quelle source de rapport
   (`Func<StatisticsScope, LoadTestReport>`), avec une surcharge pratique pour le cas courant
   (un agrégateur local). Le mode autonome n'a rien à changer, `MetricsAggregator.Snapshot` s'y
   passe telle quelle.
 
 Vérifié par un vrai tir (1 maître, 2 workers) : `/metrics` sur un worker affiche ses propres
-compteurs locaux (`tempest_requests_total`, etc.) ; `/metrics` sur le maître, interrogé en
+compteurs locaux (`sirocco_requests_total`, etc.) ; `/metrics` sur le maître, interrogé en
 plein tir, affiche les centiles et compteurs **fusionnés** des deux workers (176 itérations
 combinées à l'instant du sondage) — la même donnée que `/report/live`, sous forme Prometheus.
 
@@ -195,7 +195,7 @@ empreinte configurée — symétrique, une seule valeur de configuration, comme
 `ClusterSharedSecret` :
 
 ```json
-"Tempest": { "ClusterCertificateThumbprint": "9DAB455A2D1D91CA1D077E52AF6C46449E037242" }
+"Sirocco": { "ClusterCertificateThumbprint": "9DAB455A2D1D91CA1D077E52AF6C46449E037242" }
 ```
 
 Côté serveur, rien à coder : ASP.NET Core sert déjà du HTTPS par pure configuration —
@@ -219,7 +219,7 @@ opérateur préfère un certificat signé par une vraie CA plutôt que le certif
 Générer un certificat de test (PowerShell) :
 
 ```powershell
-$cert = New-SelfSignedCertificate -DnsName "tempest-cluster" -CertStoreLocation "Cert:\CurrentUser\My" -KeyExportPolicy Exportable
+$cert = New-SelfSignedCertificate -DnsName "sirocco-cluster" -CertStoreLocation "Cert:\CurrentUser\My" -KeyExportPolicy Exportable
 Export-PfxCertificate -Cert $cert -FilePath cluster.pfx -Password (ConvertTo-SecureString -String "..." -Force -AsPlainText)
 $cert.Thumbprint
 ```
@@ -248,7 +248,7 @@ d'enregistrement (`AuthenticationException`, `SSL connection could not be establ
 preuve que l'épinglage est réellement appliqué, pas un no-op silencieux.
 
 **Tir témoin sans TLS**, chiffré plutôt qu'affirmé : même topologie (1 maître, 2 workers en
-process réels), même profil que [`docker-compose.yml`](https://github.com/coulibalyousmane/Tempest/blob/main/docker-compose.yml)
+process réels), même profil que [`docker-compose.yml`](https://github.com/coulibalyousmane/Sirocco/blob/main/docker-compose.yml)
 (rampe 0 → 10 → 0 req/s sur 30 s), et cette fois **aucun certificat ni empreinte configurés** —
 `ClusterCertificateThumbprint` laissé à `null`, tout le control plane en clair. Résultat :
 **224 itérations fusionnées** — le même compte que le tir HTTPS, le profil étant déterministe —

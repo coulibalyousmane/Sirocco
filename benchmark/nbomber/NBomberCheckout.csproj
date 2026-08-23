@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Projet volontairement hors de Tempest.sln : NBomber est une dependance sous licence
+    Projet volontairement hors de Sirocco.sln : NBomber est une dependance sous licence
     commerciale (gratuite pour l'usage personnel/benchmark, voir benchmark/README.md), on ne
     veut pas l'entrainer dans le restore/build de tout le depot (voir .github/workflows/ci.yml,
-    qui restaure/construit Tempest.sln en entier). S'execute directement via `dotnet run` avec
+    qui restaure/construit Sirocco.sln en entier). S'execute directement via `dotnet run` avec
     l'option "projet" pointant vers ce dossier (benchmark/nbomber), voir benchmark/README.md pour
     la commande exacte (non recopiee ici : un tiret double dans un commentaire XML casse le parsing).
   -->

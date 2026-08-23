@@ -4,13 +4,13 @@ Requested load: **6,000 iterations** at a constant rate above the target's capac
 
 | Tool | Open model | VU ceiling | Requests | Failures | Reported latency (p99) | Scheduling wait |
 |---|---|---:|---:|---:|---:|---|
-| **Tempest** | bounded | 50 | 6,000 | 0.0% | **28,311.6 ms** | **measured**: max debt 27,795.8 ms |
+| **Sirocco** | bounded | 50 | 6,000 | 0.0% | **28,311.6 ms** | **measured**: max debt 27,795.8 ms |
 | k6 | bounded | 50 | 4,092 | 0.0% | 1,162.6 ms | no; `dropped_iterations` = 1,907 |
 | Gatling | unbounded | — | 4,827 | 0.0% | 14,573.0 ms | no (no internal queue) |
 | NBomber | unbounded | — | 5,967 | 0.2% | 27,672.6 ms | no (no internal queue) |
 
 The latency column is not the same quantity everywhere, and that is documented rather
-than smoothed over: `__iteration` Response for Tempest, `iteration_duration` for k6, the
+than smoothed over: `__iteration` Response for Sirocco, `iteration_duration` for k6, the
 `Global Information` block for Gatling — three ways of saying "the whole iteration". For
 NBomber it is the `checkout` step alone: it does not aggregate per iteration.
 
@@ -21,12 +21,12 @@ The same quantity for all four: successful `checkout` requests, out of the
 
 | Tool | Delivered | Missing | What the tool says about it |
 |---|---:|---:|---|
-| **Tempest** | 6,000 | 0 | `droppedCount` = 0; debt published separately |
+| **Sirocco** | 6,000 | 0 | `droppedCount` = 0; debt published separately |
 | k6 | 4,092 | 1,908 | `dropped_iterations` = 1,907 |
 | Gatling | 4,827 | 1,173 | 1,173 × `j.n.NoRouteToHostException` ; 1,173 × `checkout: No attribute named 'token' is defined` |
 | NBomber | 5,958 | 42 | `failCount` = 42 on the scenario |
 
-## The same run, Tempest's two measurements
+## The same run, Sirocco's two measurements
 
 | Measurement | p50 | p95 | p99 |
 |---|---:|---:|---:|
@@ -49,7 +49,7 @@ The same quantity for all four: successful `checkout` requests, out of the
 
 ## Control: the same profile against a target that sheds load
 
-Tempest alone, exactly the same parameters. One single variable changes: the target
+Sirocco alone, exactly the same parameters. One single variable changes: the target
 refuses after 50 ms instead of making the caller wait.
 
 | Target | Failures | Service p99 | Response p99 | Gap at p99 | Max debt |

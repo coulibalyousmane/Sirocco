@@ -1,4 +1,4 @@
-# Métriques personnalisées (les quatre types), contre Tempest.SampleTarget.
+# Métriques personnalisées (les quatre types), contre Sirocco.SampleTarget.
 #
 # Une métrique personnalisée mesure une valeur métier, pas une durée de requête : elle est
 # rapportée à part du tableau d'étapes, contrairement à un check, qui devient lui-même une étape.
@@ -18,7 +18,7 @@
 # partout le même type.
 #
 # Exécution, depuis la racine du dépôt :
-#   tempest run docs/examples/scenarios/metriques-personnalisees.yaml \
+#   sirocco run docs/examples/scenarios/metriques-personnalisees.yaml \
 #     --target-url http://localhost:5281 --rps 10 --duration 5s
 
 name: metriques-personnalisees

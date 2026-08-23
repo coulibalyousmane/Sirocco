@@ -5,11 +5,11 @@
 # retombe a 1 (descente) — visible en suivant le StatefulSet pendant le tir.
 #
 # Prealable : sampletarget doit etre joignable a l'URL ci-dessous depuis le cluster (par exemple
-# "kubectl run sampletarget --image=tempest-sampletarget:local --port=5281 --expose").
+# "kubectl run sampletarget --image=sirocco-sampletarget:local --port=5281 --expose").
 #
 #   kubectl apply -f deploy/samples/testrun-autoscaling-demo.yaml
 #   kubectl get testrun testrun-autoscaling-demo -w
-#   kubectl get statefulset -l tempest.dev/testrun=testrun-autoscaling-demo -w
+#   kubectl get statefulset -l sirocco.dev/testrun=testrun-autoscaling-demo -w
 #   kubectl delete -f deploy/samples/testrun-autoscaling-demo.yaml
 
 apiVersion: v1
@@ -21,12 +21,12 @@ stringData:
   shared-secret: demo-cluster-secret
 
 ---
-apiVersion: tempest.dev/v1alpha1
+apiVersion: sirocco.dev/v1alpha1
 kind: TestRun
 metadata:
   name: testrun-autoscaling-demo
 spec:
-  image: tempest-host:local
+  image: sirocco-host:local
   targetBaseUrl: http://sampletarget:5281
   maxVirtualUsers: 20
   clusterSharedSecretRef:

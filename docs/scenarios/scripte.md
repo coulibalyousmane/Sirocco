@@ -2,13 +2,13 @@
 
 Le format déclaratif ci-dessus ne sait pas exprimer de branchement ni de boucle — la limite
 documentée depuis l'étape 6. Décision structurante de la [roadmap
-phase 2](https://github.com/coulibalyousmane/Tempest/blob/main/ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) : plutôt que d'enrichir
+phase 2](https://github.com/coulibalyousmane/Sirocco/blob/main/ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) : plutôt que d'enrichir
 indéfiniment un langage de configuration, un scénario peut désormais être un vrai script C#,
 compilé à la volée par Roslyn (`Microsoft.CodeAnalysis.CSharp.Scripting`).
 
 Un fichier `.csx`/`.cs` doit se terminer par une expression qui produit un `IWorkflow` — le plus
 souvent l'instanciation d'une classe déclarée juste au-dessus, exactement comme un scénario écrit
-en dur dans `Tempest.Scenarios` :
+en dur dans `Sirocco.Scenarios` :
 
 ```csharp
 public sealed class PingWorkflow : IWorkflow
@@ -29,21 +29,21 @@ new PingWorkflow()
 ```
 
 ```bash
-tempest run scenario.csx --target-url http://localhost:5299 --rps 50 --duration 30s
+sirocco run scenario.csx --target-url http://localhost:5299 --rps 50 --duration 30s
 ```
 
 `System`, `System.Collections.Generic`, `System.Net.Http`, `System.Threading(.Tasks)`,
-`Tempest.Domain.Data`, `Tempest.Domain.Execution`, `Tempest.Domain.Metrics` et
-`Tempest.Scenarios.Data` sont importés par défaut ; un script ajoute ses propres `using` pour le
+`Sirocco.Domain.Data`, `Sirocco.Domain.Execution`, `Sirocco.Domain.Metrics` et
+`Sirocco.Scenarios.Data` sont importés par défaut ; un script ajoute ses propres `using` pour le
 reste (`System.Text.Json.Nodes`, `System.Net.Http.Json`...). Toutes les assemblies déjà chargées
-dans le processus hôte sont visibles du script sans configuration : `Tempest.Scenarios` pour
+dans le processus hôte sont visibles du script sans configuration : `Sirocco.Scenarios` pour
 réutiliser `DynamicCheckoutWorkflow` comme base, ou charger un [jeu de données](donnees-assertions.md#jeux-de-données)
 via `DataSetLoader.LoadFromFile(...)` dans `SetUpAsync`, par exemple.
 
 `scenarios/scripted-checkout.csx` démontre deux choses que le déclaratif ne peut pas exprimer
 aussi simplement : une boucle de nouvelle tentative bornée sur `checkout` (arrêt anticipé dès
 qu'il ne s'agit plus d'une 503 temporaire) ; et un jeu de données
-([`scenarios/users.csv`](https://github.com/coulibalyousmane/Tempest/blob/main/scenarios/users.csv))
+([`scenarios/users.csv`](https://github.com/coulibalyousmane/Sirocco/blob/main/scenarios/users.csv))
 chargé dans `SetUpAsync`, un identifiant réel par utilisateur virtuel plutôt que `demo`/`demo` en
 dur pour tout le monde.
 
@@ -53,7 +53,7 @@ dur pour tout le monde.
 **Un script s'exécute avec la confiance totale du processus** : rien n'est sandboxé, comme un
 script k6 (JavaScript) ou NBomber (C# aussi) — propriété inhérente à la décision, pas un oubli.
 
-Vérifié par de vrais tirs : `scripted-checkout.csx` exécuté via `tempest run`, jeton mis en cache
+Vérifié par de vrais tirs : `scripted-checkout.csx` exécuté via `sirocco run`, jeton mis en cache
 par utilisateur virtuel (`context.State`) — 400 itérations avec `--max-vus 20`, seulement 20
 appels réels à `login`, les 380 autres réutilisant le jeton mis en cache, exactement comme
 `DynamicCheckoutWorkflow` ; une erreur de compilation et un script sans expression finale

@@ -1,4 +1,4 @@
-# Scenario declaratif de reference, contre Tempest.SampleTarget.
+# Scenario declaratif de reference, contre Sirocco.SampleTarget.
 #
 # Demontre la corrélation dynamique (roadmap P3) : "login" extrait le jeton reellement emis
 # par la reponse (regex sur le corps JSON) et le rend disponible aux etapes suivantes via

@@ -3,20 +3,20 @@
 ## Démarrage
 
 ```bash
-dotnet test Tempest.sln -c Release
+dotnet test Sirocco.sln -c Release
 ```
 
 Étalonnage de l'injecteur (scénario à vide, ni réseau ni agrégation) :
 
 ```bash
-dotnet run --project tools/Tempest.Probe -c Release
+dotnet run --project tools/Sirocco.Probe -c Release
 ```
 
 Premier tir réel, contre la cible de démonstration — deux processus, deux terminaux :
 
 ```bash
-dotnet run --project samples/Tempest.SampleTarget -c Release   # écoute sur :5299
-dotnet run --project src/Tempest.Host -c Release                # tire, écoute sur :5280
+dotnet run --project samples/Sirocco.SampleTarget -c Release   # écoute sur :5299
+dotnet run --project src/Sirocco.Host -c Release                # tire, écoute sur :5280
 ```
 
 Pendant et après le tir : `http://localhost:5280/report/live` (fenêtre glissante),
@@ -40,33 +40,33 @@ JSON (245 itérations, p95 89,60 ms) et affiche correctement le verdict d'un seu
 
 ## Installation
 
-`Tempest.Cli` s'empaquette comme un [outil global
+`Sirocco.Cli` s'empaquette comme un [outil global
 dotnet](https://learn.microsoft.com/dotnet/core/tools/global-tools) (`PackAsTool`, commande
-`tempest`, distincte du nom de paquet `Tempest.Cli`) :
+`sirocco`, distincte du nom de paquet `Sirocco.Cli`) :
 
 ```bash
-dotnet pack src/Tempest.Cli -c Release
-dotnet tool install --global --add-source src/Tempest.Cli/bin/Release Tempest.Cli
-tempest run --target-url http://localhost:5299 --rps 50 --duration 30s
+dotnet pack src/Sirocco.Cli -c Release
+dotnet tool install --global --add-source src/Sirocco.Cli/bin/Release Sirocco.Cli
+sirocco run --target-url http://localhost:5299 --rps 50 --duration 30s
 ```
 
 Pas encore publié sur nuget.org — le dépôt reste privé (bullet suivant de la phase 1) — donc
 l'installation se fait aujourd'hui depuis une source locale (`--add-source`) ou un flux privé.
-Sans empaquetage, `tempest` reste utilisable via `dotnet run --project src/Tempest.Cli --`.
+Sans empaquetage, `sirocco` reste utilisable via `dotnet run --project src/Sirocco.Cli --`.
 
-Vérifié par un vrai `dotnet tool install --global`, `tempest` réellement sur le `PATH`, puis un
-tir depuis un répertoire sans rapport avec le dépôt (`/tmp`), contre `Tempest.SampleTarget`, avec
+Vérifié par un vrai `dotnet tool install --global`, `sirocco` réellement sur le `PATH`, puis un
+tir depuis un répertoire sans rapport avec le dépôt (`/tmp`), contre `Sirocco.SampleTarget`, avec
 `--report-json` écrit sur disque.
 
 ## Binaires autonomes
 
-`Tempest.Cli` se publie aussi en binaire autonome (*self-contained*, fichier unique) pour Windows,
+`Sirocco.Cli` se publie aussi en binaire autonome (*self-contained*, fichier unique) pour Windows,
 Linux et macOS (x64 et arm64) — aucun SDK ni runtime .NET requis sur la machine qui l'exécute :
 
 ```bash
-dotnet publish src/Tempest.Cli -c Release -r win-x64 \
+dotnet publish src/Sirocco.Cli -c Release -r win-x64 \
   -p:SelfContained=true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
-# -> src/Tempest.Cli/bin/Release/net10.0/win-x64/publish/tempest.exe (linux-x64/osx-x64/osx-arm64 : "tempest")
+# -> src/Sirocco.Cli/bin/Release/net10.0/win-x64/publish/sirocco.exe (linux-x64/osx-x64/osx-arm64 : "sirocco")
 ```
 
 **Pas de compilation Native AOT.** Essayé réellement (`-p:PublishAot=true`) : la publication
@@ -81,29 +81,29 @@ Un job GitHub Actions dédié (`.github/workflows/release.yml`) publie les quatr
 release GitHub à chaque tag `vX.Y.Z` poussé — pas encore déclenché, aucune release n'a encore été
 coupée.
 
-Vérifié par de vrais tirs : le `tempest.exe` win-x64 publié, exécuté directement (sans `dotnet
-run`), contre `Tempest.SampleTarget`, rapport JSON écrit sur disque, code de sortie 0 — et les
+Vérifié par de vrais tirs : le `sirocco.exe` win-x64 publié, exécuté directement (sans `dotnet
+run`), contre `Sirocco.SampleTarget`, rapport JSON écrit sur disque, code de sortie 0 — et les
 trois autres RID compilés sans erreur (non exécutables depuis cette machine Windows). Le nettoyage
-des fichiers hérités de `Tempest.Host` (`appsettings*.json`, `web.config`) a été vérifié : sans
-lui, un `tempest run` sans `--target-url` aurait silencieusement trouvé la cible de démonstration
+des fichiers hérités de `Sirocco.Host` (`appsettings*.json`, `web.config`) a été vérifié : sans
+lui, un `sirocco run` sans `--target-url` aurait silencieusement trouvé la cible de démonstration
 de l'hôte au lieu d'échouer avec le message d'erreur attendu.
 
 **Limite restante** : dépôt encore privé — dernier bullet de la
-[phase 1 de ROADMAP.md](https://github.com/coulibalyousmane/Tempest/blob/main/ROADMAP.md#phase-1--rendre-tempest-installable).
+[phase 1 de ROADMAP.md](https://github.com/coulibalyousmane/Sirocco/blob/main/ROADMAP.md#phase-1--rendre-sirocco-installable).
 
 
 ## Paquets NuGet
 
-Le moteur se consomme aussi comme une bibliothèque C#, à la NBomber : `Tempest.Domain`,
-`Tempest.Application`, `Tempest.Infrastructure` et `Tempest.Scenarios` s'installent séparément,
+Le moteur se consomme aussi comme une bibliothèque C#, à la NBomber : `Sirocco.Domain`,
+`Sirocco.Application`, `Sirocco.Infrastructure` et `Sirocco.Scenarios` s'installent séparément,
 chacun avec son propre rôle.
 
 | Paquet | Contenu | Dépend de |
 |---|---|---|
-| `Tempest.Domain` | Contrats (`IWorkflow`, `IVirtualUserContext`), profils de charge, rapports. Zéro dépendance NuGet. | — |
-| `Tempest.Application` | Le moteur (`TargetRpsLoadEngine`, `AddTempestEngine`) — déroule un `IWorkflow` à un débit cible. | `Tempest.Domain` |
-| `Tempest.Infrastructure` | La chaîne de mesure (`AddTempestMetrics`, export OpenTelemetry) — transforme les mesures en `LoadTestReport`. | `Tempest.Domain`, `Tempest.Application` |
-| `Tempest.Scenarios` | Scénarios de référence (`DynamicCheckoutWorkflow`, gRPC, WebSocket) et le format déclaratif. | `Tempest.Domain` |
+| `Sirocco.Domain` | Contrats (`IWorkflow`, `IVirtualUserContext`), profils de charge, rapports. Zéro dépendance NuGet. | — |
+| `Sirocco.Application` | Le moteur (`TargetRpsLoadEngine`, `AddSiroccoEngine`) — déroule un `IWorkflow` à un débit cible. | `Sirocco.Domain` |
+| `Sirocco.Infrastructure` | La chaîne de mesure (`AddSiroccoMetrics`, export OpenTelemetry) — transforme les mesures en `LoadTestReport`. | `Sirocco.Domain`, `Sirocco.Application` |
+| `Sirocco.Scenarios` | Scénarios de référence (`DynamicCheckoutWorkflow`, gRPC, WebSocket) et le format déclaratif. | `Sirocco.Domain` |
 
 ```csharp
 // Ecrire et lancer un scenario depuis un projet xUnit, sans cloner ce depot :
@@ -112,8 +112,8 @@ builder.Services.AddSingleton(new HttpClient { BaseAddress = new Uri("https://vo
 builder.Services.AddSingleton<IWorkflow>(new DynamicCheckoutWorkflow());
 
 LoadProfile profile = new([LoadStage.Ramp(fromRps: 0, toRps: 50, TimeSpan.FromSeconds(30))]);
-builder.Services.AddTempestEngine(profile, new LoadTestOptions { MaxVirtualUsers = 100 });
-builder.Services.AddTempestMetrics();
+builder.Services.AddSiroccoEngine(profile, new LoadTestOptions { MaxVirtualUsers = 100 });
+builder.Services.AddSiroccoMetrics();
 
 using IHost host = builder.Build();
 await host.StartAsync();
@@ -127,16 +127,16 @@ await metricsProcessor.StopAsync();
 LoadTestReport report = metricsProcessor.Aggregator.Snapshot(StatisticsScope.Cumulative);
 ```
 
-Le bullet initial de ROADMAP.md ne citait que `Tempest.Domain` et `Tempest.Scenarios` — élargi à
-`Tempest.Application` et `Tempest.Infrastructure` : sans eux, un projet externe pouvait écrire un
+Le bullet initial de ROADMAP.md ne citait que `Sirocco.Domain` et `Sirocco.Scenarios` — élargi à
+`Sirocco.Application` et `Sirocco.Infrastructure` : sans eux, un projet externe pouvait écrire un
 scénario mais pas le lancer, ce qui aurait manqué la parité avec NBomber explicitement visée.
 
 Vérifié par un vrai tir depuis un projet xUnit **entièrement externe** (aucun `ProjectReference`
 vers ce dépôt, uniquement les quatre `.nupkg` via une source NuGet locale) : `DynamicCheckoutWorkflow`
-(`Tempest.Scenarios`) exécuté à travers `AddTempestEngine`/`AddTempestMetrics`, contre
-`Tempest.SampleTarget`, avec un rapport contenant bien l'étape `checkout`.
+(`Sirocco.Scenarios`) exécuté à travers `AddSiroccoEngine`/`AddSiroccoMetrics`, contre
+`Sirocco.SampleTarget`, avec un rapport contenant bien l'étape `checkout`.
 
 **Limite restante** : pas encore publiés sur nuget.org (le dépôt reste privé). Les quatre paquets
 s'installent aujourd'hui depuis une source locale (`dotnet pack` puis `--add-source`) ou un flux
-privé, comme `Tempest.Cli`.
+privé, comme `Sirocco.Cli`.
 

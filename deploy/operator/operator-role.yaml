@@ -75,13 +75,13 @@ rules:
   - patch
   - delete
 - apiGroups:
-  - tempest.dev
+  - sirocco.dev
   resources:
   - testruns
   verbs:
   - '*'
 - apiGroups:
-  - tempest.dev
+  - sirocco.dev
   resources:
   - testruns/status
   verbs:

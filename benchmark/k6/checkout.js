@@ -1,10 +1,10 @@
 // Scenario k6 du benchmark comparatif (voir benchmark/README.md) : meme sequence exacte que
-// benchmark/scenarios/tempest-checkout.yaml (login puis checkout, meme panier), meme rampe
+// benchmark/scenarios/sirocco-checkout.yaml (login puis checkout, meme panier), meme rampe
 // 20 -> 150 iterations/s sur 90s. executor "ramping-arrival-rate" = le modele ouvert de k6,
-// l'equivalent direct de --from-rps/--to-rps de Tempest.
+// l'equivalent direct de --from-rps/--to-rps de Sirocco.
 //
 // preAllocatedVUs/maxVUs sont volontairement genereux par defaut (60/200) : la saturation qu'on
-// veut observer dans le benchmark comparatif vient du ConcurrencyGate de Tempest.SampleTarget, pas
+// veut observer dans le benchmark comparatif vient du ConcurrencyGate de Sirocco.SampleTarget, pas
 // du pool de VUs de k6 lui-meme. Si k6 doit quand meme droper des iterations (dropped_iterations),
 // c'est un signal a part — documente separement, pas melange a la latence rapportee.
 //
@@ -25,7 +25,7 @@ const maxVUs = parseInt(__ENV.MAX_VUS || '200', 10);
 
 export const options = {
   // p50/p95/p99 explicites : le resume par defaut de k6 n'inclut pas p99, or c'est la colonne
-  // que benchmark/normalize compare directement a p99Milliseconds de Tempest.
+  // que benchmark/normalize compare directement a p99Milliseconds de Sirocco.
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(50)', 'p(95)', 'p(99)'],
   scenarios: {
     checkout: {

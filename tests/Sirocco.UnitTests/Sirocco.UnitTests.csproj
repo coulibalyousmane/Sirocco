@@ -1,0 +1,87 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Sdk par defaut, pas Sdk.Web : Kestrel/WebApplication doivent etre reclames
+         explicitement pour le serveur gRPC de test (GrpcEchoTestServer). -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Pas de codegen protobuf propre a ce projet : EchoServiceBase et les messages viennent
+         deja de Sirocco.Scenarios (genere en GrpcServices="Both") — les regenerer ici entrerait
+         en conflit de type (CS0436) avec ceux references via ce projet. -->
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Grpc.AspNetCore" Version="2.83.0" />
+    <!-- Courtier MQTT en boucle locale pour MqttWorkflowTests (MqttTestBroker) : aucun serveur
+         externe requis pour verifier le protocole de reference MQTT. -->
+    <PackageReference Include="MQTTnet.Server" Version="5.2.0.1603" />
+    <!-- Serveur GraphQL en boucle locale pour GraphQlWorkflowTests (GraphQlTestServer) : vrai
+         moteur GraphQL.NET, pas une simulation par correspondance de chaine. -->
+    <PackageReference Include="GraphQL" Version="8.8.4" />
+    <PackageReference Include="GraphQL.SystemTextJson" Version="8.8.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Sirocco.Domain\Sirocco.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Sirocco.Application\Sirocco.Application.csproj" />
+    <ProjectReference Include="..\..\src\Sirocco.Infrastructure\Sirocco.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Sirocco.Scenarios\Sirocco.Scenarios.csproj" />
+    <!-- Seule ClusterAuthentication (logique pure, sans dependance ASP.NET) est testee d'ici :
+         le reste du cablage distribue (WorkerCoordinator, MasterOrchestrationHostedService)
+         reste verifie par de vrais tirs, comme le reste du mode distribue. -->
+    <ProjectReference Include="..\..\src\Sirocco.Host\Sirocco.Host.csproj" />
+    <!-- Idem pour le parseur d'arguments de Sirocco.Cli (CliOptions, CliDuration) : logique pure,
+         sans dependance ASP.NET, testable directement sans lancer de processus. -->
+    <ProjectReference Include="..\..\src\Sirocco.Cli\Sirocco.Cli.csproj" />
+    <!-- Idem pour HarConverter (Sirocco.HarConvert) : logique pure (parsing HAR, generation de
+         source C#), sans dependance ASP.NET, testable directement sans lancer de processus. -->
+    <ProjectReference Include="..\..\tools\Sirocco.HarConvert\Sirocco.HarConvert.csproj" />
+    <!-- Idem pour OpenApiConverter (Sirocco.OpenApiConvert) : logique pure (parsing OpenAPI,
+         generation de source C#), sans dependance ASP.NET, testable directement sans lancer de
+         processus. -->
+    <ProjectReference Include="..\..\tools\Sirocco.OpenApiConvert\Sirocco.OpenApiConvert.csproj" />
+    <!-- Idem pour PostmanConverter (Sirocco.PostmanConvert) : logique pure (parsing collection
+         Postman, generation de source C#), sans dependance ASP.NET, testable directement sans
+         lancer de processus. -->
+    <ProjectReference Include="..\..\tools\Sirocco.PostmanConvert\Sirocco.PostmanConvert.csproj" />
+    <!-- Idem pour la logique pure de Sirocco.RecorderProxy (RecorderOptions, ProxyHeaders,
+         RecordedEntryBuilder) : le forwarding HTTP lui-meme reste verifie par un vrai tir, pas
+         teste ici. -->
+    <ProjectReference Include="..\..\tools\Sirocco.RecorderProxy\Sirocco.RecorderProxy.csproj" />
+    <!-- Premier protocole de reference de la phase 6 (SQL) : SqlWorkflow teste ici contre une
+         vraie base SQLite temporaire (aucun serveur a demarrer, contrairement au reste du mode
+         distribue verifie par de vrais tirs). -->
+    <ProjectReference Include="..\..\extensions\Sirocco.Extensions.Sql\Sirocco.Extensions.Sql.csproj" />
+    <!-- Deuxieme protocole de reference de la phase 6 (SSE) : SseWorkflow teste ici contre un vrai
+         serveur Kestrel en boucle locale (SseTestServer, meme gabarit que GrpcEchoTestServer). -->
+    <ProjectReference Include="..\..\extensions\Sirocco.Extensions.Sse\Sirocco.Extensions.Sse.csproj" />
+    <!-- Troisieme protocole de reference de la phase 6 (MQTT) : MqttWorkflow teste ici contre un
+         vrai courtier MQTT en boucle locale (MqttTestBroker, meme gabarit que SseTestServer). -->
+    <ProjectReference Include="..\..\extensions\Sirocco.Extensions.Mqtt\Sirocco.Extensions.Mqtt.csproj" />
+    <!-- Quatrieme et dernier protocole de reference de la phase 6 (GraphQL) : GraphQlWorkflow
+         teste ici contre un vrai serveur GraphQL en boucle locale (GraphQlTestServer, meme
+         gabarit que SseTestServer). -->
+    <ProjectReference Include="..\..\extensions\Sirocco.Extensions.GraphQl\Sirocco.Extensions.GraphQl.csproj" />
+    <!-- TestRunResources (opérateur Kubernetes, phase 7) : logique pure de construction des
+         objets Kubernetes désirés à partir d'une TestRun, sans cluster ni appel réseau. Le
+         contrôleur lui-même (TestRunController) n'est pas testé ici : KubeOps ne fournit pas
+         de harnais de test sans cluster réel, voir la vérification E2E documentée dans le
+         README. -->
+    <ProjectReference Include="..\..\src\Sirocco.Operator\Sirocco.Operator.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,8 +1,8 @@
 name: Release
 
 # Binaires autonomes (roadmap phase 1, troisieme bullet) : chaque tag "vX.Y.Z" pousse publie
-# quatre archives (Windows, Linux, macOS x64/arm64) en release GitHub, chacune un tempest.exe/
-# tempest self-contained + fichier unique - aucun SDK ni runtime .NET requis sur la machine qui
+# quatre archives (Windows, Linux, macOS x64/arm64) en release GitHub, chacune un sirocco.exe/
+# sirocco self-contained + fichier unique - aucun SDK ni runtime .NET requis sur la machine qui
 # telecharge. Se declenche uniquement sur un tag : couper une release reste un geste explicite,
 # jamais une consequence d'un simple push sur main.
 
@@ -31,15 +31,15 @@ jobs:
           mkdir -p dist
           for rid in win-x64 linux-x64 osx-x64 osx-arm64; do
             out="publish/$rid"
-            dotnet publish src/Tempest.Cli --configuration Release --runtime "$rid" \
+            dotnet publish src/Sirocco.Cli --configuration Release --runtime "$rid" \
               --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
               -o "$out"
-            rm -f "$out"/*.pdb "$out"/Tempest.Host.runtimeconfig.json
+            rm -f "$out"/*.pdb "$out"/Sirocco.Host.runtimeconfig.json
             if [ "$rid" = "win-x64" ]; then
-              (cd "$out" && zip -q "../../dist/tempest-$rid.zip" tempest.exe)
+              (cd "$out" && zip -q "../../dist/sirocco-$rid.zip" sirocco.exe)
             else
-              chmod +x "$out/tempest"
-              tar czf "dist/tempest-$rid.tar.gz" -C "$out" tempest
+              chmod +x "$out/sirocco"
+              tar czf "dist/sirocco-$rid.tar.gz" -C "$out" sirocco
             fi
           done
           ls -la dist
@@ -47,4 +47,4 @@ jobs:
       - name: Publier la release GitHub
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${{ github.ref_name }}" dist/* --title "Tempest ${{ github.ref_name }}" --generate-notes
+        run: gh release create "${{ github.ref_name }}" dist/* --title "Sirocco ${{ github.ref_name }}" --generate-notes

@@ -1,4 +1,4 @@
-# Corrélation dynamique par JsonPath, contre Tempest.SampleTarget.
+# Corrélation dynamique par JsonPath, contre Sirocco.SampleTarget.
 #
 # Variante de scenarios/smoke-test.yaml, qui extrait le même jeton par expression régulière.
 # JsonPath dit ce qu'on veut ($.token) plutôt que comment le trouver dans du texte : préférable
@@ -6,7 +6,7 @@
 # (.nom) et par index ([n]) — ni caractère générique, ni filtre, ni descente récursive.
 #
 # Exécution, depuis la racine du dépôt :
-#   tempest run docs/examples/scenarios/correlation-jsonpath.yaml \
+#   sirocco run docs/examples/scenarios/correlation-jsonpath.yaml \
 #     --target-url http://localhost:5281 --rps 10 --duration 5s
 
 name: correlation-jsonpath

@@ -1,4 +1,4 @@
-# Temps de réflexion (think time), contre Tempest.SampleTarget.
+# Temps de réflexion (think time), contre Sirocco.SampleTarget.
 #
 # Une pause entre deux étapes, pour imiter un humain qui lit une page avant de cliquer :
 #   - thinkTime seul : durée fixe.
@@ -14,7 +14,7 @@
 # assez de --max-vus pour tenir le débit visé.
 #
 # Exécution, depuis la racine du dépôt :
-#   tempest run docs/examples/scenarios/temps-de-reflexion.yaml \
+#   sirocco run docs/examples/scenarios/temps-de-reflexion.yaml \
 #     --target-url http://localhost:5281 --rps 10 --duration 5s --max-vus 40
 
 name: temps-de-reflexion

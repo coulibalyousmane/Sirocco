@@ -5,23 +5,23 @@
 Clean Architecture, dépendances dirigées vers l'intérieur :
 
 ```
-Tempest.Domain          ← aucune dépendance
+Sirocco.Domain          ← aucune dépendance
    ↑          ↑
-Tempest.Application   Tempest.Scenarios
+Sirocco.Application   Sirocco.Scenarios
    ↑
-Tempest.Infrastructure
+Sirocco.Infrastructure
    ↑
-Tempest.Host
+Sirocco.Host
 ```
 
 | Projet | Rôle |
 |---|---|
-| `Tempest.Domain` | Contrats et objets-valeurs purs : `MetricResult`, `IWorkflow`, `LoadProfile`, `TempestClock` |
-| `Tempest.Application` | Orchestration : `ILoadScheduler` / `CoordinatedRateLimiter`, `TargetRpsLoadEngine`, `VirtualUserWorker`, `VirtualUserContext` |
-| `Tempest.Infrastructure` | `MetricsProcessor` (consommateur du channel), `TempestMeter`, câblage OpenTelemetry |
-| `Tempest.Scenarios` | Parcours métier concrets (données Bogus, appels HTTP, assertions) |
-| `Tempest.Host` | Point d'entrée ASP.NET Core, endpoints `/metrics`, `/report`, `/report/live` |
-| `samples/Tempest.SampleTarget` | Cible HTTP de démonstration : latence simulée, capacité finie, jetons qui expirent |
+| `Sirocco.Domain` | Contrats et objets-valeurs purs : `MetricResult`, `IWorkflow`, `LoadProfile`, `SiroccoClock` |
+| `Sirocco.Application` | Orchestration : `ILoadScheduler` / `CoordinatedRateLimiter`, `TargetRpsLoadEngine`, `VirtualUserWorker`, `VirtualUserContext` |
+| `Sirocco.Infrastructure` | `MetricsProcessor` (consommateur du channel), `SiroccoMeter`, câblage OpenTelemetry |
+| `Sirocco.Scenarios` | Parcours métier concrets (données Bogus, appels HTTP, assertions) |
+| `Sirocco.Host` | Point d'entrée ASP.NET Core, endpoints `/metrics`, `/report`, `/report/live` |
+| `samples/Sirocco.SampleTarget` | Cible HTTP de démonstration : latence simulée, capacité finie, jetons qui expirent |
 
 ### Flux d'exécution
 
@@ -36,7 +36,7 @@ Tempest.Host
 services.AddHttpClient();
 services.AddSingleton<IWorkflow, DynamicCheckoutWorkflow>();
 
-services.AddTempestEngine(
+services.AddSiroccoEngine(
     LoadProfile.Create()
         .RampTo(5_000, TimeSpan.FromSeconds(30))
         .Sustain(TimeSpan.FromMinutes(5))
@@ -49,7 +49,7 @@ Tous les enregistrements passent par `TryAdd` : déclarer son propre `ILoadSched
 
 ## Conventions de code
 
-Le [`.editorconfig`](https://github.com/coulibalyousmane/Tempest/blob/main/.editorconfig) à la racine fait autorité et est appliqué à la compilation
+Le [`.editorconfig`](https://github.com/coulibalyousmane/Sirocco/blob/main/.editorconfig) à la racine fait autorité et est appliqué à la compilation
 (`EnforceCodeStyleInBuild` + `TreatWarningsAsErrors`) :
 
 - constantes en `UPPER_CASE`, champs non publics en `_camelCase` — en `severity = warning`,
@@ -60,7 +60,7 @@ Le [`.editorconfig`](https://github.com/coulibalyousmane/Tempest/blob/main/.edit
 - aucune valeur magique : codes de statut, seuils et capacités sont des constantes nommées.
 
 ```bash
-dotnet format Tempest.sln --verify-no-changes --severity info
+dotnet format Sirocco.sln --verify-no-changes --severity info
 ```
 
 > Le fichier configure aussi des règles SonarAnalyzer (`S101`, `S3358`, `S1135`). Le paquet
@@ -96,7 +96,7 @@ dotnet format Tempest.sln --verify-no-changes --severity info
 - **Un centile ne sous-estime jamais.** Les valeurs rapportées sont les bornes hautes des paniers,
   plafonnées au maximum réellement observé. Pour une vérification de SLO, se tromper par excès est
   la seule erreur acceptable.
-- **Tempest n'a aucune dépendance à un exportateur.** Il alimente les instruments
+- **Sirocco n'a aucune dépendance à un exportateur.** Il alimente les instruments
   `System.Diagnostics.Metrics` de la BCL ; OpenTelemetry, Prometheus ou un simple `MeterListener`
   viennent les écouter.
 - **Le panier de `DynamicCheckoutWorkflow` ne coordonne rien entre deux processus.** Il se
@@ -104,7 +104,7 @@ dotnet format Tempest.sln --verify-no-changes --severity info
   pré-généré côté client. Deux projets indépendants (scénario, cible) qui s'accorderaient sur
   des identifiants à l'avance seraient fragiles au moindre changement de l'un des deux.
 - **Un singleton enregistré mais jamais résolu ne se construit jamais.** `MetricsAggregator` et
-  `TempestMeter` en ont chacun fait les frais lors du premier tir réel (détails ci-dessous) :
+  `SiroccoMeter` en ont chacun fait les frais lors du premier tir réel (détails ci-dessous) :
   un conteneur d'injection de dépendances ne garantit ni un ordre de construction entre
   singletons indépendants, ni qu'un service sans consommateur direct soit jamais instancié.
 

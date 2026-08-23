@@ -2,18 +2,18 @@
 
 ## Convertisseur HAR
 
-Écrire un premier scénario à la main est le moment où l'on abandonne un outil : `tools/Tempest.HarConvert`
+Écrire un premier scénario à la main est le moment où l'on abandonne un outil : `tools/Sirocco.HarConvert`
 part d'un export « Enregistrer tout en HAR » des outils de développement d'un navigateur (Chrome,
 Firefox) plutôt que d'une page blanche.
 
 ```bash
-dotnet run --project tools/Tempest.HarConvert -- session.har scenario.csx --name mon-scenario
+dotnet run --project tools/Sirocco.HarConvert -- session.har scenario.csx --name mon-scenario
 ```
 
-Conformément à la [décision structurante de la roadmap](https://github.com/coulibalyousmane/Tempest/blob/main/ROADMAP.md) — les convertisseurs
+Conformément à la [décision structurante de la roadmap](https://github.com/coulibalyousmane/Sirocco/blob/main/ROADMAP.md) — les convertisseurs
 génèrent du C#, pas du YAML/JSON — la sortie est un scénario **scripté** (`.csx`), directement
-jouable via `--scenario`/`Tempest:ScenarioFile` sans aucun câblage supplémentaire, exactement
-comme [`scenarios/scripted-checkout.csx`](https://github.com/coulibalyousmane/Tempest/blob/main/scenarios/scripted-checkout.csx). Chaque requête HAR
+jouable via `--scenario`/`Sirocco:ScenarioFile` sans aucun câblage supplémentaire, exactement
+comme [`scenarios/scripted-checkout.csx`](https://github.com/coulibalyousmane/Sirocco/blob/main/scenarios/scripted-checkout.csx). Chaque requête HAR
 devient une étape qui rejoue sa méthode, son chemin, son corps (avec le bon `Content-Type`) et
 ses en-têtes via `context.HttpClient.SendAsync`.
 
@@ -33,27 +33,27 @@ portée d'un simple mapping de requêtes. Corps multipart (upload de fichier) no
 seul le texte brut d'un `postData.text` est converti.
 
 Vérifié par un vrai tir : un HAR reconstitué à partir d'un véritable aller-retour login/catalogue/
-checkout contre `Tempest.SampleTarget`, mêlé à un actif statique et à un appel vers un second hôte
+checkout contre `Sirocco.SampleTarget`, mêlé à un actif statique et à un appel vers un second hôte
 sans extension reconnue (pour vérifier le choix de l'hôte le plus fréquent en conditions réelles),
-converti puis exécuté via `tempest run scenario.csx --target-url ... --rps 5 --duration 5s` :
+converti puis exécuté via `sirocco run scenario.csx --target-url ... --rps 5 --duration 5s` :
 les 3 étapes réelles converties, actif statique et hôte secondaire bien exclus, `login` et
 `browse` à 0 % d'échec, `checkout` à 100 % d'échec — le jeton capturé avait expiré au moment du
 tir, exactement la mise en garde documentée plus haut, pas une anomalie.
 
 ## Convertisseur OpenAPI
 
-Deuxième bullet de la phase 5 : `tools/Tempest.OpenApiConvert` part d'une spécification OpenAPI
+Deuxième bullet de la phase 5 : `tools/Sirocco.OpenApiConvert` part d'une spécification OpenAPI
 3.x (JSON — l'export le plus courant, `swagger.json`/`openapi.json`) plutôt que d'un trafic
 capturé. Contrairement au convertisseur HAR, une spécification ne décrit que la **forme** d'une
 API, jamais des données réelles : la sortie est délibérément un **squelette**, pas un scénario
 directement jouable.
 
 ```bash
-dotnet run --project tools/Tempest.OpenApiConvert -- openapi.json scenario.csx --name mon-scenario
+dotnet run --project tools/Sirocco.OpenApiConvert -- openapi.json scenario.csx --name mon-scenario
 ```
 
 Même sortie scriptée (`.csx`) que le convertisseur HAR, pour la même raison — voir la
-[décision structurante de la roadmap](https://github.com/coulibalyousmane/Tempest/blob/main/ROADMAP.md). Une étape est générée par opération
+[décision structurante de la roadmap](https://github.com/coulibalyousmane/Sirocco/blob/main/ROADMAP.md). Une étape est générée par opération
 (méthode + chemin) : les paramètres de chemin et les paramètres de requête **requis** sont
 substitués par un placeholder dérivé du type du schéma (ou de l'`example` déclaré s'il y en a
 un), le corps `application/json` est un exemple JSON construit récursivement à partir du schéma
@@ -72,11 +72,11 @@ Limites volontaires, comptées et documentées en tête du fichier généré plu
 - **YAML non pris en charge** dans cette première version — JSON seul, comme pour la plupart des
   exports d'outils (Swashbuckle, Swagger UI).
 
-Vérifié par un vrai tir contre `Tempest.SampleTarget`, à partir d'une spécification décrivant
+Vérifié par un vrai tir contre `Sirocco.SampleTarget`, à partir d'une spécification décrivant
 fidèlement ses trois routes réelles (`login`, `catalogue`, `checkout`, avec `$ref` vers des
 schémas `components` pour les corps). Deux tirs, pour distinguer le squelette généré de son
 usage réel :
-- **Squelette non modifié** (`tempest run scenario.csx --target-url ... --rps 5 --duration 5s`) :
+- **Squelette non modifié** (`sirocco run scenario.csx --target-url ... --rps 5 --duration 5s`) :
   `login` et `listProducts` à 0 % d'échec, `checkout` à 100 % d'échec — le placeholder
   `Authorization` n'est jamais un jeton valide, exactement la limite documentée plus haut.
 - **Squelette complété à la main** (jeton lu dans la réponse de `login`, identifiant de produit lu
@@ -85,18 +85,18 @@ usage réel :
 
 ## Convertisseur Postman
 
-Troisième et dernier bullet de la phase 5 : `tools/Tempest.PostmanConvert` part d'une collection
+Troisième et dernier bullet de la phase 5 : `tools/Sirocco.PostmanConvert` part d'une collection
 Postman exportée (v2.1, le format courant de « Export » depuis l'application). Même nature de
 sortie que le convertisseur OpenAPI — un **squelette**, pas un scénario directement jouable :
 une collection décrit des requêtes qu'on a construites à la main dans Postman, pas un trafic
 capturé avec de vraies données.
 
 ```bash
-dotnet run --project tools/Tempest.PostmanConvert -- collection.json scenario.csx --name mon-scenario
+dotnet run --project tools/Sirocco.PostmanConvert -- collection.json scenario.csx --name mon-scenario
 ```
 
 Même sortie scriptée (`.csx`), pour la même raison — voir la [décision structurante de la
-roadmap](https://github.com/coulibalyousmane/Tempest/blob/main/ROADMAP.md). Les dossiers d'une collection (`item` imbriqués) sont parcourus
+roadmap](https://github.com/coulibalyousmane/Sirocco/blob/main/ROADMAP.md). Les dossiers d'une collection (`item` imbriqués) sont parcourus
 récursivement ; chaque requête feuille devient un step, nommé d'après le nom Postman qualifié par
 ses dossiers parents (`Auth / Login`). Les variables **de collection** (`collection.variable`,
 `{{nom}}`) sont substituées dans l'URL, les en-têtes et le corps — y compris quand elles résolvent
@@ -118,7 +118,7 @@ Limites volontaires, comptées et documentées en tête du fichier généré :
   placeholders, pas une régression du convertisseur — une variable Postman n'a pas de schéma pour
   deviner si elle attend une chaîne ou un nombre, contrairement à l'OpenAPI.
 
-Vérifié par deux vrais tirs contre `Tempest.SampleTarget`, à partir d'une collection décrivant
+Vérifié par deux vrais tirs contre `Sirocco.SampleTarget`, à partir d'une collection décrivant
 fidèlement ses trois routes réelles, avec un dossier (`Auth / Login`) et une variable de
 collection résolvant l'hôte (`{{baseUrl}}`) :
 - **Squelette non modifié** : `Auth / Login` et `Catalogue` à 0 % d'échec, `Checkout` à 100 %
@@ -128,23 +128,23 @@ collection résolvant l'hôte (`{{baseUrl}}`) :
 
 ## Proxy enregistreur
 
-Dernier bullet de la phase 5 : `tools/Tempest.RecorderProxy` capture du trafic HTTP réel en
+Dernier bullet de la phase 5 : `tools/Sirocco.RecorderProxy` capture du trafic HTTP réel en
 direct, sans étape d'export manuel — à la différence du convertisseur HAR, qui suppose une
 capture déjà faite (« Enregistrer tout en HAR » du navigateur). Scope volontairement réduit par
 rapport au *recorder* de Gatling : un **reverse proxy à cible unique**, pas un proxy HTTP
 générique multi-hôtes avec interception TLS (MITM) — cohérent avec le modèle `--target-url`
-unique de `tempest run`, et ça évite tout le chantier certificat/confiance qu'un vrai proxy HTTPS
+unique de `sirocco run`, et ça évite tout le chantier certificat/confiance qu'un vrai proxy HTTPS
 exigerait pour une fonctionnalité encore conditionnée à un vrai public.
 
 ```bash
-dotnet run --project tools/Tempest.RecorderProxy -- --target-url http://localhost:5299 --out scenario.csx [--listen http://localhost:8888] [--name mon-scenario]
+dotnet run --project tools/Sirocco.RecorderProxy -- --target-url http://localhost:5299 --out scenario.csx [--listen http://localhost:8888] [--name mon-scenario]
 ```
 
 Pointez votre client (navigateur configuré avec cette adresse comme hôte, `curl`, l'application
 elle-même) vers `--listen` au lieu de la cible réelle : chaque requête est retransmise fidèlement
 vers `--target-url` — méthode, en-têtes, corps — et la réponse réelle relayée telle quelle,
 pendant que la requête est enregistrée en arrière-plan. À l'arrêt (Ctrl+C, ou
-`POST /__tempest-recorder/stop` pour un pilotage scripté), le proxy s'arrête proprement puis
+`POST /__sirocco-recorder/stop` pour un pilotage scripté), le proxy s'arrête proprement puis
 génère le scénario **en réutilisant `HarConverter.Convert` tel quel** — la capture en direct
 alimente exactement la même forme de données (`HarEntry`) qu'un export HAR de navigateur, donc le
 filtrage des actifs statiques et la génération du `.csx` sont acquis gratuitement, sans code
@@ -162,10 +162,10 @@ Limites volontaires, documentées :
   délai d'un export/conversion manuel, ce qui les rend souvent *plus* susceptibles d'être encore
   valides qu'un HAR exporté puis converti plus tard (vérifié ci-dessous).
 
-Vérifié par un vrai tir de bout en bout contre `Tempest.SampleTarget` : proxy démarré, une vraie
+Vérifié par un vrai tir de bout en bout contre `Sirocco.SampleTarget` : proxy démarré, une vraie
 session login/catalogue/checkout envoyée à travers lui (statuts 200 confirmés à travers le proxy,
-identiques à ceux de la cible directe), arrêté via `/__tempest-recorder/stop`, scénario généré (4
-requêtes enregistrées, 4 étapes retenues). Rejoué immédiatement via `tempest run` contre la même
+identiques à ceux de la cible directe), arrêté via `/__sirocco-recorder/stop`, scénario généré (4
+requêtes enregistrées, 4 étapes retenues). Rejoué immédiatement via `sirocco run` contre la même
 cible : les 4 étapes à 0 % d'échec, y compris `checkout` — le jeton capturé était encore valide,
 contrairement au HAR de la section précédente où l'export manuel avait laissé le temps au jeton
 d'expirer. **Clôt entièrement la phase 5.**

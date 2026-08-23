@@ -9,4 +9,4 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: default
-  namespace: tempest-operator-system
+  namespace: sirocco-operator-system

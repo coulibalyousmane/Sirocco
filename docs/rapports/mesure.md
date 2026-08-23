@@ -2,22 +2,22 @@
 
 ## Métriques exposées
 
-Meter `Tempest` — les jauges lisent la fenêtre glissante, les compteurs le cumul :
+Meter `Sirocco` — les jauges lisent la fenêtre glissante, les compteurs le cumul :
 
 | Instrument | Type | Étiquettes |
 |---|---|---|
-| `tempest.latency` | jauge (ms) | `step`, `kind` (`response` \| `service`), `quantile` |
-| `tempest.requests` | compteur | `step`, `outcome` |
-| `tempest.bytes.received` | compteur | `step` |
-| `tempest.scheduling.delay.max` | jauge (ms) | `step` |
-| `tempest.metrics.dropped` | compteur | — |
+| `sirocco.latency` | jauge (ms) | `step`, `kind` (`response` \| `service`), `quantile` |
+| `sirocco.requests` | compteur | `step`, `outcome` |
+| `sirocco.bytes.received` | compteur | `step` |
+| `sirocco.scheduling.delay.max` | jauge (ms) | `step` |
+| `sirocco.metrics.dropped` | compteur | — |
 
 `kind=response` est la latence corrigée du *coordinated omission*, `kind=service` la mesure brute.
 Les superposer sur un même graphe montre le moment exact où l'injecteur ou la cible décroche.
 
 ```csharp
-services.AddTempestMetrics();                       // agrégation + consommateur + instruments
-services.AddTempestOpenTelemetry(builder => builder.AddOtlpExporter());
+services.AddSiroccoMetrics();                       // agrégation + consommateur + instruments
+services.AddSiroccoOpenTelemetry(builder => builder.AddOtlpExporter());
 ```
 
 
@@ -25,7 +25,7 @@ services.AddTempestOpenTelemetry(builder => builder.AddOtlpExporter());
 
 Un rapport `/report` classique ne dit que l'état final : le débit moyen sur tout le tir, jamais
 le moment où les centiles ont décroché. `LoadTestReport.TimeSeries` ajoute la trajectoire — un
-point relevé à intervalle régulier (`Tempest:TimeSeriesIntervalSeconds`, 2 s par défaut), du
+point relevé à intervalle régulier (`Sirocco:TimeSeriesIntervalSeconds`, 2 s par défaut), du
 début à la fin du tir, chacun portant le débit, le nombre d'utilisateurs virtuels actifs, le
 taux d'erreur, les centiles p50/p95/p99 et la dette d'ordonnancement maximale — tous relevés sur
 la fenêtre glissante, exactement comme `/report/live`.
@@ -46,11 +46,11 @@ suit, et une dette d'ordonnancement qui apparaît dès que la cible commence à 
 charge — la même donnée que `/report/live`, mais gardée dans le temps plutôt qu'écrasée à chaque
 sondage.
 
-Techniquement, `TimeSeriesRecorder` (`Tempest.Application.Metrics`) tourne en parallèle du moteur
+Techniquement, `TimeSeriesRecorder` (`Sirocco.Application.Metrics`) tourne en parallèle du moteur
 plutôt qu'à l'intérieur de lui — `TargetRpsLoadEngine` ne détient aucune référence vers un
 `MetricsAggregator`, il ne fait qu'écrire des mesures dans un puits — et relève à chaque
 intervalle un `Snapshot(StatisticsScope.Sliding)` plus une nouvelle jauge,
-`ActiveVirtualUserGauge` (`Tempest.Application.Execution`), incrémentée/décrémentée par chaque
+`ActiveVirtualUserGauge` (`Sirocco.Application.Execution`), incrémentée/décrémentée par chaque
 `VirtualUserWorker` à l'entrée et à la sortie de sa boucle de consommation — la seule façon
 d'observer la concurrence *réelle* dans le temps, par opposition au plafond ou à l'effectif
 configuré. `LoadTestHostedService` démarre ce relevé sur un jeton d'annulation distinct de celui
@@ -67,7 +67,7 @@ Limite de cette version : non alimentée pour un tir à
 de mesure sans enregistreur de série temporelle). Rendue en table *et* en graphe — voir
 [Courbe de dette d'ordonnancement superposée](#courbe-de-dette-dordonnancement-superposée)
 ci-dessous. Vérifié par un vrai tir (`--vus-from 2 --vus-to 20 --duration 10s`) contre
-`Tempest.SampleTarget` : effectif actif croissant fidèle à la rampe (3 → 7 → 10 → 14 → 18), débit
+`Sirocco.SampleTarget` : effectif actif croissant fidèle à la rampe (3 → 7 → 10 → 14 → 18), débit
 croissant en conséquence, dernier point pris après la fin du tir avec effectif retombé à 0.
 
 ### Distribution des temps de réponse
@@ -84,7 +84,7 @@ chaque barre donnant sa borne haute exacte et son nombre de mesures.
 
 Limite : seul le temps de réponse corrigé (`Response`) est exposé, jamais le temps de service brut
 (`Service`) — c'est la distribution à publier, voir la remarque de classe de `StepStatistics`.
-Vérifié par un vrai tir bridé (`--rps 300 --max-rps 20`) contre `Tempest.SampleTarget` : un
+Vérifié par un vrai tir bridé (`--rps 300 --max-rps 20`) contre `Sirocco.SampleTarget` : un
 histogramme par étape dans le rapport HTML, cohérent avec les percentiles publiés à côté, et le
 même histogramme brut (3 072 paniers) présent dans le rapport JSON.
 
@@ -117,11 +117,11 @@ cours sans outil pour l'interpréter. `/report/live.html` sert le même
 `aggregator.Snapshot(StatisticsScope.Sliding)`, cette fois rendu par `LoadTestReport.ToHtml` (donc
 avec la même distribution de latences et la même mise en page que le rapport final), et ajoute une
 balise `<meta http-equiv="refresh">` qui recharge la page seule toutes les
-`TempestHostOptions.LiveDashboardRefreshSeconds` (3 s par défaut) : ouvrir cette URL dans un
+`SiroccoHostOptions.LiveDashboardRefreshSeconds` (3 s par défaut) : ouvrir cette URL dans un
 navigateur pendant le tir suffit, sans script ni extension.
 
 Un rechargement de page entier plutôt qu'un flux `EventSource`/SSE — aucun des deux n'existait déjà
-dans `Tempest.Host`, et un tableau de bord d'opérateur n'a pas besoin d'une latence de mise à jour
+dans `Sirocco.Host`, et un tableau de bord d'opérateur n'a pas besoin d'une latence de mise à jour
 inférieure à quelques secondes pour rester utile. Limite : comme `/report/live`, non alimenté pour
 un tir à [scénarios concurrents](../charge/scenarios-concurrents.md#scénarios-concurrents). Vérifié par un vrai tir : `/report/live.html`
 interrogé deux fois à quelques secondes d'écart pendant la montée en charge par défaut montre le

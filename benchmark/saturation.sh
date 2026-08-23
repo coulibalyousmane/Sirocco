@@ -8,7 +8,7 @@ set -euo pipefail
 # aucune logique. Deux passes, qui ne different que par UNE variable :
 #
 #   1. QUEUE_WAIT_MS=120000 — la cible MET EN FILE. Les 4 outils.
-#   2. QUEUE_WAIT_MS=50     — la cible DELESTE. Temoin, Tempest seul.
+#   2. QUEUE_WAIT_MS=50     — la cible DELESTE. Temoin, Sirocco seul.
 #
 # Avec 50 ms, passe 8 commandes simultanees, la cible rend un 503 en 50 ms : les utilisateurs
 # virtuels sont liberes immediatement, aucun injecteur ne prend de retard, et la dette
@@ -19,7 +19,7 @@ set -euo pipefail
 # jamais : elle fait attendre. C'est le comportement de la majorite des systemes reels, et c'est la
 # que la dette apparait.
 #
-# La passe temoin ne joue que Tempest : la dette d'ordonnancement est une grandeur que lui seul
+# La passe temoin ne joue que Sirocco : la dette d'ordonnancement est une grandeur que lui seul
 # publie, donc rejouer k6/Gatling/NBomber contre la cible delesteuse n'ajouterait aucune
 # information a la comparaison — c'est deja ce que fait le benchmark publie.
 #
@@ -27,7 +27,7 @@ set -euo pipefail
 #   - Debit CONSTANT (START_RATE == TARGET_RATE) au-dessus de la capacite de la cible (~70 req/s,
 #     soit 8 places / ~115 ms) plutot qu'une rampe : la file croit alors lineairement, une seule
 #     pente a expliquer.
-#   - Plafond d'utilisateurs virtuels identique pour les deux outils qui en ont un (Tempest
+#   - Plafond d'utilisateurs virtuels identique pour les deux outils qui en ont un (Sirocco
 #     --max-vus, k6 maxVUs). Gatling (injectOpen) et NBomber (Simulation.Inject) n'en ont aucun en
 #     modele ouvert : asymetrie reelle, exploitee et documentee par l'article plutot que masquee.
 
@@ -56,10 +56,10 @@ env "${PROFILE_ENV[@]}" \
   "$BENCHMARK_DIR/run.sh"
 
 echo
-echo "=== 2/2 — Temoin : la cible DELESTE (QUEUE_WAIT_MS=50), Tempest seul ==="
+echo "=== 2/2 — Temoin : la cible DELESTE (QUEUE_WAIT_MS=50), Sirocco seul ==="
 env "${PROFILE_ENV[@]}" \
   QUEUE_WAIT_MS=50 \
-  TOOLS=tempest \
+  TOOLS=sirocco \
   RESULTS_SUBDIR=results-saturation/temoin \
   "$BENCHMARK_DIR/run.sh"
 

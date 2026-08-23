@@ -1,0 +1,117 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: testruns.sirocco.dev
+spec:
+  conversion:
+    strategy: None
+  group: sirocco.dev
+  names:
+    kind: TestRun
+    listKind: TestRunList
+    plural: testruns
+    singular: testrun
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          spec:
+            properties:
+              autoscaling:
+                nullable: true
+                properties:
+                  maxRequestsPerSecondPerWorker:
+                    format: int32
+                    type: integer
+                  maxWorkerReplicas:
+                    format: int32
+                    type: integer
+                  minWorkerReplicas:
+                    format: int32
+                    type: integer
+                  scaleAheadSeconds:
+                    format: int32
+                    type: integer
+                type: object
+              clusterSharedSecretRef:
+                nullable: true
+                properties:
+                  key:
+                    type: string
+                  name:
+                    type: string
+                  optional:
+                    nullable: true
+                    type: boolean
+                type: object
+              heartbeatIntervalSeconds:
+                format: int32
+                nullable: true
+                type: integer
+              image:
+                type: string
+              livePollIntervalSeconds:
+                format: int32
+                nullable: true
+                type: integer
+              maxVirtualUsers:
+                format: int32
+                nullable: true
+                type: integer
+              profile:
+                items:
+                  properties:
+                    durationSeconds:
+                      format: int32
+                      type: integer
+                    fromRps:
+                      format: int32
+                      type: integer
+                    toRps:
+                      format: int32
+                      type: integer
+                  type: object
+                type: array
+              registrationTimeoutSeconds:
+                format: int32
+                nullable: true
+                type: integer
+              reportTimeoutSeconds:
+                format: int32
+                nullable: true
+                type: integer
+              targetBaseUrl:
+                type: string
+              workerDeadAfterSeconds:
+                format: int32
+                nullable: true
+                type: integer
+              workerReplicas:
+                format: int32
+                type: integer
+              workflow:
+                nullable: true
+                type: string
+            type: object
+          status:
+            properties:
+              completionTime:
+                format: date-time
+                nullable: true
+                type: string
+              message:
+                nullable: true
+                type: string
+              phase:
+                type: string
+              workersReady:
+                format: int32
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

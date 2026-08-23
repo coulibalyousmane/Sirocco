@@ -16,10 +16,10 @@ pu voir, parce qu'aucun n'exerçait à la fois un vrai réseau et le câblage DI
    construction du moteur — et un conteneur DI ne garantit aucun ordre entre deux singletons
    indépendants. Corrigé en construisant les accumulateurs **paresseusement**, au premier
    enregistrement ou à la première lecture, plutôt qu'au constructeur.
-3. **`TempestMeter` n'était résolu par personne.** Le `Meter` et ses instruments ne se créent
-   qu'à la construction de `TempestMeter` — mais rien d'autre n'en dépend directement (il existe
+3. **`SiroccoMeter` n'était résolu par personne.** Le `Meter` et ses instruments ne se créent
+   qu'à la construction de `SiroccoMeter` — mais rien d'autre n'en dépend directement (il existe
    pour être observé de l'extérieur, pas pour être appelé). Résultat : Prometheus n'exposait que
-   `target_info`, aucune métrique Tempest. Corrigé par un `IHostedService` dédié
+   `target_info`, aucune métrique Sirocco. Corrigé par un `IHostedService` dédié
    (`MeterActivationHostedService`) dont l'unique rôle est de forcer la résolution.
 
 Les trois sont désormais couverts par des tests de régression qui reproduisent l'ordre exact
@@ -53,15 +53,15 @@ entre tirs (étapes 18 à 20).
 ## Et ensuite
 
 Cette roadmap initiale est close : elle traitait de ce que le moteur devait savoir faire. La
-suite est un problème différent — Tempest n'est encore installable par personne, et ses scénarios
+suite est un problème différent — Sirocco n'est encore installable par personne, et ses scénarios
 restent trop pauvres pour un test de charge réel.
 
-**[ROADMAP.md](https://github.com/coulibalyousmane/Tempest/blob/main/ROADMAP.md)** couvre ce qui manque pour exister face à k6, Gatling et NBomber :
+**[ROADMAP.md](https://github.com/coulibalyousmane/Sirocco/blob/main/ROADMAP.md)** couvre ce qui manque pour exister face à k6, Gatling et NBomber :
 matrice concurrentielle honnête, huit phases ordonnées par dépendance, et une correction
-importante — l'argument « Tempest corrige le *coordinated omission*, contrairement aux autres »
+importante — l'argument « Sirocco corrige le *coordinated omission*, contrairement aux autres »
 est **faux** (les trois proposent un modèle ouvert) ; le différenciateur réel est ailleurs.
 
-Ce différenciateur est maintenant démontré, pas seulement affirmé : **[benchmark/](https://github.com/coulibalyousmane/Tempest/blob/main/benchmark/README.md)**
-fait tourner Tempest, k6, Gatling et NBomber contre la même cible saturée avec le même scénario, et
-publie les résultats bruts dans [benchmark/results/RESULTS.md](https://github.com/coulibalyousmane/Tempest/blob/main/benchmark/results/RESULTS.md).
+Ce différenciateur est maintenant démontré, pas seulement affirmé : **[benchmark/](https://github.com/coulibalyousmane/Sirocco/blob/main/benchmark/README.md)**
+fait tourner Sirocco, k6, Gatling et NBomber contre la même cible saturée avec le même scénario, et
+publie les résultats bruts dans [benchmark/results/RESULTS.md](https://github.com/coulibalyousmane/Sirocco/blob/main/benchmark/results/RESULTS.md).
 

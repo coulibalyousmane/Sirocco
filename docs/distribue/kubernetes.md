@@ -4,7 +4,7 @@
 
 `docker-compose.yml` déploie le mode distribué à la main — au-delà de quelques dizaines de
 workers, ça ne tient plus. L'opérateur Kubernetes introduit une ressource personnalisée
-`TestRun` (`tempest.dev/v1alpha1`) : décrire un tir (cible, profil, nombre de workers) suffit,
+`TestRun` (`sirocco.dev/v1alpha1`) : décrire un tir (cible, profil, nombre de workers) suffit,
 l'opérateur crée les ressources Kubernetes qui le portent et les détruit une fois le tir
 terminé.
 
@@ -19,11 +19,11 @@ cluster (même esprit que `ClusterCertificatePinning`).
 maître adresse chaque worker individuellement (`/worker/prepare`, `/worker/start`), exactement
 comme chaque conteneur `worker1`/`worker2` a un nom DNS stable dans `docker-compose.yml`. Chaque
 pod calcule sa propre `Worker__SelfUrl` à partir de son nom (Downward API + expansion native
-`$(POD_NAME)` de Kubernetes) — aucun changement de code côté `Tempest.Host`.
+`$(POD_NAME)` de Kubernetes) — aucun changement de code côté `Sirocco.Host`.
 
 **Le maître est un `Job` (`restartPolicy: Never`, `backoffLimit: 0`), pas un `Deployment`** :
 `MasterOrchestrationHostedService` positionne déjà `Environment.ExitCode` selon le succès/échec
-des seuils quand `Tempest__ExitAfterRun` est actif — la condition `Complete`/`Failed` du Job
+des seuils quand `Sirocco__ExitAfterRun` est actif — la condition `Complete`/`Failed` du Job
 reflète honnêtement ce résultat sans qu'il soit besoin de parser le rapport de tir. Une fois le
 Job terminé, le contrôleur réduit le `StatefulSet` des workers à 0 réplique (patch, pas
 suppression) — c'est le nettoyage automatique promis par la ressource `TestRun` ; le
@@ -42,8 +42,8 @@ existant + une clé), jamais recopié en clair dans la ressource `TestRun` :
 Essayer localement (Docker Desktop, Kubernetes activé dans ses réglages) :
 
 ```bash
-docker build -f src/Tempest.Host/Dockerfile -t tempest-host:local .
-docker build -f src/Tempest.Operator/Dockerfile -t tempest-operator:local .
+docker build -f src/Sirocco.Host/Dockerfile -t sirocco-host:local .
+docker build -f src/Sirocco.Operator/Dockerfile -t sirocco-operator:local .
 kubectl apply -k deploy/operator
 kubectl apply -f deploy/samples/testrun-demo.yaml
 kubectl get testrun testrun-demo -w
@@ -71,8 +71,8 @@ orpheline.
 surveille les `TestRun` sur tout le cluster plutôt que dans un seul namespace ; restreindre la
 portée demanderait de configurer explicitement le champ de surveillance côté runtime, non fait
 ici. Pas de scénario personnalisé via `ConfigMap` (seuls les workflows déjà nommés dans
-`TempestHostOptions` sont sélectionnables via `spec.workflow`). Pas d'automatisation
-TLS/`cert-manager` : `spec` ne câble pas `Tempest__ClusterCertificateThumbprint` — HTTP en clair
+`SiroccoHostOptions` sont sélectionnables via `spec.workflow`). Pas d'automatisation
+TLS/`cert-manager` : `spec` ne câble pas `Sirocco__ClusterCertificateThumbprint` — HTTP en clair
 à l'intérieur du cluster, même choix assumé que `docker-compose.yml` aujourd'hui. Pas de
 publication d'image sur un registre (GHCR) : build et chargement locaux uniquement, comme pour
 `docker-compose.yml`. `TestRun.status` ne porte pas le contenu du rapport de tir — accès par

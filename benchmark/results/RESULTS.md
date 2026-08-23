@@ -1,14 +1,14 @@
 # Résultats du benchmark comparatif
 
 Généré par `benchmark/normalize` à partir des sorties réelles de
-`benchmark/results/{tempest.json,k6.json,gatling/console.log,nbomber.json}`.
+`benchmark/results/{sirocco.json,k6.json,gatling/console.log,nbomber.json}`.
 Méthodologie complète, protocole exact et limites : voir [README](README.md).
 
 ## Vue d'ensemble — requêtes de checkout (le point de saturation)
 
 | Outil | Requêtes | OK | Échecs | Taux d'échec |
 |---|---:|---:|---:|---:|
-| Tempest | 7650 | 5366 | 2284 | 29,9 % |
+| Sirocco | 7650 | 5366 | 2284 | 29,9 % |
 | k6 | 7649 | 5349 | 2300 | 30,1 % |
 | Gatling | 7650 | 5125 | 2525 | 33,0 % |
 | NBomber | 7524 | 4308 | 3216 | 42,7 % |
@@ -22,27 +22,27 @@ même grandeur, d'où son absence ci-dessous plutôt qu'un chiffre trompeur.
 
 | Outil | Métrique | p50 (ms) | p95 (ms) | p99 (ms) |
 |---|---|---:|---:|---:|
-| Tempest | Response (avec attente d'ordonnancement) | 246,8 | 317,4 | 337,9 |
-| Tempest | Service (p99 seul, traitement pur) | — | — | 333,8 |
+| Sirocco | Response (avec attente d'ordonnancement) | 246,8 | 317,4 | 337,9 |
+| Sirocco | Service (p99 seul, traitement pur) | — | — | 333,8 |
 | k6 | iteration_duration | 247,6 | 317,6 | 342,2 |
 | Gatling | Global Information (colonne Total) | 133,0 | 280,0 | 573,0 |
 | NBomber | — (voir note ci-dessus) | — | — | — |
 
 ## Latence de l'étape checkout seule
 
-Tempest et NBomber exposent un percentile par étape nommée. k6 (sans tags/groupes
+Sirocco et NBomber exposent un percentile par étape nommée. k6 (sans tags/groupes
 par requête dans `benchmark/k6/checkout.js`) et Gatling (dont la console ne détaille
 les percentiles que globalement, pas par nom de requête) ne le permettent pas avec les
 artefacts capturés ici — limite réelle documentée plutôt que contournée.
 
 | Outil | p50 (ms) | p95 (ms) | p99 (ms) |
 |---|---:|---:|---:|
-| Tempest | 128,0 | 185,3 | 196,6 |
+| Sirocco | 128,0 | 185,3 | 196,6 |
 | k6 | — | — | — |
 | Gatling | — | — | — |
 | NBomber | 144,1 | 191,6 | 201,0 |
 
-## Le différenciateur Tempest : Response vs Service, et la dette d'ordonnancement
+## Le différenciateur Sirocco : Response vs Service, et la dette d'ordonnancement
 
 Aucun des trois autres outils ne publie cette distinction. Sur l'itération complète :
 

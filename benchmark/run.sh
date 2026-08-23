@@ -30,7 +30,7 @@ export TARGET_RATE="${TARGET_RATE:-150}"
 export DURATION_SECONDS="${DURATION_SECONDS:-90}"
 
 # Plafond d'utilisateurs virtuels. Non defini par defaut : chaque outil garde le sien (512 pour
-# Tempest, 60/200 pour k6), ce qui est bien le comportement du tir publie. Gatling (injectOpen) et
+# Sirocco, 60/200 pour k6), ce qui est bien le comportement du tir publie. Gatling (injectOpen) et
 # NBomber (Simulation.Inject) n'ont pas de plafond en modele ouvert — asymetrie reelle, documentee
 # dans leurs fichiers respectifs et dans l'article, pas contournee ici.
 MAX_VUS="${MAX_VUS:-}"
@@ -47,8 +47,8 @@ RESULTS_DIR="$BENCHMARK_DIR/${RESULTS_SUBDIR:-results}"
 NORMALIZE_MODE="${NORMALIZE_MODE:-}"
 
 # Outils a jouer. Les quatre par defaut : c'est le benchmark comparatif. Un sous-ensemble sert aux
-# passes temoins (ex. TOOLS=tempest pour rejouer le meme profil contre une cible reglee autrement).
-TOOLS="${TOOLS:-tempest k6 gatling nbomber}"
+# passes temoins (ex. TOOLS=sirocco pour rejouer le meme profil contre une cible reglee autrement).
+TOOLS="${TOOLS:-sirocco k6 gatling nbomber}"
 
 tool_enabled() {
   case " $TOOLS " in
@@ -68,7 +68,7 @@ trap cleanup EXIT
 echo "--- Profil : ${START_RATE} -> ${TARGET_RATE} req/s sur ${DURATION_ARG}, attente cible ${QUEUE_WAIT_MS} ms ---"
 echo "--- Resultats : $RESULTS_DIR ---"
 
-echo "--- Demarrage de Tempest.SampleTarget (reglee pour saturer, voir docker-compose.yml) ---"
+echo "--- Demarrage de Sirocco.SampleTarget (reglee pour saturer, voir docker-compose.yml) ---"
 docker compose -f "$COMPOSE_FILE" up --build -d
 
 echo "--- Attente de disponibilite ---"
@@ -81,25 +81,25 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 if [ "$ready" -ne 1 ]; then
-  echo "Tempest.SampleTarget n'a jamais repondu :"
+  echo "Sirocco.SampleTarget n'a jamais repondu :"
   docker compose -f "$COMPOSE_FILE" logs
   exit 1
 fi
 
 mkdir -p "$RESULTS_DIR/gatling" "$RESULTS_DIR/nbomber"
 
-if tool_enabled tempest; then
-  echo "--- Tempest ---"
-  tempest_args=(
-    run "$BENCHMARK_DIR/scenarios/tempest-checkout.yaml"
+if tool_enabled sirocco; then
+  echo "--- Sirocco ---"
+  sirocco_args=(
+    run "$BENCHMARK_DIR/scenarios/sirocco-checkout.yaml"
     --target-url "$TARGET_URL"
     --from-rps "$START_RATE" --to-rps "$TARGET_RATE" --duration "$DURATION_ARG"
-    --report-json "$RESULTS_DIR/tempest.json"
+    --report-json "$RESULTS_DIR/sirocco.json"
   )
   if [ -n "$MAX_VUS" ]; then
-    tempest_args+=(--max-vus "$MAX_VUS")
+    sirocco_args+=(--max-vus "$MAX_VUS")
   fi
-  dotnet run --project "$REPO_ROOT/src/Tempest.Cli" -c Release -- "${tempest_args[@]}"
+  dotnet run --project "$REPO_ROOT/src/Sirocco.Cli" -c Release -- "${sirocco_args[@]}"
 fi
 
 if tool_enabled k6; then

@@ -10,13 +10,13 @@ Débit demandé : **6 000 itérations** (débit constant au-dessus de la capac
 
 | Outil | Modèle ouvert | Plafond VUs | Requêtes | Échecs | Latence rapportée (p99) | Attente d'ordonnancement |
 |---|---|---:|---:|---:|---:|---|
-| **Tempest** | borné | 50 | 6 000 | 0,0 % | **28 311,6 ms** | **mesurée** : dette max 27 795,8 ms |
+| **Sirocco** | borné | 50 | 6 000 | 0,0 % | **28 311,6 ms** | **mesurée** : dette max 27 795,8 ms |
 | k6 | borné | 50 | 4 092 | 0,0 % | 1 162,6 ms | non ; `dropped_iterations` = 1 907 |
 | Gatling | non borné | — | 4 827 | 0,0 % | 14 573,0 ms | non (aucune file interne) |
 | NBomber | non borné | — | 5 967 | 0,2 % | 27 672,6 ms | non (aucune file interne) |
 
 La colonne latence n'est pas la même grandeur partout, et c'est documenté plutôt que
-lissé : `__iteration` Response pour Tempest, `iteration_duration` pour k6, bloc
+lissé : `__iteration` Response pour Sirocco, `iteration_duration` pour k6, bloc
 `Global Information` pour Gatling — trois façons de dire « l'itération complète ». Pour
 NBomber, c'est l'étape `checkout` seule : il n'agrège pas par itération.
 
@@ -27,12 +27,12 @@ Même grandeur pour les quatre : les requêtes `checkout` abouties, sur les
 
 | Outil | Délivrées | Manquantes | Ce que l'outil en dit |
 |---|---:|---:|---|
-| **Tempest** | 6 000 | 0 | `droppedCount` = 0 ; dette publiée séparément |
+| **Sirocco** | 6 000 | 0 | `droppedCount` = 0 ; dette publiée séparément |
 | k6 | 4 092 | 1 908 | `dropped_iterations` = 1 907 |
 | Gatling | 4 827 | 1 173 | 1 173 × `j.n.NoRouteToHostException` ; 1 173 × `checkout: No attribute named 'token' is defined` |
 | NBomber | 5 958 | 42 | `failCount` = 42 sur le scénario |
 
-## Le même tir, les deux mesures de Tempest
+## Le même tir, les deux mesures de Sirocco
 
 | Mesure | p50 | p95 | p99 |
 |---|---:|---:|---:|
@@ -55,7 +55,7 @@ Même grandeur pour les quatre : les requêtes `checkout` abouties, sur les
 
 ## Témoin : le même profil contre une cible qui déleste
 
-Tempest seul, exactement les mêmes paramètres. Une seule variable change : la cible
+Sirocco seul, exactement les mêmes paramètres. Une seule variable change : la cible
 refuse au bout de 50 ms au lieu de faire attendre.
 
 | Cible | Échecs | Service p99 | Response p99 | Écart p99 | Dette max |

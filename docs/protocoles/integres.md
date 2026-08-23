@@ -22,12 +22,12 @@ conserver lui-même dans `IVirtualUserContext.State`.
 fermeture propre) s'active via :
 
 ```json
-"Tempest": { "Workflow": "websocket-echo" }
+"Sirocco": { "Workflow": "websocket-echo" }
 ```
 
 `Workflow` est sans effet dès que `ScenarioFile` est renseigné, qui garde la priorité —
 `DynamicCheckoutWorkflow` reste le comportement par défaut si ni l'un ni l'autre n'est précisé.
-`Tempest.SampleTarget` expose la cible correspondante, un écho Kestrel pur sur `/ws/echo`.
+`Sirocco.SampleTarget` expose la cible correspondante, un écho Kestrel pur sur `/ws/echo`.
 
 **Poignée de main de fermeture : un piège vérifié en pratique avant d'écrire la moindre ligne
 de production.** Une sonde jetable (`ClientWebSocket` + `HttpListener`, hors du dépôt) a permis
@@ -35,12 +35,12 @@ de confirmer l'interopérabilité *avant* de construire la fonctionnalité — e
 piège à éviter : `WebSocket.CloseAsync` effectue une poignée de main **complète** (elle attend
 la trame de fermeture du pair) ; si un seul côté ne participe pas à cet échange, l'appel reste
 bloqué indéfiniment. `WebSocketConnection.CloseAsync` délègue tel quel à
-`ClientWebSocket.CloseAsync`, mais `WebSocketEchoWorkflow` et `Tempest.SampleTarget` s'assurent
+`ClientWebSocket.CloseAsync`, mais `WebSocketEchoWorkflow` et `Sirocco.SampleTarget` s'assurent
 tous deux de répondre à une fermeture reçue — vérifié par un test qui échouerait par *timeout*,
 pas par assertion, en cas de régression.
 
 Vérifié par un vrai tir (20 utilisateurs virtuels, rampe 0→10→0 RPS sur 10 s, contre
-`Tempest.SampleTarget`) : 75 itérations, **0 échec, 0 abandon**, `ws-connect` et `ws-echo`
+`Sirocco.SampleTarget`) : 75 itérations, **0 échec, 0 abandon**, `ws-connect` et `ws-echo`
 tous deux à 0 % d'échec, seuils respectés.
 
 ## Protocole gRPC — unaire
@@ -54,15 +54,15 @@ PingResponse response = await client.PingAsync(new PingRequest { Message = "ping
 
 Aucune connexion à mesurer séparément, contrairement à WebSocket : l'établissement HTTP/2 est
 transparent et mutualisé par le `GrpcChannel`, exactement comme le pool de `HttpClient`. Une
-seule étape (`grpc-ping`) suffit donc. Le contrat (`protos/tempest_echo.proto`) est un fichier
-unique référencé par `Tempest.Scenarios` (client), `Tempest.SampleTarget` (serveur) et
-`Tempest.UnitTests` (serveur de test) : un désaccord de contrat échoue à la compilation, pas à
+seule étape (`grpc-ping`) suffit donc. Le contrat (`protos/sirocco_echo.proto`) est un fichier
+unique référencé par `Sirocco.Scenarios` (client), `Sirocco.SampleTarget` (serveur) et
+`Sirocco.UnitTests` (serveur de test) : un désaccord de contrat échoue à la compilation, pas à
 l'exécution — même discipline que pour la déclaration JSON `camelCase` de l'étape 4.
 
 `GrpcEchoWorkflow` (scénario de référence) s'active via :
 
 ```json
-"Tempest": { "Workflow": "grpc-echo" }
+"Sirocco": { "Workflow": "grpc-echo" }
 ```
 
 Un fichier de configuration complet et exécutable, qui sert de base aux cinq workflows gRPC de
@@ -72,7 +72,7 @@ cette page (il suffit d'y changer `Workflow`) :
 *Fichier exécuté par la CI : `docs/examples/config/appsettings.grpc.json`*
 
 ```bash
-dotnet src/Tempest.Host/bin/Release/net10.0/Tempest.Host.dll \
+dotnet src/Sirocco.Host/bin/Release/net10.0/Sirocco.Host.dll \
   --contentRoot "$(pwd)/docs/examples/config" --environment grpc
 ```
 
@@ -80,7 +80,7 @@ dotnet src/Tempest.Host/bin/Release/net10.0/Tempest.Host.dll \
 clair (`http://`, sans TLS), ne multiplexe **pas** HTTP/1.1 et HTTP/2 sur un même port — sans
 négociation ALPN (qui exige TLS), un point d'écoute mixte reste silencieusement en HTTP/1.1
 seul, ce qui casserait gRPC sans le moindre message d'erreur explicite au niveau applicatif.
-`Tempest.SampleTarget` expose donc gRPC sur un port dédié, HTTP/2 pur
+`Sirocco.SampleTarget` expose donc gRPC sur un port dédié, HTTP/2 pur
 (`SampleTargetOptions.GrpcPort`, 5287 par défaut), à côté du port REST/WebSocket habituel.
 `GrpcEchoWorkflowOptions.TargetUri` renseigne cette adresse séparée ; omis, le canal est dérivé
 de la `BaseAddress` du client HTTP — suffisant dès que la cible négocie les deux protocoles via
@@ -93,7 +93,7 @@ avant d'ouvrir le canal — sans ce commutateur, l'appel échoue silencieusement
 révéler la vraie cause.
 
 Vérifié par un vrai tir (20 utilisateurs virtuels, rampe 0→10→0 RPS sur 10 s, contre
-`Tempest.SampleTarget`) : 75 itérations, **0 échec, 0 abandon**, `grpc-ping` à 0 % d'échec,
+`Sirocco.SampleTarget`) : 75 itérations, **0 échec, 0 abandon**, `grpc-ping` à 0 % d'échec,
 seuils respectés.
 
 ## Protocole gRPC — streaming serveur
@@ -124,7 +124,7 @@ un message, puisqu'il n'en est pas un.
 `GrpcStreamEchoWorkflow` (scénario de référence) s'active via :
 
 ```json
-"Tempest": { "Workflow": "grpc-stream-echo" },
+"Sirocco": { "Workflow": "grpc-stream-echo" },
 "GrpcEcho": { "TargetUri": "http://localhost:5287" }
 ```
 
@@ -132,7 +132,7 @@ Réutilise la même section `GrpcEcho` (donc la même `TargetUri`) que le scéna
 besoin, mêmes réglages, pas de raison d'en dupliquer une deuxième.
 
 Vérifié par un vrai tir (20 utilisateurs virtuels, rampe 0→10→0 RPS sur 10 s, contre
-`Tempest.SampleTarget`) : 75 itérations × 5 messages = 375 mesures sur `grpc-stream-message`,
+`Sirocco.SampleTarget`) : 75 itérations × 5 messages = 375 mesures sur `grpc-stream-message`,
 **0 échec** — un nombre qui correspond exactement à la configuration serveur, confirmant que
 chaque message du flux est bien compté une fois, ni plus ni moins.
 
@@ -158,7 +158,7 @@ n'existe donc aucune latence par message à mesurer avant la réponse récapitul
 `GrpcClientStreamEchoWorkflow` (scénario de référence) s'active via :
 
 ```json
-"Tempest": { "Workflow": "grpc-client-stream-echo" },
+"Sirocco": { "Workflow": "grpc-client-stream-echo" },
 "GrpcEcho": { "TargetUri": "http://localhost:5287", "MessageCount": 5 }
 ```
 
@@ -166,7 +166,7 @@ Réutilise la même section `GrpcEcho` que les deux scénarios précédents (`Ta
 réglage supplémentaire (`MessageCount`) propre aux flux pilotés par le client.
 
 Vérifié par un vrai tir (20 utilisateurs virtuels, rampe 0→10→0 RPS sur 6+8+3 s, contre
-`Tempest.SampleTarget`) : 125 itérations, **0 échec** sur `grpc-client-stream-upload` — le
+`Sirocco.SampleTarget`) : 125 itérations, **0 échec** sur `grpc-client-stream-upload` — le
 récapitulatif renvoyé par le serveur (nombre de messages, octets totaux) correspond à chaque
 fois exactement à ce qui a été envoyé.
 
@@ -201,11 +201,11 @@ la réception de son écho, message par message.
 `GrpcBidiStreamEchoWorkflow` (scénario de référence) s'active via :
 
 ```json
-"Tempest": { "Workflow": "grpc-bidi-stream-echo" },
+"Sirocco": { "Workflow": "grpc-bidi-stream-echo" },
 "GrpcEcho": { "TargetUri": "http://localhost:5287", "MessageCount": 5 }
 ```
 
 Vérifié par un vrai tir (20 utilisateurs virtuels, rampe 0→10→0 RPS sur 6+8+3 s, contre
-`Tempest.SampleTarget`) : 125 itérations × 5 messages = 625 mesures sur
+`Sirocco.SampleTarget`) : 125 itérations × 5 messages = 625 mesures sur
 `grpc-bidi-stream-message`, **0 échec**.
 

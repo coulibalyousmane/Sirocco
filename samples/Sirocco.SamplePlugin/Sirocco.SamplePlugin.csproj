@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    Preuve reelle du contrat de plugin (roadmap phase 6) : cette assembly n'est referencee par
+    aucun projet Sirocco.Host/Sirocco.Cli/Sirocco.Scenarios — volontairement, c'est le point.
+    Seule dependance : Sirocco.Domain (ProjectReference ici parce que le depot est encore prive et
+    non publie sur nuget.org, voir ROADMAP.md phase 1 ; un vrai plugin tiers utiliserait le paquet
+    NuGet Sirocco.Domain a la place). Compilee en .dll puis chargee au runtime par
+    PluginWorkflowLoader (Sirocco.Scenarios), exactement comme le ferait un protocole tiers reel.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Sirocco.Domain\Sirocco.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

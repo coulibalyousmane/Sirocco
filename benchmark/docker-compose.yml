@@ -1,6 +1,6 @@
 # Cible unique du benchmark comparatif (voir benchmark/README.md), reglee pour saturer a un
 # debit modeste et reproductible sur une seule machine. Aucune modification du code de
-# Tempest.SampleTarget : uniquement des variables d'environnement deja lues par
+# Sirocco.SampleTarget : uniquement des variables d'environnement deja lues par
 # SampleTargetOptions (concurrence de checkout abaissee, latence simulee augmentee).
 #
 #   docker compose -f benchmark/docker-compose.yml up --build -d
@@ -21,7 +21,7 @@ services:
   sampletarget:
     build:
       context: ..
-      dockerfile: samples/Tempest.SampleTarget/Dockerfile
+      dockerfile: samples/Sirocco.SampleTarget/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:5281
       SampleTarget__GrpcPort: "5287"

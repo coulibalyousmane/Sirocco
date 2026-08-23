@@ -1,18 +1,18 @@
-namespace: tempest-operator-system
-namePrefix: tempest-operator-
+namespace: sirocco-operator-system
+namePrefix: sirocco-operator-
 labels:
 - includeSelectors: true
   pairs:
-    operator: tempest-operator
+    operator: sirocco-operator
 resources:
 - operator-role.yaml
 - operator-role-binding.yaml
 - deployment.yaml
-- testruns_tempest_dev.yaml
+- testruns_sirocco_dev.yaml
 - namespace.yaml
 images:
 - name: operator
-  newName: tempest-operator
+  newName: sirocco-operator
   newTag: local
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

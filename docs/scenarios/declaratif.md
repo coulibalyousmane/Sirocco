@@ -13,7 +13,7 @@ même temps :
   (`System.Text.Json.Serialization.JsonSerializerContext`) des deux côtés du contrat HTTP,
   politique `camelCase` déclarée explicitement (voir plus bas pourquoi).
 
-`Tempest.SampleTarget` simule une vraie capacité finie (`SemaphoreSlim` bornée, 503 au-delà)
+`Sirocco.SampleTarget` simule une vraie capacité finie (`SemaphoreSlim` bornée, 503 au-delà)
 et des jetons qui expirent, pour que le scénario ait vraiment quelque chose à saturer et à
 rafraîchir plutôt qu'un simple écho instantané.
 
@@ -28,13 +28,13 @@ Un scénario HTTP peut se décrire en YAML ou JSON plutôt qu'en C#, sans recomp
 Deux façons de le jouer. En ligne de commande, le fichier est un argument positionnel :
 
 ```bash
-tempest run scenarios/smoke-test.yaml --target-url http://localhost:5281 --rps 10 --duration 5s
+sirocco run scenarios/smoke-test.yaml --target-url http://localhost:5281 --rps 10 --duration 5s
 ```
 
 Ou par configuration, pour l'hôte :
 
 ```json
-"Tempest": { "ScenarioFile": "scenarios/smoke-test.yaml" }
+"Sirocco": { "ScenarioFile": "scenarios/smoke-test.yaml" }
 ```
 
 `ScenarioFile` absent (par défaut) : l'hôte utilise `DynamicCheckoutWorkflow`, comme avant —
@@ -73,7 +73,7 @@ corps XML) ou `jsonPath` (pour un corps JSON). La même corrélation, écrite en
 filtres, descente récursive (`..`) ni tranches : une extraction Regex suffisait jusqu'ici sur
 un corps JSON, ce sous-ensemble couvre le reste des cas usuels sans réimplémenter la
 spécification JSONPath entière. Implémenté avec `System.Text.Json.Nodes` (BCL) uniquement —
-`Tempest.Domain` n'a aucune dépendance NuGet externe, pas de bibliothèque JSONPath dédiée.
+`Sirocco.Domain` n'a aucune dépendance NuGet externe, pas de bibliothèque JSONPath dédiée.
 
 Les trois syntaxes sont validées au chargement du scénario, pas au premier appel : une
 expression mal formée échoue immédiatement, avant le premier tir.
@@ -86,8 +86,8 @@ mesurer comme tel. De même, une extraction configurée mais manquée transforme
 `AssertionFailed` : le scénario attendait une valeur que la réponse n'a pas fournie, ce n'est
 pas un succès silencieux.
 
-[`scenarios/smoke-test.yaml`](https://github.com/coulibalyousmane/Tempest/blob/main/scenarios/smoke-test.yaml) démontre le cas réel : `login`
-extrait le jeton effectivement émis par `Tempest.SampleTarget`, `checkout` le réutilise dans
+[`scenarios/smoke-test.yaml`](https://github.com/coulibalyousmane/Sirocco/blob/main/scenarios/smoke-test.yaml) démontre le cas réel : `login`
+extrait le jeton effectivement émis par `Sirocco.SampleTarget`, `checkout` le réutilise dans
 son en-tête `Authorization` — vérifié par un vrai tir, `checkout` passe désormais à 0 %
 d'échec (il retournait systématiquement 401 dans les versions précédentes de ce fichier,
 faute de pouvoir propager un jeton réel).

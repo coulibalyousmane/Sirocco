@@ -37,7 +37,7 @@
   items:
     - name: Protocoles intégrés
       href: protocoles/integres.md
-    - name: Étendre Tempest
+    - name: Étendre Sirocco
       href: extensions/contrat.md
     - name: Guide d'écriture d'extension
       href: extensions/guide.md

@@ -7,7 +7,7 @@ using NBomber.CSharp;
 using NBomber.Http.CSharp;
 
 // Scenario NBomber du benchmark comparatif (voir benchmark/README.md) : meme sequence exacte que
-// benchmark/scenarios/tempest-checkout.yaml, benchmark/k6/checkout.js et
+// benchmark/scenarios/sirocco-checkout.yaml, benchmark/k6/checkout.js et
 // benchmark/gatling/CheckoutSimulation.java (login puis checkout, meme panier), meme rampe
 // 20 -> 150 iterations/s sur 90s. Simulation.Inject(20) puis Simulation.RampingInject(150) :
 // RampingInject rampe depuis le debit de la simulation precedente, donc cette paire reproduit le
@@ -26,7 +26,7 @@ using NBomber.Http.CSharp;
 // Asymetrie assumee et exploitee par l'article sur la dette d'ordonnancement : comme injectOpen de
 // Gatling, Simulation.Inject/RampingInject n'expose aucun plafond de concurrence — le modele ferme
 // de NBomber (KeepConstant) en a un, mais ce n'est plus le meme modele de charge, donc pas une
-// option ici. Seuls k6 (maxVUs) et Tempest (--max-vus) bornent leur modele ouvert.
+// option ici. Seuls k6 (maxVUs) et Sirocco (--max-vus) bornent leur modele ouvert.
 
 // Ancre sur AppContext.BaseDirectory (bin/<config>/net10.0 sous ce projet), pas sur
 // Directory.GetCurrentDirectory() : ce dernier reste le repertoire d'ou `dotnet run` a ete

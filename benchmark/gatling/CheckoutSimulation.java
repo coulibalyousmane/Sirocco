@@ -1,8 +1,8 @@
 // Simulation Gatling du benchmark comparatif (voir benchmark/README.md) : meme sequence exacte
-// que benchmark/scenarios/tempest-checkout.yaml et benchmark/k6/checkout.js (login puis
+// que benchmark/scenarios/sirocco-checkout.yaml et benchmark/k6/checkout.js (login puis
 // checkout, meme panier), meme rampe 20 -> 150 utilisateurs/s sur 90s. injectOpen (via
 // rampUsersPerSec) est le modele ouvert de Gatling, l'equivalent direct de --from-rps/--to-rps
-// de Tempest — un utilisateur Gatling ici ne fait qu'une seule iteration (login+checkout), donc
+// de Sirocco — un utilisateur Gatling ici ne fait qu'une seule iteration (login+checkout), donc
 // "utilisateurs/s" et "iterations/s" coincident, comme pour les trois autres outils.
 //
 // En Java DSL (pas Scala) : le bundle OSS Gatling 3.15.x livre un squelette Maven configure
@@ -14,7 +14,7 @@
 // constant (rampUsersPerSec(n).to(n) est plat), sans introduire un second injecteur ici.
 //
 // Asymetrie assumee et exploitee par l'article sur la dette d'ordonnancement : injectOpen n'a
-// AUCUN plafond d'utilisateurs virtuels, contrairement au maxVUs de k6 ou au --max-vus de Tempest.
+// AUCUN plafond d'utilisateurs virtuels, contrairement au maxVUs de k6 ou au --max-vus de Sirocco.
 // Gatling cree autant d'utilisateurs que le debit l'exige ; il n'a donc jamais de file d'attente
 // interne a signaler, et son attente apparait dans la latence qu'il rapporte.
 

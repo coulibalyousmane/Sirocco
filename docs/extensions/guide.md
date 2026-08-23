@@ -1,7 +1,7 @@
 # Guide d'écriture d'extension
 
 Dernier bullet de la phase 6 : sans documentation, un modèle de plugin reste théorique. Les quatre
-protocoles de référence ci-dessus (SQL, SSE, MQTT, GraphQL) et `samples/Tempest.SamplePlugin` sont
+protocoles de référence ci-dessus (SQL, SSE, MQTT, GraphQL) et `samples/Sirocco.SamplePlugin` sont
 déjà des preuves réelles du contrat — ce guide en extrait la recette pour écrire la cinquième
 extension, pas encore écrite par ce dépôt.
 
@@ -19,7 +19,7 @@ parce que HTTP y était impossible autrement.
 
 ## Le contrat minimal
 
-Tout tient dans `Tempest.Domain.Execution.IWorkflow` — trois membres obligatoires, quatre membres
+Tout tient dans `Sirocco.Domain.Execution.IWorkflow` — trois membres obligatoires, quatre membres
 par défaut (C# 8+, à ne surcharger que si le besoin existe réellement) :
 
 ```csharp
@@ -78,8 +78,8 @@ une des méthodes suivantes avant de sortir de la méthode :
 dotnet new classlib -n MonPlugin -o MonPlugin
 ```
 
-Le `.csproj` n'a besoin que d'une référence à `Tempest.Domain` (`ProjectReference` tant que ce dépôt
-reste privé ; paquet NuGet `Tempest.Domain` pour une extension tierce réelle une fois le dépôt
+Le `.csproj` n'a besoin que d'une référence à `Sirocco.Domain` (`ProjectReference` tant que ce dépôt
+reste privé ; paquet NuGet `Sirocco.Domain` pour une extension tierce réelle une fois le dépôt
 public) :
 
 ```xml
@@ -90,17 +90,17 @@ public) :
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Tempest.Domain\Tempest.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Sirocco.Domain\Sirocco.Domain.csproj" />
   </ItemGroup>
 </Project>
 ```
 
 Puis le workflow lui-même — la forme la plus simple possible, une étape HTTP unique à travers le
-client partagé (exactement `samples/Tempest.SamplePlugin`, à quelques noms près) :
+client partagé (exactement `samples/Sirocco.SamplePlugin`, à quelques noms près) :
 
 ```csharp
-using Tempest.Domain.Execution;
-using Tempest.Domain.Metrics;
+using Sirocco.Domain.Execution;
+using Sirocco.Domain.Metrics;
 
 namespace MonPlugin;
 
@@ -160,7 +160,7 @@ private readonly string _path = Environment.GetEnvironmentVariable("MON_PLUGIN_P
 
 ```bash
 dotnet build MonPlugin
-tempest run MonPlugin/bin/Debug/net10.0/MonPlugin.dll --plugin-type MonPlugin.MonWorkflow --target-url http://localhost:5281 --rps 20 --duration 30s
+sirocco run MonPlugin/bin/Debug/net10.0/MonPlugin.dll --plugin-type MonPlugin.MonWorkflow --target-url http://localhost:5281 --rps 20 --duration 30s
 ```
 
 `--plugin-type` est **optionnel** si l'assembly n'expose qu'un seul type public implémentant
@@ -168,14 +168,14 @@ tempest run MonPlugin/bin/Debug/net10.0/MonPlugin.dll --plugin-type MonPlugin.Mo
 type résolu doit avoir un **constructeur public sans paramètre** ; sans ça, le chargement échoue
 avec un message explicite plutôt qu'une exception de réflexion brute.
 
-Un simple `dotnet build` suffit **uniquement si la seule dépendance est `Tempest.Domain`** — le cas
+Un simple `dotnet build` suffit **uniquement si la seule dépendance est `Sirocco.Domain`** — le cas
 de SSE et GraphQL ci-dessus, et de l'exemple plus haut. Dès qu'une dépendance NuGet supplémentaire
 entre en jeu (le cas de SQL et MQTT), il faut **publier** (`dotnet publish`) : `Assembly.LoadFrom`
 charge l'assembly du plugin depuis son propre dossier, et `dotnet build` seul ne copie pas les
 dépendances NuGet transitives à côté d'elle — seul `dotnet publish` le fait. Une dépendance
 **native** (comme `SQLitePCLRaw` pour SQL) va plus loin : elle doit en plus être cherchée par le
 plugin lui-même via `NativeLibrary.SetDllImportResolver`, le résolveur par défaut cherchant à côté
-de l'hôte (`Tempest.Cli`) plutôt qu'à côté du plugin — voir `SqlWorkflow` pour le patron exact.
+de l'hôte (`Sirocco.Cli`) plutôt qu'à côté du plugin — voir `SqlWorkflow` pour le patron exact.
 
 ## Distribuer via NuGet
 
@@ -184,22 +184,22 @@ d'avoir à distribuer un chemin de fichier :
 
 ```bash
 dotnet pack MonPlugin -o ./local-feed
-tempest run --plugin-package MonPlugin --plugin-source ./local-feed --target-url http://localhost:5281 --rps 20 --duration 30s
+sirocco run --plugin-package MonPlugin --plugin-source ./local-feed --target-url http://localhost:5281 --rps 20 --duration 30s
 ```
 
 Limite assumée : **aucune dépendance transitive du paquet n'est résolue**, seule la bibliothèque du
-plugin lui-même est extraite. Une extension qui dépend d'autre chose que `Tempest.Domain` doit
+plugin lui-même est extraite. Une extension qui dépend d'autre chose que `Sirocco.Domain` doit
 publier une assembly qui embarque déjà ses dépendances, ou accepter que le chargement échoue.
 
 ## Tester une extension
 
 Discipline du dépôt entier, sans exception pour les extensions : contre un **vrai** double
 (serveur Kestrel in-process, broker embarqué...), jamais un mock qui court-circuite le protocole
-réellement testé. `tests/Tempest.UnitTests/TestDoubles/SseTestServer.cs`,
+réellement testé. `tests/Sirocco.UnitTests/TestDoubles/SseTestServer.cs`,
 `MqttTestBroker.cs` et `GraphQlTestServer.cs` sont les patrons à réutiliser selon la forme du
 protocole (HTTP in-process, broker TCP local, serveur GraphQL in-process).
 
-Si `ExecuteAsync` échoue silencieusement une fois chargée par `tempest run` (`VirtualUserWorker`
+Si `ExecuteAsync` échoue silencieusement une fois chargée par `sirocco run` (`VirtualUserWorker`
 avale toute exception de scénario sans jamais la journaliser, y compris avec
 `Logging__LogLevel__Default=Debug`), le diagnostic le plus rapide reste une petite application
 console jetable avec une **`ProjectReference`** vers l'extension (pas `Assembly.LoadFrom`), qui
@@ -227,7 +227,7 @@ minute si le bug est dans la logique du workflow ou dans le chemin de chargement
 
 Vérifié en suivant ce guide à la lettre, depuis un dossier vide : un plugin minimal
 (`dotnet new classlib`, la même forme que l'exemple ci-dessus) construit par un simple `dotnet build`
-puis chargé par `tempest run` contre `Tempest.SampleTarget` réellement démarré — sélection
+puis chargé par `sirocco run` contre `Sirocco.SampleTarget` réellement démarré — sélection
 automatique du seul type disponible, puis `--plugin-type` explicite — les deux à 0 % d'échec.
 Dossier jetable, jamais commité.
 

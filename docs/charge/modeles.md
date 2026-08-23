@@ -2,12 +2,12 @@
 
 ## Modèle fermé
 
-Tempest ne sait piloter qu'un débit cible (modèle *ouvert*) : « exactement N utilisateurs
+Sirocco ne sait piloter qu'un débit cible (modèle *ouvert*) : « exactement N utilisateurs
 simultanés » — le besoin le plus courant dans les outils historiques — n'avait pas d'équivalent.
 `--vus <n>` couvre ce cas, à côté du modèle ouvert plutôt qu'à sa place :
 
 ```bash
-tempest run --target-url http://localhost:5281 --vus 50 --duration 30s
+sirocco run --target-url http://localhost:5281 --vus 50 --duration 30s
 ```
 
 Exactement 50 utilisateurs virtuels enchaînent les itérations sans aucune pause imposée, jusqu'à
@@ -34,7 +34,7 @@ se libérer — qui fait émerger le modèle fermé, sans aucun mécanisme de sy
 Limite : mode distribué non pris en charge pour ce modèle — `WorkerCoordinator` reste câblé sur
 `CoordinatedRateLimiter`/`LoadProfile` (modèle ouvert) seul, comme le format scripté l'était déjà
 pour d'autres raisons. Vérifié par un vrai tir (`--vus 10 --duration 5s` contre
-`Tempest.SampleTarget`) : effectif exact, avertissement présent dans le rapport texte et le JSON,
+`Sirocco.SampleTarget`) : effectif exact, avertissement présent dans le rapport texte et le JSON,
 modèle ouvert inchangé en régression.
 
 ## Montée d'utilisateurs
@@ -44,7 +44,7 @@ observer une dégradation progressive — « monter à 50 utilisateurs sur 2 min
 viser un débit. `--vus-from`/`--vus-to` couvre ce cas :
 
 ```bash
-tempest run --target-url http://localhost:5281 --vus-from 0 --vus-to 50 --duration 2m
+sirocco run --target-url http://localhost:5281 --vus-from 0 --vus-to 50 --duration 2m
 ```
 
 L'effectif concurrent passe linéairement de 0 à 50 sur la durée donnée (une rampe descendante,
@@ -52,10 +52,10 @@ L'effectif concurrent passe linéairement de 0 à 50 sur la durée donnée (une 
 `--vus` : incompatible avec `--rps`/`--from-rps`/`--to-rps` (modèle ouvert) et avec `--max-vus`
 (l'effectif suit déjà les paliers, jusqu'à leur pic) ; `--duration` est obligatoire. Une rampe
 « montée, plateau, descente » à plusieurs paliers reste possible via un `appsettings.json`, section
-`Tempest:RampVus` — la CLI n'exprime qu'un seul palier, comme elle ne le fait déjà que pour un seul
+`Sirocco:RampVus` — la CLI n'exprime qu'un seul palier, comme elle ne le fait déjà que pour un seul
 palier de débit (`--from-rps`/`--to-rps`).
 
-Techniquement, `RampingVirtualUserPool` (`Tempest.Application.Execution`) remplace la création
+Techniquement, `RampingVirtualUserPool` (`Sirocco.Application.Execution`) remplace la création
 statique de travailleurs du moteur : il en crée de nouveaux quand l'effectif cible monte et en
 arrête individuellement quand il descend — chaque travailleur reçoit son propre jeton d'annulation
 plutôt que celui du tir, ce qui permet d'arrêter un utilisateur virtuel sans fermer la file de
@@ -66,7 +66,7 @@ continu, exactement comme pour un effectif fixe. Même mise en garde de rapport 
 d'échéancier théorique à comparer que l'effectif constant.
 
 Limite : mode distribué non pris en charge, comme pour l'effectif fixe. Vérifié par un vrai tir
-(`--vus-from 0 --vus-to 20 --duration 8s` contre `Tempest.SampleTarget`) : débit croissant au fil
+(`--vus-from 0 --vus-to 20 --duration 8s` contre `Sirocco.SampleTarget`) : débit croissant au fil
 de la rampe, avertissement présent dans le rapport texte et le JSON, modèles ouvert et fermé à
 effectif fixe inchangés en régression.
 
@@ -80,7 +80,7 @@ un nombre d'itérations plutôt qu'une durée. Deux nouveaux exécuteurs couvren
 virtuels, premier arrivé premier servi — même convention de plafond que le modèle ouvert.
 
 ```bash
-tempest run --target-url http://localhost:5281 --iterations 1000 --max-vus 20
+sirocco run --target-url http://localhost:5281 --iterations 1000 --max-vus 20
 ```
 
 **Itérations par utilisateur** (`--vus`/`--iterations-per-vu`) : chacun des `n` utilisateurs
@@ -89,7 +89,7 @@ l'exécuteur partagé, un utilisateur virtuel rapide ne « vole » jamais les it
 lent. `--iterations-per-vu` prend la place de `--duration` comme condition d'arrêt de `--vus` :
 
 ```bash
-tempest run --target-url http://localhost:5281 --vus 10 --iterations-per-vu 20
+sirocco run --target-url http://localhost:5281 --vus 10 --iterations-per-vu 20
 ```
 
 Aucun des deux n'a de notion de débit ni de durée : ni `--rps`/`--from-rps`/`--to-rps`, ni
@@ -98,7 +98,7 @@ garde de rapport que le modèle fermé (`LoadTestReport.ClosedModel`) : sans dé
 pas d'échéancier théorique à comparer.
 
 Techniquement, les deux réutilisent un seul nouvel ordonnanceur, `IterationCountScheduler`
-(`Tempest.Application.Execution`) : il émet exactement un nombre fixe de jetons puis s'arrête,
+(`Sirocco.Application.Execution`) : il émet exactement un nombre fixe de jetons puis s'arrête,
 plutôt que de s'arrêter sur une durée comme `ClosedModelScheduler`. La différence entre les deux
 exécuteurs se joue entièrement côté travailleur : `VirtualUserWorker` accepte désormais un quota
 personnel optionnel (`LoadTestOptions.IterationsPerVirtualUser`) au-delà duquel il s'arrête de
@@ -111,7 +111,7 @@ au gré de qui répond le plus vite au canal partagé est le comportement voulu.
 
 Limite : mode distribué non pris en charge pour les deux, comme pour le reste du modèle fermé.
 Vérifié par de vrais tirs (`--iterations 300 --max-vus 20` puis `--vus 10 --iterations-per-vu 20`
-contre `Tempest.SampleTarget`) : 300 puis 200 itérations exactement, avertissement présent dans le
+contre `Sirocco.SampleTarget`) : 300 puis 200 itérations exactement, avertissement présent dans le
 rapport texte et le JSON, modèle ouvert inchangé en régression.
 
 
@@ -124,18 +124,18 @@ d'infrastructure réel. `--max-rps` couvre ce cas, en s'appliquant *par-dessus* 
 jamais à sa place :
 
 ```bash
-tempest run --target-url http://localhost:5281 --rps 100 --duration 30s --max-rps 20
+sirocco run --target-url http://localhost:5281 --rps 100 --duration 30s --max-rps 20
 ```
 
 À la différence de tous les indicateurs précédents, `--max-rps` n'est mutuellement exclusif avec
 rien : il compose avec `--rps`/`--from-rps`/`--to-rps` (modèle ouvert), `--vus`/`--vus-from`/
-`--vus-to` (modèle fermé), `--iterations`/`--iterations-per-vu`, et avec `Tempest:Scenarios`, où il
+`--vus-to` (modèle fermé), `--iterations`/`--iterations-per-vu`, et avec `Sirocco:Scenarios`, où il
 sert de plafond par défaut pour tout scénario qui ne précise pas le sien (`MaxRequestsPerSecond`)
 — même convention que `TargetBaseUrl`. Sans équivalent `--max-vus` distinct par scénario avant
 cette fonctionnalité, un scénario concurrent peut désormais aussi porter son propre plafond,
 indépendant de celui du tir entier.
 
-Techniquement, `RateCappedScheduler` (`Tempest.Application.Execution`) est un décorateur
+Techniquement, `RateCappedScheduler` (`Sirocco.Application.Execution`) est un décorateur
 d'`ILoadScheduler` : il enveloppe le `ChannelWriter` remis à l'ordonnanceur choisi (modèle ouvert,
 fermé, montée d'utilisateurs ou itérations) et retarde la transmission de chaque jeton jusqu'à ce
 que l'intégrale du plafond l'autorise — même principe que `CoordinatedRateLimiter` (comparer prévu
@@ -146,9 +146,9 @@ ordonnanceurs existants n'a besoin de savoir qu'il est bridé.
 particulier à masquer : `ExecutionToken.ScheduledTicks` reste celui que l'ordonnanceur enveloppé
 avait prévu, jamais réécrit par le décorateur, donc l'écart entre ce qui était prévu et l'instant où
 la requête part réellement apparaît dans `Response` exactement comme un injecteur saturé — cohérent
-avec le reste de Tempest, qui existe pour montrer ce genre d'écart, pas pour le cacher.
+avec le reste de Sirocco, qui existe pour montrer ce genre d'écart, pas pour le cacher.
 
-Vérifié par de vrais tirs contre `Tempest.SampleTarget` : `--rps 100 --duration 5s --max-rps 20`
+Vérifié par de vrais tirs contre `Sirocco.SampleTarget` : `--rps 100 --duration 5s --max-rps 20`
 a produit 500 itérations (le total planifié par le profil à 100 RPS) étalées sur 25s pour ne
 jamais dépasser 20 RPS, avec une dette maximale d'environ 20s reflétant fidèlement le retard
 imposé ; `--vus 10 --duration 5s --max-rps 15` (modèle fermé, qui produit naturellement 176 RPS

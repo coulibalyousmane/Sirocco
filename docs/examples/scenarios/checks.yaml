@@ -1,4 +1,4 @@
-# Checks (assertions sur le corps de réponse), contre Tempest.SampleTarget.
+# Checks (assertions sur le corps de réponse), contre Sirocco.SampleTarget.
 #
 # Un check est une extraction dont on ne garde que le verdict : « a-t-elle trouvé quelque chose »
 # (sans expected) ou « a-t-elle trouvé exactement cette valeur » (avec expected, comparaison de
@@ -11,7 +11,7 @@
 # le nom d'une étape, ni celui d'un autre check du scénario.
 #
 # Exécution, depuis la racine du dépôt :
-#   tempest run docs/examples/scenarios/checks.yaml \
+#   sirocco run docs/examples/scenarios/checks.yaml \
 #     --target-url http://localhost:5281 --rps 10 --duration 5s
 
 name: checks

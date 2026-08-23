@@ -12,7 +12,7 @@ the four delivered all of it.
 
 What separates them has a name — **scheduling debt** — and it does not depend on the tool's brand
 but on a design choice every injector makes. This article explains which choice, why most
-load-testing campaigns never see it, and how to catch it with the tool you already use, Tempest or
+load-testing campaigns never see it, and how to catch it with the tool you already use, Sirocco or
 not.
 
 ## What the open model guarantees, and what it does not
@@ -24,7 +24,7 @@ that would have been slow. The report improves as the system degrades. This is *
 omission*, as described by Gil Tene.
 
 The **open model** (arrival rate) fixes that: requests leave at a rate set by the clock, not by the
-target. k6, Gatling, JMeter, NBomber and Tempest all have one. "We avoid coordinated omission" is
+target. k6, Gatling, JMeter, NBomber and Sirocco all have one. "We avoid coordinated omission" is
 therefore nobody's differentiator.
 
 But the open model is a promise about **intent**: *n* requests per second will be **scheduled**. It
@@ -51,7 +51,7 @@ Debt     = actual departure  − scheduled departure   → the injector's own la
 ```
 
 (These three quantities are the `ServiceTicks`, `ResponseTicks` and `SchedulingDelayTicks`
-properties of [`MetricResult`](https://github.com/coulibalyousmane/Tempest/blob/main/src/Tempest.Domain/Metrics/MetricResult.cs).)
+properties of [`MetricResult`](https://github.com/coulibalyousmane/Sirocco/blob/main/src/Sirocco.Domain/Metrics/MetricResult.cs).)
 
 Debt is not the target's latency. It is **your injector's** lateness. And a late injector has only
 two options, which distort the report in two different ways:
@@ -66,7 +66,7 @@ Both are defensible. What is not defensible is failing to say so.
 
 ## Why an ordinary load campaign shows none of this
 
-This repository's [comparative benchmark](https://github.com/coulibalyousmane/Tempest/blob/main/benchmark/results/RESULTS.md)
+This repository's [comparative benchmark](https://github.com/coulibalyousmane/Sirocco/blob/main/benchmark/results/RESULTS.md)
 replays the same scenario against the same saturated target with all four tools. Observed
 scheduling debt: **19.1 ms** on a p99 of 337.9 ms. Five per cent. Nothing to write about.
 
@@ -121,9 +121,9 @@ exceptions in Gatling, a `failCount` in NBomber. Nobody is cheating.
 
 But put the two tables side by side and the ordering jumps out:
 
-- Tempest, which delivered **everything** it was asked for, reports the highest p99.
+- Sirocco, which delivered **everything** it was asked for, reports the highest p99.
 - NBomber, short by a few dozen requests, reports very nearly the same — and since it has no notion
-  of scheduling debt at all, that agreement is a **cross-validation** of Tempest's *Response*
+  of scheduling debt at all, that agreement is a **cross-validation** of Sirocco's *Response*
   figure. Two independent mechanisms, one answer.
 - Gatling, missing a fifth of the load, reports roughly half.
 - k6, missing close to a third, reports more than twenty times less.
@@ -139,16 +139,16 @@ between injectors is **where that queue accumulates** and **who counts it**:
 
 - **Gatling and NBomber do not bound their concurrency.** They create as many virtual users as
   needed, requests leave on time, and the wait happens *inside the request itself*. It therefore
-  shows up naturally in the reported latency — hence NBomber's agreement with Tempest. But the price
+  shows up naturally in the reported latency — hence NBomber's agreement with Sirocco. But the price
   is right there in the delivery table: at a thousand concurrent users, Gatling exhausted the
   machine's sockets (`NoRouteToHostException`), and a fifth of the load never reached the target. Its
   p99 therefore describes what was left — that is, the fastest requests. **This is the blind spot of
   the unbounded model: the injector becomes the bottleneck, and nothing in the latency says so.**
-- **k6 and Tempest do bound their concurrency** — 50 virtual users here. The queue can no longer
+- **k6 and Sirocco do bound their concurrency** — 50 virtual users here. The queue can no longer
   build up in the target: it builds up **in the injector**. That is precisely scheduling debt. And
   that is where the two tools diverge.
 
-### k6 drops; Tempest delays and measures
+### k6 drops; Sirocco delays and measures
 
 Faced with a request it cannot launch on time, k6 **drops** it. That is a defensible choice: it
 protects the injector and avoids a snowball effect. And k6 does not conceal it — twice over. During
@@ -171,7 +171,7 @@ slowest ones**, since dropping happens precisely when every virtual user is busy
 published percentile therefore describes a sample with its tail removed. That is coordinated
 omission climbing back in through the window after the open model showed it out through the door.
 
-Tempest makes the other choice: it **sends the request late** and times it from the instant it
+Sirocco makes the other choice: it **sends the request late** and times it from the instant it
 should have left. The same physical event becomes latency — something a latency threshold catches
 on its own, without anyone having had to think about watching a counter they did not know existed.
 And it publishes the gap separately, so you know whether you are looking at the target's slowness
@@ -190,12 +190,12 @@ A very concrete consequence: on the `checkout` step, Response and Service are **
 operator who opens the report and looks at the step they care about sees **nothing**. You have to
 read `__iteration`, or the first step.
 
-## What Tempest also misses
+## What Sirocco also misses
 
 An article that only praised its own tool would be worthless. Three blind spots, found while
 running this very experiment:
 
-- **The "injector fell behind" flag did not fire.** Tempest raises `InjectorFellBehind` when
+- **The "injector fell behind" flag did not fire.** Sirocco raises `InjectorFellBehind` when
   scheduled tokens were never issued. Here **all** of them were issued — just very late. That flag
   detects an injector that gives up, not one that lags. Only the debt gauge catches the second case.
 - **The report declares itself trustworthy.** The `isTrustworthy` flag only looks at measurements
@@ -213,12 +213,12 @@ conclude "read the delivered load before you read the p99".
 
 ## What to take away, whichever tool you use
 
-Four checks that need neither Tempest nor any change of tooling:
+Four checks that need neither Sirocco nor any change of tooling:
 
 1. **Know whether your injector bounds its concurrency.** That question decides everything else. If
    it does not (Gatling, NBomber in open mode), the wait will show up in your latencies — but
    nothing will tell you whether the injector was the one that gave way. If it does (k6 via
-   `maxVUs`, Tempest via `--max-vus`), the queue moves into the injector and becomes invisible to
+   `maxVUs`, Sirocco via `--max-vus`), the queue moves into the injector and becomes invisible to
    anyone who does not know where to look.
 2. **Compare the run's actual duration to the profile's duration.** It is the cheapest signal there
    is, and every tool displays it. A 60-second profile that takes considerably longer is an injector
@@ -240,10 +240,10 @@ looks to be in worse shape — when it is the one treating its callers properly.
 
 Everything is in the repository, and the protocol is code, not a description:
 
-- [`benchmark/saturation.sh`](https://github.com/coulibalyousmane/Tempest/blob/main/benchmark/saturation.sh) — both passes.
-- [`benchmark/docker-compose.yml`](https://github.com/coulibalyousmane/Tempest/blob/main/benchmark/docker-compose.yml) — the target and its single variable.
-- [`benchmark/k6/checkout.js`](https://github.com/coulibalyousmane/Tempest/blob/main/benchmark/k6/checkout.js), [`benchmark/gatling/CheckoutSimulation.java`](https://github.com/coulibalyousmane/Tempest/blob/main/benchmark/gatling/CheckoutSimulation.java), [`benchmark/nbomber/Program.cs`](https://github.com/coulibalyousmane/Tempest/blob/main/benchmark/nbomber/Program.cs), [`benchmark/scenarios/tempest-checkout.yaml`](https://github.com/coulibalyousmane/Tempest/blob/main/benchmark/scenarios/tempest-checkout.yaml) — the same scenario in all four tools.
-- [`benchmark/results-saturation/SATURATION.md`](https://github.com/coulibalyousmane/Tempest/blob/main/benchmark/results-saturation/SATURATION.md) — the report for the run discussed here. As with the published benchmark, the four tools' raw outputs are not versioned: one command regenerates them.
+- [`benchmark/saturation.sh`](https://github.com/coulibalyousmane/Sirocco/blob/main/benchmark/saturation.sh) — both passes.
+- [`benchmark/docker-compose.yml`](https://github.com/coulibalyousmane/Sirocco/blob/main/benchmark/docker-compose.yml) — the target and its single variable.
+- [`benchmark/k6/checkout.js`](https://github.com/coulibalyousmane/Sirocco/blob/main/benchmark/k6/checkout.js), [`benchmark/gatling/CheckoutSimulation.java`](https://github.com/coulibalyousmane/Sirocco/blob/main/benchmark/gatling/CheckoutSimulation.java), [`benchmark/nbomber/Program.cs`](https://github.com/coulibalyousmane/Sirocco/blob/main/benchmark/nbomber/Program.cs), [`benchmark/scenarios/sirocco-checkout.yaml`](https://github.com/coulibalyousmane/Sirocco/blob/main/benchmark/scenarios/sirocco-checkout.yaml) — the same scenario in all four tools.
+- [`benchmark/results-saturation/SATURATION.md`](https://github.com/coulibalyousmane/Sirocco/blob/main/benchmark/results-saturation/SATURATION.md) — the report for the run discussed here. As with the published benchmark, the four tools' raw outputs are not versioned: one command regenerates them.
 
 The figures on this page are not copied by hand: they are generated by
 `benchmark/normalize --saturation` from those outputs, and the French version includes the **same**
