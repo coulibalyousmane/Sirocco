@@ -170,7 +170,7 @@ public sealed class HarConverterTests
     }
 
     [Fact]
-    public void Hop_by_hop_and_redundant_headers_are_stripped_but_custom_headers_survive()
+    public void Redundant_headers_are_stripped_secrets_are_redacted_and_custom_headers_survive()
     {
         HarLog log = new()
         {
@@ -185,13 +185,27 @@ public sealed class HarConverterTests
                     ("Connection", "keep-alive"),
                     ("Accept-Encoding", "gzip"),
                     ("Content-Type", "application/json"),
-                    ("Authorization", "Bearer abc123")),
+                    ("Authorization", "Bearer abc123"),
+                    ("Cookie", "session=deadbeef"),
+                    ("X-Tenant", "acme")),
             ],
         };
 
         HarConversionResult result = HarConverter.Convert(log, "scenario");
 
-        Assert.Contains("TryAddWithoutValidation(\"Authorization\", \"Bearer abc123\")", result.Code);
+        // La valeur du jeton ne doit jamais atterrir dans le fichier genere : un HAR est capture
+        // depuis une session authentifiee reelle, et le .csx produit est destine a etre committe.
+        Assert.DoesNotContain("Bearer abc123", result.Code);
+        Assert.DoesNotContain("session=deadbeef", result.Code);
+        Assert.Contains("SIROCCO_AUTHORIZATION", result.Code);
+        Assert.Contains("SIROCCO_COOKIE", result.Code);
+        Assert.Equal(2, result.RedactedHeaderCount);
+        Assert.Contains("Authorization", result.RedactedHeaderNames);
+        Assert.Contains("Cookie", result.RedactedHeaderNames);
+
+        // Un en-tete metier anodin, lui, doit bien traverser la conversion.
+        Assert.Contains("TryAddWithoutValidation(\"X-Tenant\", \"acme\")", result.Code);
+
         Assert.DoesNotContain("\"Host\"", result.Code);
         Assert.DoesNotContain("\"Content-Length\"", result.Code);
         Assert.DoesNotContain("\"Connection\"", result.Code);

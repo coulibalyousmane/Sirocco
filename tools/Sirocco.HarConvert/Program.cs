@@ -61,8 +61,18 @@ try
         Console.WriteLine($"  {result.SkippedOtherHostCount} requete(s) vers un autre hote que '{result.BaseHost}' ignoree(s).");
     }
 
-    Console.WriteLine(
-        "Verifier l'authentification et les cookies avant de rejouer : ce sont des valeurs de session enregistrees, probablement expirees.");
+    if (result.RedactedHeaderCount > 0)
+    {
+        Console.WriteLine(
+            $"  {result.RedactedHeaderCount} en-tete(s) porteur(s) de secret retire(s) : {string.Join(", ", result.RedactedHeaderNames)}.");
+        Console.WriteLine(
+            "  Leur valeur n'est PAS dans le fichier genere. Chaque ligne commentee du scenario indique la variable d'environnement a definir pour la restituer.");
+    }
+    else
+    {
+        Console.WriteLine(
+            "Aucun en-tete d'authentification dans ce HAR : verifier que la cible accepte bien les requetes rejouees sans session.");
+    }
 
     return 0;
 }

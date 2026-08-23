@@ -195,8 +195,12 @@ empreinte configurée — symétrique, une seule valeur de configuration, comme
 `ClusterSharedSecret` :
 
 ```json
-"Sirocco": { "ClusterCertificateThumbprint": "9DAB455A2D1D91CA1D077E52AF6C46449E037242" }
+"Sirocco": { "ClusterCertificateThumbprint": "B7F0C4A21E8D3956A0C7E1F48B29D6530A4C81FE72D9B3654E0A18C7F2B96D40" }
 ```
+
+L'empreinte attendue est un **SHA-256**, soit 64 caractères hexadécimaux. Une valeur de 40
+caractères est un SHA-1 : le processus refuse alors de démarrer avec un message le disant, plutôt
+que d'échouer silencieusement chaque poignée de main TLS.
 
 Côté serveur, rien à coder : ASP.NET Core sert déjà du HTTPS par pure configuration —
 
@@ -210,9 +214,11 @@ Côté client, `ClusterCertificatePinning.CreateHandler` pose un
 `ServerCertificateCustomValidationCallback` sur le client HTTP nommé partagé par
 `WorkerLivenessHostedService`, `MasterOrchestrationHostedService` et
 `WorkerCoordinator.SubmitReportAsync` — les trois seuls points d'appel HTTP entre maître et
-workers — qui compare l'empreinte du certificat présenté à celle configurée
-(`CryptographicOperations`-style, insensible à la casse et aux séparateurs `:`), plutôt que la
-chaîne de confiance par défaut, inadaptée à un certificat auto-signé. `null` par défaut : la
+workers — qui compare l'empreinte **SHA-256** du certificat présenté à celle configurée
+(insensible à la casse et aux séparateurs `:`), plutôt que la chaîne de confiance par défaut,
+inadaptée à un certificat auto-signé. Conséquence à connaître : l'épinglage **remplace** toute la
+validation de chaîne, donc un certificat épinglé mais **expiré** reste accepté — c'est la
+contrepartie assumée d'un auto-signé à rotation manuelle. `null` par défaut : la
 validation standard du système s'applique alors, sans effet en HTTP, et reste utilisable si un
 opérateur préfère un certificat signé par une vraie CA plutôt que le certificat partagé.
 
@@ -221,8 +227,13 @@ Générer un certificat de test (PowerShell) :
 ```powershell
 $cert = New-SelfSignedCertificate -DnsName "sirocco-cluster" -CertStoreLocation "Cert:\CurrentUser\My" -KeyExportPolicy Exportable
 Export-PfxCertificate -Cert $cert -FilePath cluster.pfx -Password (ConvertTo-SecureString -String "..." -Force -AsPlainText)
-$cert.Thumbprint
+$cert.GetCertHashString("SHA256")
 ```
+
+Ne pas utiliser `$cert.Thumbprint` : cette propriété est un **SHA-1**, et les collisions à préfixe
+choisi sur SHA-1 sont démontrées depuis 2017 — or une empreinte est précisément ce sur quoi repose
+toute la confiance ici. L'équivalent `openssl` est
+`openssl x509 -in cert.crt -noout -fingerprint -sha256`.
 
 **Limites assumées, pas résolues ici** : un seul certificat partagé plutôt qu'une PKI avec un
 certificat par nœud (une vraie infrastructure de certificats, via `cert-manager` par exemple,

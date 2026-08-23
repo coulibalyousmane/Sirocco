@@ -85,7 +85,11 @@ const string USAGE = """
     ASP.NET Core habituelles (variable d'environnement ASPNETCORE_URLS).
     """;
 
-if (args.Length == 0 || args[0] is "-h" or "--help")
+// L'aide est reconnue n'importe ou dans la ligne de commande, pas seulement en premier argument :
+// la documentation (README et docs/demarrer/cli.md) ecrit `sirocco run --help`, forme qui partait
+// auparavant dans CliOptions.Parse et ressortait en "Option non reconnue". La commande de
+// decouverte la plus evidente de l'outil echouait donc.
+if (args.Length == 0 || args.Any(argument => argument is "-h" or "--help"))
 {
     Console.WriteLine(USAGE);
     return 0;

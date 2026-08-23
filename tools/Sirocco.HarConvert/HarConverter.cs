@@ -31,6 +31,17 @@ public static class HarConverter
         ":method", ":path", ":scheme", ":authority",
     ];
 
+    // En-tetes porteurs de secrets, jamais recopies dans le script genere. Un HAR est capture
+    // depuis une session authentifiee reelle : recopier ces valeurs telles quelles produisait un
+    // fichier .csx contenant un jeton vivant, destine a etre committe. Le script emet a la place
+    // une ligne commentee qui montre comment le relire depuis l'environnement, et la conversion
+    // compte ce qu'elle a retire — comme elle compte deja les requetes ignorees, jamais en silence.
+    private static readonly string[] _sensitiveHeaders =
+    [
+        "authorization", "proxy-authorization", "cookie", "set-cookie",
+        "x-api-key", "x-auth-token", "x-csrf-token",
+    ];
+
     /// <summary>
     /// Convertit le journal HAR fourni en source C# d'un scenario scripte.
     /// <para>
@@ -49,6 +60,8 @@ public static class HarConverter
         HashSet<string> usedLabels = new(StringComparer.Ordinal);
         int skippedStaticAsset = 0;
         int skippedOtherHost = 0;
+        int redactedHeaderCount = 0;
+        SortedSet<string> redactedHeaderNames = new(StringComparer.OrdinalIgnoreCase);
 
         // L'hote cible est celui qui revient le plus souvent, jamais "le premier rencontre" :
         // un HAR reel intercale presque toujours un appel tiers (police, analytics, CDN) avant
@@ -83,10 +96,21 @@ public static class HarConverter
             string label = UniqueLabel($"{method} {uri.PathAndQuery}", usedLabels);
 
             List<(string Name, string Value)> headers = [];
+            List<string> redacted = [];
             foreach (HarHeader header in request.Headers)
             {
-                if (Array.IndexOf(_headersToStrip, header.Name.ToLowerInvariant()) >= 0)
+                string lowered = header.Name.ToLowerInvariant();
+
+                if (Array.IndexOf(_headersToStrip, lowered) >= 0)
                 {
+                    continue;
+                }
+
+                if (Array.IndexOf(_sensitiveHeaders, lowered) >= 0)
+                {
+                    redacted.Add(header.Name);
+                    redactedHeaderCount++;
+                    redactedHeaderNames.Add(header.Name);
                     continue;
                 }
 
@@ -96,11 +120,18 @@ public static class HarConverter
             string? body = string.IsNullOrEmpty(request.PostData?.Text) ? null : request.PostData.Text;
             string? contentType = body is null ? null : (string.IsNullOrWhiteSpace(request.PostData?.MimeType) ? "text/plain" : request.PostData.MimeType);
 
-            steps.Add(new ConvertedStep(label, method, uri.PathAndQuery, body, contentType, headers));
+            steps.Add(new ConvertedStep(label, method, uri.PathAndQuery, body, contentType, headers, redacted));
         }
 
         string code = Render(workflowName, steps);
-        return new HarConversionResult(code, steps.Count, skippedStaticAsset, skippedOtherHost, baseHost);
+        return new HarConversionResult(
+            code,
+            steps.Count,
+            skippedStaticAsset,
+            skippedOtherHost,
+            baseHost,
+            redactedHeaderCount,
+            [.. redactedHeaderNames]);
     }
 
     /// <summary>
@@ -247,9 +278,34 @@ public static class HarConverter
             code.AppendLine($"        request{index}.Headers.TryAddWithoutValidation(\"{Escape(name)}\", \"{Escape(value)}\");");
         }
 
+        // La valeur est volontairement absente du fichier genere (voir _sensitiveHeaders) : la
+        // ligne est commentee et lit une variable d'environnement, pour que le scenario reste
+        // reparable en une seconde sans qu'un jeton vivant ait jamais ete ecrit sur disque.
+        foreach (string name in step.RedactedHeaders)
+        {
+            code.AppendLine($"        // Secret retire a la conversion. Decommentez apres avoir defini la variable d'environnement :");
+            code.AppendLine($"        // request{index}.Headers.TryAddWithoutValidation(\"{Escape(name)}\", Environment.GetEnvironmentVariable(\"{EnvVariableName(name)}\")!);");
+        }
+
         code.AppendLine($"        HttpResponseMessage response{index} = await context.HttpClient.SendAsync(request{index}, cancellationToken);");
         code.AppendLine($"        scope{index}.CompleteHttp((int)response{index}.StatusCode);");
         code.AppendLine();
+    }
+
+    /// <summary>
+    /// Nom de variable d'environnement suggere pour un en-tete retire : <c>X-API-Key</c> devient
+    /// <c>SIROCCO_X_API_KEY</c>. Prefixe pour ne pas entrer en collision avec une variable de
+    /// l'hote portant le nom brut de l'en-tete.
+    /// </summary>
+    private static string EnvVariableName(string headerName)
+    {
+        StringBuilder builder = new("SIROCCO_");
+        foreach (char c in headerName.ToUpperInvariant())
+        {
+            builder.Append(char.IsAsciiLetterOrDigit(c) ? c : '_');
+        }
+
+        return builder.ToString();
     }
 
     /// <summary>Derive un identifiant C# valide d'un texte quelconque, ou repli si rien n'en reste.</summary>
@@ -286,7 +342,8 @@ public static class HarConverter
         string Path,
         string? Body,
         string? ContentType,
-        List<(string Name, string Value)> Headers);
+        List<(string Name, string Value)> Headers,
+        List<string> RedactedHeaders);
 }
 
 /// <summary>Resultat d'une conversion HAR : le script genere, plus de quoi rapporter ce qui a ete retenu ou ignore.</summary>
@@ -295,4 +352,6 @@ public sealed record HarConversionResult(
     int StepCount,
     int SkippedStaticAssetCount,
     int SkippedOtherHostCount,
-    string? BaseHost);
+    string? BaseHost,
+    int RedactedHeaderCount,
+    IReadOnlyList<string> RedactedHeaderNames);
