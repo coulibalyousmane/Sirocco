@@ -17,6 +17,7 @@
   <!-- Paquet NuGet bibliotheque (roadmap phase 1, dernier bullet) : le moteur d'injection lui-meme
        (TargetRpsLoadEngine, AddSiroccoEngine) — ce qui deroule reellement un IWorkflow. -->
   <PropertyGroup>
+    <IsPackable>true</IsPackable>
     <PackageId>Sirocco.Application</PackageId>
     <Description>Moteur d'injection de charge de Sirocco (TargetRpsLoadEngine, AddSiroccoEngine) — deroule un IWorkflow (Sirocco.Domain) a un debit cible, avec correction du coordinated omission.</Description>
     <PackageTags>load-testing;performance</PackageTags>

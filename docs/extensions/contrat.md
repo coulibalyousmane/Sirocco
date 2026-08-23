@@ -77,6 +77,17 @@ nuget.org), résolu par `--plugin-package Sirocco.SamplePlugin --plugin-source <
 `Sirocco.SampleTarget` réellement démarré : 0 % d'échec, confirmé une deuxième fois avec
 `--plugin-package-version` explicite pour vérifier le chemin de cache.
 
+Pour refaire ce tir, il faut lever explicitement le verrou d'empaquetage :
+
+```bash
+dotnet pack samples/Sirocco.SamplePlugin -c Release -p:IsPackable=true -o ./local-feed
+```
+
+`Directory.Build.props` pose `IsPackable=false` par défaut et seuls les cinq paquets réellement
+publiés le remettent à `true` — un envoi sur nuget.org étant définitif, mieux vaut oublier de
+publier que squatter un identifiant pour toujours. Ce plugin est un exemple : il n'a rien à faire
+sur nuget.org, mais il doit rester empaquetable à la demande, puisque c'est tout son objet.
+
 ## Protocoles de référence
 
 Troisième bullet de la phase 6 : des extensions écrites contre le contrat de plugin, pour le

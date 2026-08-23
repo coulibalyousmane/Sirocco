@@ -39,6 +39,7 @@
        declaratif (DeclarativeWorkflow, ScenarioDefinitionLoader, ExtractionRule) — reutilisables
        tels quels ou comme modele pour ecrire son propre IWorkflow. -->
   <PropertyGroup>
+    <IsPackable>true</IsPackable>
     <PackageId>Sirocco.Scenarios</PackageId>
     <Description>Scenarios de reference et format declaratif de Sirocco (DynamicCheckoutWorkflow, workflows gRPC/WebSocket, DeclarativeWorkflow) — a reutiliser ou comme modele pour ecrire son propre IWorkflow.</Description>
     <PackageTags>load-testing;performance</PackageTags>

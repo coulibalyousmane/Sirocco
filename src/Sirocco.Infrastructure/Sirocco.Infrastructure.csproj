@@ -21,6 +21,7 @@
        (AddSiroccoMetrics, MetricsProcessor, SiroccoMeter/OpenTelemetry) — ce qui transforme les
        mesures brutes du moteur en LoadTestReport. -->
   <PropertyGroup>
+    <IsPackable>true</IsPackable>
     <PackageId>Sirocco.Infrastructure</PackageId>
     <Description>Chaine de mesure de Sirocco (AddSiroccoMetrics, MetricsProcessor, export OpenTelemetry) — agrege les mesures de Sirocco.Application en LoadTestReport.</Description>
     <PackageTags>load-testing;performance;opentelemetry</PackageTags>

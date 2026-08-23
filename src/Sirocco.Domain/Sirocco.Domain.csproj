@@ -13,6 +13,7 @@
     NuGet, comme le reste du moteur — un consommateur externe n'importe que ce dont il a besoin.
   -->
   <PropertyGroup>
+    <IsPackable>true</IsPackable>
     <PackageId>Sirocco.Domain</PackageId>
     <Description>Contrats du moteur Sirocco (IWorkflow, IVirtualUserContext, profils de charge, rapports) — pour ecrire un scenario en C# sans dependre du reste du moteur.</Description>
     <PackageTags>load-testing;performance</PackageTags>

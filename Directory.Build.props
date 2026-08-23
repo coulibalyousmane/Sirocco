@@ -20,6 +20,16 @@
     comme Sirocco.Host ou les tests) : ces proprietes ne sont lues qu'au moment du pack.
   -->
   <PropertyGroup>
+    <!--
+      Publiable sur demande explicite seulement. Sans ce defaut, `dotnet pack Sirocco.sln`
+      produisait 15 paquets au lieu de 5 : les 5 outils internes, les 4 extensions et
+      Sirocco.SamplePlugin heritaient du IsPackable=true implicite du SDK. Un envoi sur nuget.org
+      etant DEFINITIF (on masque un paquet, on ne le supprime jamais), le mode de defaillance doit
+      etre "un paquet manque a l'appel", jamais "un identifiant est squatte pour toujours". Les
+      cinq projets reellement publies posent donc IsPackable=true explicitement, et un projet
+      ajoute plus tard ne partira pas tout seul.
+    -->
+    <IsPackable>false</IsPackable>
     <Version>0.1.0</Version>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/coulibalyousmane/Sirocco</PackageProjectUrl>
