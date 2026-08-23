@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using System.Text.Json;
 
@@ -264,14 +264,10 @@ static IReadOnlyList<GatlingError> ParseGatlingErrors(string text)
 
 static CheckoutCounts LastRequestLineCounts(string[] lines, string requestName)
 {
-    string? lastMatch = lines
+    string lastMatch = lines
         .Where(line => line.TrimStart().StartsWith($"> {requestName}", StringComparison.Ordinal) && line.Contains('|'))
-        .LastOrDefault();
-
-    if (lastMatch is null)
-    {
-        throw new FormatException($"Aucune ligne '> {requestName}' trouvee dans la sortie console Gatling.");
-    }
+        .LastOrDefault()
+        ?? throw new FormatException($"Aucune ligne '> {requestName}' trouvee dans la sortie console Gatling.");
 
     double[] values = ParsePipeValues(lastMatch);
     return Counts((long)values[0], (long)values[1], (long)values[2]);
@@ -288,7 +284,7 @@ static CheckoutCounts LastRequestLineCounts(string[] lines, string requestName)
 static double[] ParsePipeValues(string line)
 {
     string[] parts = line.Split('|');
-    return parts.Skip(1).Select(ParseGatlingCell).ToArray();
+    return [.. parts.Skip(1).Select(ParseGatlingCell)];
 }
 
 static double ParseGatlingCell(string cell)
@@ -301,7 +297,7 @@ static double ParseGatlingCell(string cell)
 
 static Dictionary<string, double[]> ParsePipeTable(string block)
 {
-    var rows = new Dictionary<string, double[]>();
+    Dictionary<string, double[]> rows = new(StringComparer.Ordinal);
 
     foreach (string line in block.Split('\n'))
     {
@@ -349,7 +345,7 @@ static NBomberResult ParseNBomber(string path)
 
 static string GenerateMarkdown(SiroccoResult sirocco, K6Result k6, GatlingResult gatling, NBomberResult nbomber)
 {
-    var sb = new StringBuilder();
+    StringBuilder sb = new();
 
     sb.AppendLine("# Résultats du benchmark comparatif");
     sb.AppendLine();

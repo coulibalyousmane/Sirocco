@@ -40,6 +40,30 @@ jobs:
       - name: Verifier le formatage
         run: dotnet format Sirocco.sln --verify-no-changes --severity info
 
+  # Les deux projets .NET du harnais de benchmark sont volontairement hors de Sirocco.sln (voir le
+  # commentaire en tete de benchmark/nbomber/NBomberCheckout.csproj : NBomber est sous licence
+  # commerciale, payante pour un usage organisationnel, et n'a rien a faire dans le restore/build
+  # du depot entier). Consequence non voulue : le `dotnet format Sirocco.sln` de build-and-test ne
+  # les voyait pas, et chacun avait accumule des violations en silence (CHARSET + FINALNEWLINE, et
+  # quatre IDE00xx dans benchmark/normalize). Job dedie plutot que les ajouter a la solution : le
+  # format est verifie, sans que le build principal ni les paquets publies ne tirent jamais NBomber.
+  format-benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cloner le depot
+        uses: actions/checkout@v4
+
+      - name: Installer .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Verifier le formatage du harnais de benchmark
+        # Un projet par appel : `dotnet format` prend une solution ou un projet, pas une liste.
+        run: |
+          dotnet format benchmark/normalize --verify-no-changes --severity info
+          dotnet format benchmark/nbomber --verify-no-changes --severity info
+
   smoke-e2e:
     runs-on: ubuntu-latest
     needs: build-and-test
