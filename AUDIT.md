@@ -272,14 +272,42 @@ pas : le chemin se donne en argument positionnel, ou par la clé de configuratio
 
 ## Qualité et outillage
 
-### QUAL-1 — Moyen — `.editorconfig` ne fixe pas `end_of_line`
+### QUAL-1 — ~~Moyen~~ → **corrigé le 24 août 2026** — `.editorconfig` ne fixait pas `end_of_line`
 
-Le fichier pose `insert_final_newline` et `charset` (lignes 22-23) mais pas `end_of_line`.
-`dotnet format` se rabat donc sur le défaut de plateforme : CRLF sous Windows, LF en CI Linux. Un
-même arbre peut être conforme d'un côté et fautif de l'autre.
+Le fichier posait `insert_final_newline` et `charset` mais pas `end_of_line`. Le diagnostic initial
+supposait que `dotnet format` se rabattait sur le défaut de plateforme. **La mesure a montré pire** :
+sans `end_of_line`, `dotnet format` ne regarde pas les fins de ligne **du tout**. Un arbre mi-CRLF
+mi-LF passait à 0 violation des deux côtés. Rien ne signalait la dérive — c'est ainsi qu'un `sed -i`
+de Git Bash (qui retire les CR au passage) a pu convertir des fichiers en silence pendant le
+renommage.
 
-Ce n'est pas théorique : c'est la cause racine de violations WHITESPACE rencontrées en local
-pendant le renommage, invisibles pour la CI. **Correctif** : ajouter `end_of_line = crlf`.
+**Corrigé.** `end_of_line = lf` dans `.editorconfig`, plus un `.gitattributes` neuf
+(`* text=auto eol=lf`). Les deux moitiés sont nécessaires : sous Windows l'installateur de git pose
+`core.autocrlf = true`, donc sans `.gitattributes` la règle `.editorconfig` deviendrait fausse dès
+le premier clone et signalerait chaque fichier du dépôt.
+
+**LF et non le `crlf` que ce constat proposait initialement**, sur trois mesures et non par
+préférence : l'index git contenait déjà du LF sur les 374 fichiers suivis (`git add --renormalize .`
+n'a produit aucun changement de contenu) ; la CI tourne sous Linux ; et `benchmark/*.sh` comme les
+Dockerfile s'exécutent dans des conteneurs Linux, où un CRLF casse le shebang. Un choix CRLF aurait
+exigé une liste d'exceptions, LF n'en exige aucune. Aucun `.bat` ni `.cmd` dans le dépôt.
+
+| Vérification | Avant | Après |
+|---|---|---|
+| `ClusterCertificatePinningTests.cs` (CRLF sur disque) devant `dotnet format` | accepté, 0 violation | **refusé**, `ENDOFLINE` ligne par ligne |
+| Fichiers suivis, index | 374 `i/lf` | 374 `i/lf` (inchangé) |
+| Fichiers suivis, copie de travail | 19 en `w/crlf`/`w/mixed` | 0 |
+| Diff de contenu après correction | — | **vide** (seules les fins de ligne ont bougé) |
+| Barrière | — | 761 tests verts, `dotnet format` exit 0 sur la solution **et** les deux projets du harnais |
+
+La contre-épreuve n'a pas eu à être fabriquée : le fichier qui passait avant le changement est celui
+que `dotnet format` a nommé après. C'est la démonstration que le réglage mord réellement.
+
+**Reste ouvert** : `dotnet format` ne couvre que les `.cs` de la solution. Les 15 fichiers `.yml`,
+`.json`, `.md` et `.csx` restants ont été alignés à la main ; rien ne les empêchera de dériver à
+nouveau côté copie de travail. Le filet qui compte est ailleurs : `.gitattributes` normalise à
+l'entrée dans l'index, donc un clone neuf et la CI verront toujours du LF quoi qu'il arrive sur le
+disque de qui commite.
 
 ### QUAL-2 — Moyen — La couverture est mesurable mais jamais mesurée
 
@@ -379,7 +407,8 @@ première minute :
 Barrière repassée après correction : build 0/0, **761 tests** verts, `dotnet format` à 0 violation
 sur la solution **et** sur les deux projets du harnais, DocFX 0 avertissement.
 
-**Ensuite, par ordre de gain** : ~~SEC-4~~ (corrigé le 24 août), QUAL-1, QUAL-2, puis le reste.
+**Ensuite, par ordre de gain** : ~~SEC-4~~ et ~~QUAL-1~~ (corrigés le 24 août), QUAL-2, puis le
+reste.
 
 **À ne pas traiter** : SEC-5, SEC-6 et SEC-7 décrivent des frontières de confiance assumées. Ils
 demandent une phrase de documentation, pas du code.

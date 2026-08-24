@@ -9,6 +9,17 @@ indent_style = space
 indent_size = 4
 tab_width = 4
 
+# Sans ce reglage, dotnet format ne verifie pas les fins de ligne du tout : un arbre mi-CRLF
+# mi-LF passe a 0 violation, et rien ne signale la derive. C'est ainsi qu'un `sed -i` de Git Bash
+# (qui retire les CR au passage) a pu convertir des fichiers en silence pendant le renommage.
+#
+# LF et non CRLF, bien que le developpement se fasse sous Windows, pour trois raisons mesurees :
+# l'index git contient deja du LF sur les 374 fichiers suivis (donc zero octet a changer) ; la CI
+# tourne sous Linux, ou un checkout rend du LF ; et benchmark/*.sh comme les Dockerfile s'executent
+# dans des conteneurs Linux, ou un CRLF casse le shebang. Un choix CRLF aurait donc exige une liste
+# d'exceptions, LF n'en exige aucune. Voir .gitattributes, qui rend ce reglage vrai a tout clone.
+end_of_line = lf
+
 # XML project files
 [*.{csproj,vbproj,vcxproj,vcxproj.filters,proj,projitems,shproj}]
 indent_size = 4
