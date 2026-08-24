@@ -73,6 +73,19 @@ deploy/samples/testrun-demo.yaml` sur les deux tirs (échoué et réussi) a bien
 `Job`, `StatefulSet` et les deux `Service` via le garbage collection natif — aucune ressource
 orpheline.
 
+**Contexte de sécurité exigé, pas seulement déclaré.** L'opérateur et les pods qu'il fabrique
+portent `runAsNonRoot: true` et `seccompProfile: RuntimeDefault` au niveau du pod,
+`allowPrivilegeEscalation: false` et `capabilities.drop: [ALL]` au niveau du conteneur. Les images
+tournent déjà sous l'UID 1654 ([voir la conteneurisation](conteneurisation.md)) ; ce bloc en fait une
+exigence du cluster plutôt qu'un défaut de l'image — un pod dont l'image reviendrait à `root`
+**refuse de démarrer** au lieu de passer en silence. Vérifié en relisant les pods d'un tir réel :
+maître et deux workers portent bien les quatre réglages, et le tir a terminé en `Succeeded`
+(224 itérations, 0 échec).
+
+`readOnlyRootFilesystem` en est délibérément absent : un scénario scripté est compilé par Roslyn et
+un plugin NuGet atterrit dans un cache, tous deux hors de `/app` — le verrouiller demanderait de
+monter les emplacements temporaires un par un.
+
 **Limites assumées, pas résolues ici** : les manifestes générés par l'outil CLI KubeOps
 (`dotnet kubeops generate operator`) utilisent un `ClusterRole`/`ClusterRoleBinding` — l'opérateur
 surveille les `TestRun` sur tout le cluster plutôt que dans un seul namespace ; restreindre la

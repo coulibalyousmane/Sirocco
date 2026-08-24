@@ -17,4 +17,8 @@ RUN dotnet publish samples/Sirocco.SampleTarget/Sirocco.SampleTarget.csproj -c R
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 COPY --from=build /app .
+
+# Meme traitement que les images de production, bien que ce ne soit qu'une cible de demonstration :
+# c'est elle qu'un lecteur copie pour bricoler sa propre cible. Voir src/Sirocco.Host/Dockerfile.
+USER $APP_UID
 ENTRYPOINT ["dotnet", "Sirocco.SampleTarget.dll"]

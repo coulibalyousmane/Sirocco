@@ -16,4 +16,9 @@ RUN dotnet publish src/Sirocco.Operator/Sirocco.Operator.csproj -c Release -o /a
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 COPY --from=build /app .
+
+# L'operateur est celui des quatre ou ca compte le plus : il detient des droits RBAC de cluster
+# (ClusterRole), donc un echappement de conteneur y vaut plus qu'ailleurs. UID numerique pour que
+# runAsNonRoot puisse etre exige cote pod, voir src/Sirocco.Host/Dockerfile.
+USER $APP_UID
 ENTRYPOINT ["dotnet", "Sirocco.Operator.dll"]

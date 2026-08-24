@@ -84,6 +84,7 @@ public static class TestRunResources
                 Spec = new V1PodSpec
                 {
                     RestartPolicy = "Never",
+                    SecurityContext = BuildPodSecurityContext(),
                     Containers = [BuildContainer(entity, MASTER_PORT, BuildMasterEnv(entity))],
                 },
             },
@@ -111,6 +112,7 @@ public static class TestRunResources
                 Spec = new V1PodSpec
                 {
                     RestartPolicy = "Always",
+                    SecurityContext = BuildPodSecurityContext(),
                     Containers = [BuildContainer(entity, WORKER_PORT, BuildWorkerEnv(entity))],
                 },
             },
@@ -169,6 +171,31 @@ public static class TestRunResources
         Image = entity.Spec.Image,
         Env = env,
         Ports = [new V1ContainerPort { ContainerPort = port }],
+        SecurityContext = BuildContainerSecurityContext(),
+    };
+
+    /// <summary>
+    /// L'image de <c>Sirocco.Host</c> porte déjà <c>USER 1654</c> ; ces deux contextes en font une
+    /// exigence plutôt qu'un défaut. <c>runAsNonRoot</c> fait <b>refuser le démarrage</b> du pod si
+    /// l'image revenait à root, au lieu de le laisser passer en silence — c'est la différence entre
+    /// une propriété vérifiée par le cluster et une propriété seulement déclarée dans l'image.
+    /// <para>
+    /// <c>readOnlyRootFilesystem</c> n'y est délibérément pas : un scénario scripté est compilé par
+    /// Roslyn et un plugin NuGet est téléchargé dans le cache, tous deux hors de <c>/app</c>. Le
+    /// verrouiller demanderait de monter les emplacements temporaires un par un, ce qui déborde du
+    /// constat traité ici — limite énoncée plutôt que devinée.
+    /// </para>
+    /// </summary>
+    private static V1PodSecurityContext BuildPodSecurityContext() => new()
+    {
+        RunAsNonRoot = true,
+        SeccompProfile = new V1SeccompProfile { Type = "RuntimeDefault" },
+    };
+
+    private static V1SecurityContext BuildContainerSecurityContext() => new()
+    {
+        AllowPrivilegeEscalation = false,
+        Capabilities = new V1Capabilities { Drop = ["ALL"] },
     };
 
     private static List<V1EnvVar> BuildCommonEnv(V1TestRun entity)

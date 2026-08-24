@@ -1,3 +1,6 @@
+# Genere une fois par `dotnet kubeops generate operator` (voir Sirocco.Operator.csproj), puis
+# complete a la main : les deux blocs securityContext ci-dessous ne sont pas produits par le
+# generateur. Une regeneration les effacerait sans bruit — les remettre.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -15,6 +18,13 @@ spec:
       labels:
         operator-deployment: kubernetes-operator
     spec:
+      # L'image porte deja USER 1654 (voir src/Sirocco.Operator/Dockerfile) ; ce bloc en fait une
+      # exigence plutot qu'un defaut. runAsNonRoot fait refuser le demarrage du pod si l'image
+      # revenait a root un jour, au lieu de le laisser passer en silence.
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - env:
         - name: POD_NAMESPACE
@@ -23,6 +33,11 @@ spec:
               fieldPath: metadata.namespace
         image: operator
         name: operator
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
         resources:
           limits:
             cpu: 100m

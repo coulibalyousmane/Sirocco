@@ -151,14 +151,52 @@ documentation TLS est corrigée en conséquence — elle recommandait `$cert.Thu
 précisément le SHA-1 ; elle donne maintenant `$cert.GetCertHashString("SHA256")` et l'équivalent
 `openssl`.
 
-### SEC-4 — Moyen — Les quatre conteneurs tournent en root
+### SEC-4 — ~~Moyen~~ → **corrigé le 24 août 2026** — Les quatre conteneurs tournaient en root
 
 Aucun des quatre `Dockerfile` ne porte de directive `USER`. Vérifié empiriquement plutôt que
 supposé : `docker run --rm --entrypoint sh mcr.microsoft.com/dotnet/aspnet:10.0 -c id` rend
 `uid=0(root)`. Cela vaut aussi pour `Sirocco.Operator`, qui détient des droits RBAC de cluster.
 
-**Correctif proposé** : `USER $APP_UID` dans l'étage runtime — la variable est déjà définie par les
-images .NET.
+**Corrigé.** `USER $APP_UID` dans l'étage runtime des trois images .NET — UID **numérique** (1654)
+et non le nom `app`, parce que Kubernetes évalue `runAsNonRoot` avant de résoudre `/etc/passwd` et
+refuse un conteneur dont l'utilisateur est un nom.
+
+La quatrième, `benchmark/gatling`, n'a pas de base .NET et **écrit réellement** dans son répertoire
+de travail : `mvnw` y compile la simulation et télécharge son dépôt Maven. Elle a donc reçu un
+utilisateur dédié (`useradd`, UID **1001** — vérifié sur l'image, pas supposé : la base est passée à
+Ubuntu 26.04, où l'UID 1000 est déjà pris par l'utilisateur `ubuntu`, et `useradd` aurait échoué).
+
+**L'échec qui a imposé le vrai correctif.** Basculer d'utilisateur et faire un `chown -R
+/opt/gatling` ne suffisait pas : le tir échouait sur `Cannot create resource output directory:
+/opt/gatling/target/test-classes`. Cause réelle — `target/gatling` est le **point de montage** du
+dossier de résultats, et Docker crée les répertoires manquants d'un montage **à l'exécution, en
+root**. `target/` appartenait donc à root pendant le tir, et aucun `chown` au build ne pouvait le
+prévoir puisque le répertoire n'existait pas encore. D'où le `mkdir -p /opt/gatling/target/gatling`
+avant le `chown`. Trouvé en faisant tourner l'image, jamais visible en la relisant.
+
+**Au-delà de la lettre du constat**, parce qu'une image peut être lancée avec `--user 0` : les pods
+que l'opérateur fabrique (`TestRunResources`) et l'opérateur lui-même portent maintenant
+`runAsNonRoot: true` + `seccompProfile: RuntimeDefault` au niveau du pod, et
+`allowPrivilegeEscalation: false` + `capabilities.drop: [ALL]` au niveau du conteneur. La différence
+est réelle : le cluster **refuse de démarrer** un pod dont l'image reviendrait à root, au lieu de le
+laisser passer en silence. `readOnlyRootFilesystem` en est délibérément absent — un scénario scripté
+est compilé par Roslyn et un plugin NuGet atterrit dans un cache, tous deux hors de `/app` ; le
+verrouiller demanderait de monter les emplacements temporaires un par un.
+
+Vérifié en exécutant, pas en relisant :
+
+| Épreuve | Résultat |
+|---|---|
+| `id` dans les 4 images construites | `uid=1654(app)` pour hôte, cible et opérateur ; `uid=1001(gatling)` pour Gatling |
+| `docker compose up --exit-code-from master` | Les 4 conteneurs sortent en 0, seuils respectés, 224 étapes `checkout`, **0 échec** |
+| Image Gatling, vrai tir contre la cible | Sortie 0, `simulation.log` **et** `index.html` écrits dans le volume monté depuis l'hôte |
+| `TestRun` de démonstration sur le cluster réel | `Succeeded` ; 224 itérations, **0 échec**, seuils `[OK]` |
+| Pods du tir, relus sur le cluster | maître et 2 workers : `runAsNonRoot=true`, `allowPrivilegeEscalation=false`, `drop=[ALL]` |
+| Pod de l'opérateur | `Running` avec `runAsNonRoot=true` |
+
+**Reste ouvert** : `readOnlyRootFilesystem` (ci-dessus), et le fait que `docker-compose.yml` ne pose
+aucun `security_opt` — la propriété y repose entièrement sur le `USER` de l'image, sans le filet que
+Kubernetes apporte.
 
 ### SEC-5 — Faible — Un certificat épinglé expiré reste accepté
 
@@ -338,10 +376,10 @@ première minute :
 | SEC-2 | Un utilisateur pouvait committer ses jetons dès le premier usage du convertisseur | ✅ rédaction + report, prouvé par conversion réelle |
 | SEC-1 | Change un défaut : à livrer dans une version qui l'annonce, donc avant le premier tag, jamais après | ✅ refus au démarrage + échappatoire nommée, prouvé sur processus réels et cluster réel |
 
-Barrière repassée après correction : build 0/0, **760 tests** verts, `dotnet format` à 0 violation
+Barrière repassée après correction : build 0/0, **761 tests** verts, `dotnet format` à 0 violation
 sur la solution **et** sur les deux projets du harnais, DocFX 0 avertissement.
 
-**Ensuite, par ordre de gain** : SEC-4, QUAL-1, QUAL-2, puis le reste.
+**Ensuite, par ordre de gain** : ~~SEC-4~~ (corrigé le 24 août), QUAL-1, QUAL-2, puis le reste.
 
 **À ne pas traiter** : SEC-5, SEC-6 et SEC-7 décrivent des frontières de confiance assumées. Ils
 demandent une phrase de documentation, pas du code.

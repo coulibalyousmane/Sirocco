@@ -27,4 +27,12 @@ RUN dotnet publish src/Sirocco.Host/Sirocco.Host.csproj -c Release -o /app --no-
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 COPY --from=build /app .
+
+# Le contenu de /app reste possede par root, donc en lecture seule pour l'utilisateur : c'est
+# voulu, rien n'ecrit dans le repertoire de l'application. En revanche Sirocco:ReportHtmlPath et
+# Sirocco:ReportJsonPath doivent designer un volume monte ou /tmp, plus /app.
+#
+# UID numerique et non le nom "app" : Kubernetes evalue runAsNonRoot avant de resoudre
+# /etc/passwd, et refuse de demarrer un conteneur dont l'utilisateur est un nom.
+USER $APP_UID
 ENTRYPOINT ["dotnet", "Sirocco.Host.dll"]

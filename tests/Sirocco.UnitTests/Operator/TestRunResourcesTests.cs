@@ -215,6 +215,28 @@ public sealed class TestRunResourcesTests
         Assert.DoesNotContain(env, e => e.Name.StartsWith("Master__StagePlannedWorkers__", StringComparison.Ordinal));
     }
 
+    // Le maitre et les workers doivent porter la meme exigence : c'est le pod du Job qui execute le
+    // tir, mais un worker en root aurait exactement la meme surface. Un seul des deux couvert
+    // laisserait la propriete a moitie vraie, donc les deux sont verifies ici.
+    [Fact]
+    public void Both_the_master_pod_and_the_worker_pods_are_required_to_run_as_non_root()
+    {
+        V1TestRun testRun = CreateTestRun();
+
+        V1PodSpec masterPod = TestRunResources.BuildMasterJob(testRun).Spec.Template.Spec;
+        V1PodSpec workerPod = TestRunResources.BuildWorkerStatefulSet(testRun).Spec.Template.Spec;
+
+        foreach (V1PodSpec pod in new[] { masterPod, workerPod })
+        {
+            Assert.True(pod.SecurityContext.RunAsNonRoot);
+            Assert.Equal("RuntimeDefault", pod.SecurityContext.SeccompProfile.Type);
+
+            V1SecurityContext container = pod.Containers[0].SecurityContext;
+            Assert.False(container.AllowPrivilegeEscalation);
+            Assert.Equal(["ALL"], container.Capabilities.Drop);
+        }
+    }
+
     private static V1TestRun CreateTestRun(int workerReplicas = 2) => new()
     {
         Metadata = new V1ObjectMeta
