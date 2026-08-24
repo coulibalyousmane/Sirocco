@@ -34,6 +34,28 @@ public sealed class TestRunController(IKubernetesClient client, ILogger<TestRunC
 
     public async Task<ReconciliationResult<V1TestRun>> ReconcileAsync(V1TestRun entity, CancellationToken cancellationToken)
     {
+        // Depuis que Sirocco.Host refuse de demarrer un role master/worker sans secret partage,
+        // une TestRun sans clusterSharedSecretRef ne produirait que des pods en CrashLoopBackOff,
+        // dont le motif ne serait lisible qu'en lisant leurs journaux. Echouer ici, avant de creer
+        // quoi que ce soit, met le motif dans "kubectl describe testrun". Pas de resondage : c'est
+        // la modification du spec qui redeclenchera la reconciliation, pas le temps qui passe.
+        if (entity.Spec.ClusterSharedSecretRef is null)
+        {
+            entity.Status.Phase = V1TestRun.TestRunStatus.PHASE_FAILED;
+            entity.Status.Message = "spec.clusterSharedSecretRef est requis : le maitre et les workers refusent de "
+                + "demarrer sans secret partage de control plane. Creez un Secret et referencez-le "
+                + "(voir deploy/samples/testrun-demo.yaml).";
+            entity.Status.CompletionTime = DateTime.UtcNow;
+            await client.UpdateStatusAsync(entity, cancellationToken).ConfigureAwait(false);
+
+            if (logger.IsEnabled(LogLevel.Error))
+            {
+                logger.LogError("TestRun {Name} refusee : spec.clusterSharedSecretRef absent.", entity.Metadata.Name);
+            }
+
+            return ReconciliationResult<V1TestRun>.Success(entity);
+        }
+
         await EnsureExistsAsync(TestRunResources.BuildMasterService(entity), cancellationToken).ConfigureAwait(false);
         await EnsureExistsAsync(TestRunResources.BuildWorkerHeadlessService(entity), cancellationToken).ConfigureAwait(false);
         await EnsureExistsAsync(TestRunResources.BuildMasterJob(entity), cancellationToken).ConfigureAwait(false);

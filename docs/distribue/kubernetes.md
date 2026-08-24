@@ -34,7 +34,14 @@ la `TestRun` — la supprimer déclenche le garbage collection natif de Kubernet
 StatefulSet, Services), sans code de nettoyage à écrire.
 
 Le secret partagé de cluster est référencé par nom (`clusterSharedSecretRef`, un `Secret`
-existant + une clé), jamais recopié en clair dans la ressource `TestRun` :
+existant + une clé), jamais recopié en clair dans la ressource `TestRun`. **Il est requis** :
+le maître et les workers refusent de démarrer sans lui (voir
+[le mode distribué](mode-distribue.md)), donc une
+`TestRun` qui l'omet passe directement en `Failed`, avec le motif dans
+`kubectl describe testrun`, **sans qu'aucune ressource fille ne soit créée** — plutôt que de
+produire des pods condamnés à redémarrer en boucle, dont la cause ne se lirait qu'en fouillant
+leurs journaux. L'échappatoire `AllowUnauthenticatedClusterControlPlane` n'est délibérément pas
+exposée dans la ressource : dans un cluster, un `Secret` est à portée de main.
 
 [!code-yaml[](../../deploy/samples/testrun-demo.yaml)]
 *`deploy/samples/testrun-demo.yaml` — prêt pour `kubectl apply -f`*

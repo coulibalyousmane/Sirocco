@@ -262,13 +262,29 @@ public sealed class SiroccoHostOptions
     /// <c>/master/report</c>, <c>/worker/prepare</c>, <c>/worker/start</c>), exige en
     /// <c>Authorization: Bearer &lt;secret&gt;</c>.
     /// <para>
-    /// <see langword="null"/> par defaut : ces endpoints restent ouverts tant que l'operateur ne
-    /// configure pas explicitement ce secret — comme la REST API locale de k6, jamais
-    /// authentifiee (la securite y repose sur le perimetre reseau). Sans effet en mode
-    /// autonome, qui n'expose aucun de ces endpoints.
+    /// <see langword="null"/> par defaut, mais les roles <see cref="ROLE_MASTER"/> et
+    /// <see cref="ROLE_WORKER"/> <b>refusent alors de demarrer</b>
+    /// (<see cref="Distributed.ClusterAuthentication.EnsureConfigured"/>) : un worker ouvert est un
+    /// generateur de charge telecommande, puisque la requete de preparation porte l'URL de la
+    /// cible. Pour tourner sans authentification, il faut le declarer avec
+    /// <see cref="AllowUnauthenticatedClusterControlPlane"/>. Sans effet en mode autonome, qui
+    /// n'expose aucun de ces endpoints.
     /// </para>
     /// </summary>
     public string? ClusterSharedSecret { get; init; }
+
+    /// <summary>
+    /// Autorise les roles <see cref="ROLE_MASTER"/> et <see cref="ROLE_WORKER"/> a demarrer sans
+    /// <see cref="ClusterSharedSecret"/>, c'est-a-dire avec un control plane ouvert.
+    /// <para>
+    /// <see langword="false"/> par defaut. Ce reglage existe pour un control plane reellement
+    /// confine (reseau de confiance, tests locaux), et son nom est long a dessein : il doit etre
+    /// choisi et lu, pas herite en silence. Il ne dispense pas de la longueur minimale exigee
+    /// quand un secret <i>est</i> configure — un secret trop court reste une erreur de
+    /// demarrage, jamais silencieusement tolere.
+    /// </para>
+    /// </summary>
+    public bool AllowUnauthenticatedClusterControlPlane { get; init; }
 
     /// <summary>
     /// Empreinte (thumbprint) du certificat TLS partage attendu de tout pair du control plane

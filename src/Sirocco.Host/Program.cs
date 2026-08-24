@@ -23,6 +23,13 @@ if (string.Equals(siroccoOptions.Role, SiroccoHostOptions.ROLE_WORKER, StringCom
         ?? throw new InvalidOperationException("La section de configuration 'Worker' est manquante.");
     workerOptions.Validate();
 
+    // Avant meme de construire l'hote : un worker sans secret partage sert /worker/prepare a
+    // n'importe qui, et cette requete porte l'URL de la cible (voir EnsureConfigured).
+    ClusterAuthentication.EnsureConfigured(
+        SiroccoHostOptions.ROLE_WORKER,
+        siroccoOptions.ClusterSharedSecret,
+        siroccoOptions.AllowUnauthenticatedClusterControlPlane);
+
     builder.Services.AddHttpClient(ClusterCertificatePinning.CLUSTER_CLIENT_NAME)
         .ConfigurePrimaryHttpMessageHandler(() => ClusterCertificatePinning.CreateHandler(siroccoOptions.ClusterCertificateThumbprint));
     builder.Services.AddSingleton(workerOptions);
@@ -88,6 +95,13 @@ else if (string.Equals(siroccoOptions.Role, SiroccoHostOptions.ROLE_MASTER, Stri
     MasterOptions masterOptions = builder.Configuration.GetSection("Master").Get<MasterOptions>()
         ?? throw new InvalidOperationException("La section de configuration 'Master' est manquante.");
     masterOptions.Validate();
+
+    // Meme exigence que cote worker, et pour la meme raison : le maitre accepte des
+    // enregistrements et des rapports, donc un faux worker ou un rapport falsifie.
+    ClusterAuthentication.EnsureConfigured(
+        SiroccoHostOptions.ROLE_MASTER,
+        siroccoOptions.ClusterSharedSecret,
+        siroccoOptions.AllowUnauthenticatedClusterControlPlane);
 
     builder.Services.AddHttpClient(ClusterCertificatePinning.CLUSTER_CLIENT_NAME)
         .ConfigurePrimaryHttpMessageHandler(() => ClusterCertificatePinning.CreateHandler(siroccoOptions.ClusterCertificateThumbprint));

@@ -4,14 +4,17 @@ Plusieurs `Sirocco.Host` peuvent tirer en parallèle, coordonnés par un maître
 leurs résultats en un seul rapport :
 
 ```json
-"Sirocco": { "Role": "master" },
+"Sirocco": { "Role": "master", "ClusterSharedSecret": "le-meme-secret-partout" },
 "Master": { "ExpectedWorkers": 2, "RegistrationTimeoutSeconds": 30 }
 ```
 
 ```json
-"Sirocco": { "Role": "worker" },
+"Sirocco": { "Role": "worker", "ClusterSharedSecret": "le-meme-secret-partout" },
 "Worker": { "MasterUrl": "http://master:5299", "SelfUrl": "http://worker1:5300" }
 ```
+
+Le secret partagé n'est pas décoratif : sans lui, ces deux rôles refusent de démarrer — voir
+**Authentification du control plane** plus bas.
 
 **Auto-enregistrement dynamique** : chaque worker s'annonce au maître à son démarrage
 (`POST /master/register`, avec plusieurs tentatives — rien ne garantit que le maître soit déjà
@@ -85,18 +88,50 @@ combiné se lit comme s'il venait d'un seul processus.
 
 **Authentification du control plane.** `/master/register`, `/master/report`, `/worker/prepare`
 et `/worker/start` — les quatre appels qui peuvent détourner un tir distribué (enregistrer un
-faux worker, imposer un scénario, falsifier un rapport) — acceptent un secret partagé optionnel :
+faux worker, imposer un scénario, falsifier un rapport) — exigent un secret partagé :
 
 ```json
-"Sirocco": { "ClusterSharedSecret": "un-secret-partage" }
+"Sirocco": { "ClusterSharedSecret": "un-secret-partage-de-16-caracteres-au-moins" }
 ```
 
-Exigé en `Authorization: Bearer <secret>` dès qu'il est configuré, comparé en temps constant
+Exigé en `Authorization: Bearer <secret>`, comparé en temps constant
 (`CryptographicOperations.FixedTimeEquals`) pour ne rien révéler par le temps de réponse.
-`null` par défaut : ces endpoints restent ouverts tant que l'opérateur ne configure rien —
-**délibérément inspiré, puis durci, par rapport à k6** : sa REST API locale (`localhost:6565`)
-n'est jamais authentifiée, la documentation officielle recommandant de ne compter que sur le
-périmètre réseau (ne pas la lier à `0.0.0.0`) ; son mode distribué via `k6-operator` ne porte
+
+**Les rôles `master` et `worker` refusent de démarrer sans lui.** Ce n'était pas le cas
+jusqu'à la version 0.1.0 : le secret était optionnel, et son absence laissait
+`/worker/prepare` et `/worker/start` ouverts. Or la requête de préparation porte l'URL de la
+cible, le profil de charge et le plafond d'utilisateurs virtuels — tous choisis par l'appelant.
+Un worker joignable depuis un réseau non maîtrisé était donc un générateur de charge
+télécommandé, et un déploiement laissé en configuration par défaut, un amplificateur d'abus.
+Mesuré sur un vrai worker : `POST /worker/prepare` **anonyme**, désignant un tiers arbitraire à
+5000 req/s, obtenait **HTTP 200**. Le même appel sur un worker authentifié obtient **401** en
+45 ms, sans jamais atteindre la logique de préparation.
+
+Deux détails qui comptent à l'usage :
+
+- **Longueur minimale de 16 caractères**, sinon le démarrage échoue aussi. Rien ne limite le
+  nombre d'essais côté serveur — pas de quota, pas de bannissement —, donc la taille du secret
+  est la seule défense contre la devinette. Un plancher plus bas rendrait le garde décoratif.
+- **Le corps de la requête est lié avant le filtre d'authentification.** Un corps JSON malformé
+  ou incomplet obtient donc `400`, pas `401` : le filtre n'a pas encore été atteint. Sans
+  conséquence — un `400` ne prépare aucun tir — mais utile à savoir quand on teste
+  l'authentification à la main, sous peine de lire un `400` comme une preuve de rejet.
+
+Pour un control plane réellement confiné — banc local, réseau de confiance — l'ouverture reste
+possible, mais doit être écrite :
+
+```json
+"Sirocco": { "AllowUnauthenticatedClusterControlPlane": true }
+```
+
+Le nom est long à dessein : il doit être choisi et lu, pas hérité en silence. Il ne dispense
+pas de la longueur minimale quand un secret *est* configuré — un secret court resterait appliqué
+tout en étant devinable, c'est-à-dire protégé en apparence seulement.
+
+Le choix du mécanisme lui-même est **délibérément inspiré, puis durci, par rapport à k6** : sa
+REST API locale (`localhost:6565`) n'est jamais authentifiée, la documentation officielle
+recommandant de ne compter que sur le périmètre réseau (ne pas la lier à `0.0.0.0`) ; son mode
+distribué via `k6-operator` ne porte
 pas non plus de jeton entre l'opérateur et les pods, la sécurité y reposant sur l'isolation
 Kubernetes. Le seul jeton de l'écosystème k6 est celui de l'API k6 Cloud (SaaS Grafana) — un
 client s'authentifiant vers le service cloud, pas un mécanisme entre les composants d'un tir.
@@ -108,6 +143,18 @@ Vérifié par un vrai tir (1 maître, 2 workers, secret partagé configuré des 
 accepté sur les quatre appels. Vérifié aussi dans l'autre sens : une requête directe sans
 en-tête `Authorization` est rejetée en 401 en moins de 3 ms, sans jamais atteindre la logique
 de préparation du worker.
+
+Le passage du secret optionnel à exigé a été vérifié de la même façon, sur de vrais processus :
+
+| Configuration | Résultat observé |
+|---|---|
+| Rôle `worker` ou `master`, aucun secret | Refus au démarrage, code de sortie non nul, message nommant les deux issues |
+| Secret de 5 caractères | Refus au démarrage, message donnant le minimum exigé |
+| Secret de 5 caractères **et** ouverture déclarée | Refus quand même — l'échappatoire ne couvre que l'absence |
+| Ouverture déclarée, aucun secret | Démarre ; `POST /worker/prepare` anonyme vers un tiers → **200** |
+| Secret configuré | Anonyme → **401** ; mauvais jeton → **401** ; bon jeton → **200** |
+| 1 maître + 2 workers, secret des deux côtés | 160 itérations fusionnées, **0 échec**, code de sortie 0 |
+| Mode autonome, aucun secret | 80 itérations, **0 échec**, code de sortie 0 — inchangé |
 
 **Prometheus en mode distribué.** L'export existait déjà en mode autonome ; il couvre
 maintenant aussi maître et workers, chacun sur son `/metrics` habituel — pas de nouveau port,

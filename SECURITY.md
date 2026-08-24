@@ -50,15 +50,19 @@ fonction, pas un défaut. Cela déplace la frontière entre « comportement atte
 
 ## Deux points de configuration qui méritent votre attention
 
-**Le mode distribué démarre sans authentification si vous ne la configurez pas.** Laissé à `null`,
-`Sirocco__ClusterSharedSecret` ouvre `/worker/prepare` et `/worker/start`. Or la requête de
-préparation porte l'URL de la cible : un worker joignable depuis un réseau non maîtrisé peut donc
-être piloté pour marteler un tiers. **Configurez un secret partagé dès que le control plane n'est
-pas confiné à un réseau de confiance**, et n'exposez jamais les ports d'un worker sur Internet.
+**Le mode distribué exige une authentification, mais vous pouvez la retirer.** Les rôles `master`
+et `worker` refusent de démarrer sans `Sirocco__ClusterSharedSecret` (16 caractères minimum) :
+sans lui, `/worker/prepare` et `/worker/start` accepteraient n'importe quel appelant, et la
+requête de préparation porte l'URL de la cible — un worker joignable depuis un réseau non
+maîtrisé serait piloté pour marteler un tiers. `Sirocco__AllowUnauthenticatedClusterControlPlane`
+rétablit ce comportement ouvert : **ne l'activez que sur un control plane réellement confiné**, et
+n'exposez jamais les ports d'un worker sur Internet. Un déploiement ouvert *parce qu'il a été
+déclaré tel* n'est pas une vulnérabilité de Sirocco ; c'était le défaut jusqu'à la version 0.1.0,
+ça ne l'est plus.
 
 **Le control plane est en clair par défaut.** `Sirocco__ClusterCertificateThumbprint` active
 l'épinglage TLS (empreinte SHA-256), décrit dans
-[le mode distribué](docs/distribue/mode-distribue.md). Sans lui, rapports et scénarios circulent
-sans chiffrement.
+[le mode distribué](docs/distribue/mode-distribue.md). Sans lui, rapports et scénarios — y compris
+le secret partagé lui-même, envoyé en `Authorization: Bearer` — circulent sans chiffrement.
 
 Le mode autonome — `sirocco run` — n'expose aucun endpoint et n'est concerné par aucun des deux.

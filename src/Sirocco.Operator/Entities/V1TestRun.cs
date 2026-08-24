@@ -38,6 +38,15 @@ public partial class V1TestRun : CustomKubernetesEntity<V1TestRun.TestRunSpec, V
         /// <summary>
         /// Référence (nom de <c>Secret</c> + clé) vers le secret partagé de cluster
         /// (<c>Sirocco__ClusterSharedSecret</c>). Jamais la valeur en clair dans la ressource.
+        /// <para>
+        /// <b>Requis</b>, bien que nullable dans le schéma : le maître et les workers refusent de
+        /// démarrer sans secret (voir <c>ClusterAuthentication.EnsureConfigured</c>), et
+        /// <see cref="Sirocco.Operator.Controllers.TestRunController"/> place donc la
+        /// <c>TestRun</c> en <c>Failed</c> avec un motif lisible plutôt que de créer des pods
+        /// condamnés à redémarrer en boucle. L'échappatoire
+        /// <c>AllowUnauthenticatedClusterControlPlane</c> n'est délibérément pas exposée ici : dans
+        /// un cluster, un <c>Secret</c> est à portée de main, tourner ouvert n'y a pas d'excuse.
+        /// </para>
         /// </summary>
         public V1SecretKeySelector? ClusterSharedSecretRef { get; set; }
 

@@ -47,7 +47,7 @@ de motifs recherchés et de lectures ciblées sur les chemins sensibles.
 
 ## Sécurité
 
-### SEC-1 — Élevé — Un worker joignable est un générateur de charge télécommandé
+### SEC-1 — ~~Élevé~~ → **corrigé le 24 août 2026** — Un worker joignable était un générateur de charge télécommandé
 
 `Sirocco__ClusterSharedSecret` est **nul par défaut**, et
 `ClusterAuthentication.IsAuthorized` rend alors `true` sans regarder la requête
@@ -64,9 +64,52 @@ peut atteindre ni `ScriptedWorkflowLoader` ni `PluginWorkflowLoader` — aucun d
 référencé dans `src/Sirocco.Host/Distributed/`. La distinction change la gravité, elle mérite
 d'être établie plutôt que supposée dans un sens ou dans l'autre.
 
-**Correctif proposé** : refuser de démarrer en rôle `master`/`worker` sans secret configuré, plutôt
-que de démarrer ouvert. Le mode autonome, lui, n'expose rien et n'a pas à changer. Une allow-list
-d'hôtes cibles côté worker serait la défense en profondeur.
+**Corrigé.** `ClusterAuthentication.EnsureConfigured` est appelée avant même la construction de
+l'hôte : un rôle `master` ou `worker` sans secret **refuse de démarrer**, code de sortie non nul,
+avec un message qui nomme les deux issues. Le mode autonome n'expose rien et n'a pas changé.
+
+Trois choix qui méritent d'être énoncés plutôt que devinés :
+
+- **Une échappatoire nommée**, `Sirocco__AllowUnauthenticatedClusterControlPlane`. Sans elle, la
+  correction serait une impasse pour qui tourne délibérément sur un réseau confiné, et le
+  contournement serait alors un faux secret partout — pire que l'ouverture assumée. Le nom est long
+  à dessein : il doit être choisi et lu, pas hérité.
+- **Un minimum de 16 caractères**, y compris quand l'échappatoire est active. Rien ne limite le
+  nombre d'essais côté serveur : la taille du secret est la seule défense contre la devinette, et un
+  garde qu'un secret d'un caractère franchit est décoratif. Un secret court accepté serait le pire
+  des deux états — protégé en apparence, devinable en fait.
+- **L'opérateur Kubernetes rend `clusterSharedSecretRef` requis** : sans lui, la `TestRun` passe en
+  `Failed` avec le motif dans `kubectl describe`, **et aucune ressource fille n'est créée** — plutôt
+  que des pods en `CrashLoopBackOff` dont la cause ne se lirait qu'en fouillant leurs journaux.
+  L'échappatoire n'est pas exposée dans la ressource : dans un cluster, un `Secret` est à portée de
+  main.
+
+Vérifié sur de vrais processus et un vrai cluster, pas en raisonnement :
+
+| Épreuve | Résultat |
+|---|---|
+| `worker` / `master` sans secret | Refus au démarrage, code de sortie non nul |
+| Secret de 5 caractères | Refus, message donnant le minimum |
+| Secret de 5 caractères **+** échappatoire | Refus quand même |
+| Échappatoire seule (l'ancien défaut) | Démarre ; `POST /worker/prepare` **anonyme** vers un tiers arbitraire à 5000 req/s → **HTTP 200** |
+| Secret configuré | Anonyme → **401** (45 ms) ; mauvais jeton → **401** ; bon jeton → **200** |
+| 1 maître + 2 workers, secret des deux côtés | 160 itérations fusionnées, **0 échec**, code de sortie 0 |
+| Mode autonome | 80 itérations, **0 échec**, code de sortie 0 — inchangé |
+| `TestRun` sans `clusterSharedSecretRef` (cluster réel) | `Failed`, motif lisible, **0 ressource fille** |
+| `TestRun` avec la référence (cluster réel) | `Running`, les 4 ressources créées, secret câblé en `secretKeyRef` |
+
+La ligne « échappatoire seule » est la mesure de ce qui était ouvert par défaut : ce `200` était le
+comportement livré, pas une hypothèse.
+
+**Découvert en vérifiant, à savoir avant de tester l'authentification à la main** : le corps de la
+requête est lié **avant** le filtre d'authentification. Un corps JSON incomplet obtient donc `400`,
+pas `401` — sans conséquence (un `400` ne prépare aucun tir), mais mon premier essai a lu un `400`
+comme une preuve de rejet alors qu'il ne prouvait rien. C'est un corps valide qui prouve le `401`.
+
+**Reste ouvert, délibérément** : l'allow-list d'hôtes cibles côté worker, qui serait la défense en
+profondeur. Elle traite un risque différent — un appelant **authentifié** qui désigne un tiers — et
+mérite son propre arbitrage sur la forme (liste fixe ? motifs ? par worker ?) plutôt que d'être
+glissée ici.
 
 ### SEC-2 — ~~Moyen~~ → **corrigé le 23 août 2026** — Le scénario généré depuis un HAR contenait les jetons en clair
 
@@ -285,7 +328,7 @@ Absents également, sans que ce soit gênant pour un projet solo : `CONTRIBUTING
 **À traiter avant le tag `v0.1.0`** — ce qui devient irréversible, public, ou visible dès la
 première minute :
 
-**Les quatre sont traités** (23 août 2026, non committés).
+**Les cinq sont traités.**
 
 | # | Pourquoi maintenant | État |
 |---|---|---|
@@ -293,13 +336,12 @@ première minute :
 | FONC-1 | C'est la première commande que tape un nouvel arrivant, et elle échouait | ✅ 5 formes vérifiées sur le binaire |
 | GOUV-1 | Un dépôt public sans canal de signalement, sur un outil dual-use | ✅ `SECURITY.md` |
 | SEC-2 | Un utilisateur pouvait committer ses jetons dès le premier usage du convertisseur | ✅ rédaction + report, prouvé par conversion réelle |
+| SEC-1 | Change un défaut : à livrer dans une version qui l'annonce, donc avant le premier tag, jamais après | ✅ refus au démarrage + échappatoire nommée, prouvé sur processus réels et cluster réel |
 
-Barrière repassée après correction : build 0/0, **753 tests** verts, `dotnet format` à 0 violation
+Barrière repassée après correction : build 0/0, **760 tests** verts, `dotnet format` à 0 violation
 sur la solution **et** sur les deux projets du harnais, DocFX 0 avertissement.
 
-**Ensuite, par ordre de gain** : SEC-1 (le plus important sur le fond, mais il change un
-comportement par défaut — mieux vaut le faire dans une version qui l'annonce), SEC-4, QUAL-1,
-QUAL-2, puis le reste.
+**Ensuite, par ordre de gain** : SEC-4, QUAL-1, QUAL-2, puis le reste.
 
 **À ne pas traiter** : SEC-5, SEC-6 et SEC-7 décrivent des frontières de confiance assumées. Ils
 demandent une phrase de documentation, pas du code.
