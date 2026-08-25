@@ -208,12 +208,49 @@ d'empreinte. Toute la validation de chaîne est donc remplacée : expiration, r�
 d'hôte ne sont plus vérifiés. C'est cohérent avec un certificat auto-signé partagé, mais la
 non-vérification de l'expiration mérite d'être écrite à côté de « rotation manuelle ».
 
-### SEC-6 — Faible — Le rayon d'action du `ClusterRole` n'est pas énoncé
+### SEC-6 — ~~Faible~~ → **corrigé le 25 août 2026** — Le `ClusterRole` accordait `'*'` sur des ressources jamais supprimées ni modifiées en bloc
 
-La limite est documentée (`docs/distribue/kubernetes.md:70`) et le choix assumé. Ce qui manque est
-la conséquence : `verbs: ['*']` sur `services`, `jobs` et `statefulsets` **à l'échelle du cluster**
-permet de créer un pod dans n'importe quel namespace. Un opérateur compromis devient donc un
-chemin d'élévation vers le cluster entier — d'autant plus qu'il tourne en root (SEC-4).
+Constat initial : `verbs: ['*']` sur `services`, `jobs` et `statefulsets`, à l'échelle du cluster
+(`ClusterRole`), permettait de créer un pod dans n'importe quel namespace — la limite de portée
+elle-même était déjà documentée et assumée, mais pas sa conséquence en verbes.
+
+**Corrigé, mais pas comme prévu à l'origine.** Le premier réflexe — passer d'un `ClusterRole` à un
+`Role` namespaced — aurait changé un choix de conception distinct et assumé ailleurs (l'opérateur
+surveille les `TestRun` sur tout le cluster, pas un seul namespace) : ce n'était pas ce que ce
+constat reprochait. Relire `TestRunController.ReconcileAsync` a montré la vraie cible : les trois
+attributs `[EntityRbac]` demandaient `RbacVerb.All` alors que le contrôleur ne fait jamais que
+créer ces ressources, les relire par nom, et (seul le `StatefulSet`, pour l'autoscaling et le
+retour à 0 réplique) les mettre à jour — jamais les supprimer ni les lister/surveiller. Réduits à
+`Get`+`Create` (`Job`, `Service`) et `Get`+`Create`+`Update` (`StatefulSet`), régénérés via
+`dotnet kubeops generate operator` plutôt qu'édités à la main, pour rester l'artefact reproductible
+qu'ils prétendent être.
+
+**La vérification a trouvé un second problème, plus concret que le premier.** La contre-épreuve
+RBAC (`kubectl auth can-i delete jobs --as=<le compte de service de l'opérateur>`) répondait encore
+`yes` après le déploiement du rôle corrigé. Cause : un `ClusterRole`/`ClusterRoleBinding`
+**résiduel** (`operator-role`/`operator-role-binding`, sans préfixe), oublié sur ce cluster de
+développement depuis une session antérieure ayant appliqué les manifestes individuellement plutôt
+que via kustomize — il ciblait le **même compte de service** et portait encore `'*'`. Par union
+RBAC, ce résidu neutralisait silencieusement le resserrement tant que les deux rôles coexistaient.
+Supprimé (avec un second résidu sans rapport, `tempest-operator-*`, vestige d'avant le renommage du
+projet, déjà signalé sans suite lors d'une session précédente). **Leçon générale plutôt que
+spécifique à ce cluster** : sur un cluster de développement longue durée, une contre-épreuve RBAC
+doit interroger l'état réellement en vigueur, pas seulement le manifeste qu'on vient d'appliquer —
+un durcissement peut être correct sur le papier et neutralisé par un artefact oublié.
+
+| Vérification | Avant | Après |
+|---|---|---|
+| `can-i get/create jobs`, `create/update statefulsets`, `create services` | permis | **permis** (inchangé) |
+| `can-i delete jobs/statefulsets/services` | permis | **refusé** |
+| `can-i list services`, `can-i watch statefulsets` (jamais exercés) | permis | **refusé** |
+| Vrai cycle de réconciliation (création des 4 ressources filles, lecture du statut du `Job`, réduction du `StatefulSet` à 0 réplique) | — | **0 erreur d'autorisation**, journaux de l'opérateur à l'appui |
+| Résidu RBAC neutralisant, trouvé en vérifiant l'état réel du cluster | — | supprimé (avec le vestige `tempest-operator-*` sans rapport) |
+
+**Reste ouvert** : le rôle demeure un `ClusterRole` (portée cluster assumée, constat distinct, non
+rouvert ici). Les règles générées sur les sous-ressources `*/status` (get/update/patch) restent
+plus larges que ce qu'utilise le contrôleur — KubeOps les émet inconditionnellement pour tout type
+annoté, retaillage non fait pour ne pas diverger de l'artefact généré. Détail complet dans
+[Opérateur Kubernetes](docs/distribue/kubernetes.md#opérateur-kubernetes).
 
 ### SEC-7 — Faible — Les plugins sont chargés sans isolation ni vérification de signature
 
@@ -228,6 +265,40 @@ code d'un nom saisi au clavier, typosquatting compris. Inhérent à un système 
 `Sirocco__ClusterSharedSecret: "demo-cluster-secret"` apparaît trois fois (lignes 32, 57, 72). Le
 nom annonce la couleur et c'est un fichier de démo ; le risque est la copie telle quelle vers un
 environnement réel. Aucun secret réel n'a été trouvé dans le dépôt.
+
+### SEC-9 — ~~Moyen~~ → **corrigé le 25 août 2026** — Aucune façon d'injecter un secret dans un scénario déclaratif
+
+Constat qui n'appartient pas aux 20 relevés le 23 août : trouvé en évaluant la maturité du
+projet pour un usage en entreprise, en cherchant `Environment.GetEnvironmentVariable` dans tout
+`src/` — zéro occurrence. Les seules sources de substitution `{{...}}` d'un scénario déclaratif
+étaient les jeux de données (des fichiers, donc committables) et la corrélation depuis une
+réponse précédente. Un jeton d'API statique devait donc être écrit **en clair** dans le YAML —
+exactement la faute que SEC-2 avait corrigée sur le convertisseur HAR, réintroduite par une autre
+porte, à la parité fonctionnelle de k6 (`__ENV`), Gatling (`System.getenv`) et NBomber près.
+
+**Corrigé.** `{{env.NOM}}` lit la variable d'environnement `NOM` du processus, résolue
+directement dans `DeclarativeWorkflow.TrySubstitute` (`src/Sirocco.Scenarios/DeclarativeWorkflow.cs`) —
+sans énumérer tout l'environnement à chaque itération, pour ne pas payer sur le chemin critique
+d'un générateur de charge un coût proportionnel à des variables jamais référencées. `env` est un
+nom de jeu de données désormais réservé : `ScenarioDefinition.Validate()` rejette un jeu de
+données ainsi nommé, pour qu'une collision échoue au chargement plutôt que de changer
+silencieusement de sens à la substitution. Documenté dans
+[Variables d'environnement](docs/scenarios/donnees-assertions.md#variables-denvironnement).
+
+| Vérification | Résultat |
+|---|---|
+| Vrai tir, variable non définie | 100 % d'échec, 0 requête envoyée à la cible |
+| Vrai tir, variable définie | 0 % d'échec, seuil `ErrorRate<=0.01` respecté, code de sortie 0 |
+| Jeu de données nommé `env` | rejeté par `Validate()` |
+| Tests unitaires | 2 nouveaux sur `DeclarativeWorkflow`, 1 sur `ScenarioDefinition` |
+
+**Reste ouvert, énoncé plutôt que corrigé ici** : `{{env.NOM}}` donne accès à n'importe quelle
+variable du processus, pas à une liste que l'opérateur aurait explicitement autorisée — même
+modèle que les trois concurrents cités, pas une restriction propre à Sirocco, mais c'est la
+**première** chose qui donne à un scénario déclaratif une autorité ambiante hors de son propre
+fichier. Documenté comme frontière de confiance dans la même page : ne faites tourner un
+scénario dont vous n'êtes pas l'auteur que dans un processus qui ne détient aucun secret sans
+rapport avec le tir.
 
 ---
 
@@ -450,9 +521,10 @@ première minute :
 Barrière repassée après correction : build 0/0, **761 tests** verts, `dotnet format` à 0 violation
 sur la solution **et** sur les deux projets du harnais, DocFX 0 avertissement.
 
-**Ensuite, par ordre de gain** : ~~SEC-4~~ et ~~QUAL-1~~ (corrigés le 24 août), ~~QUAL-2~~ (corrigé
-le 25 août). **Les trois constats « Moyen » restants sont traités** ; ne subsistent que des
-« Faible » et des « Info ».
+**Ensuite, par ordre de gain** : ~~SEC-4~~ et ~~QUAL-1~~ (corrigés le 24 août), ~~QUAL-2~~,
+~~SEC-9~~ et ~~SEC-6~~ (corrigés le 25 août). **Les trois constats « Moyen » et deux des trois
+« Faible » de sécurité sont traités** ; ne subsistent que SEC-5, SEC-7, SEC-8 et les constats
+hors sécurité classés « Faible »/« Info ».
 
-**À ne pas traiter** : SEC-5, SEC-6 et SEC-7 décrivent des frontières de confiance assumées. Ils
+**À ne pas traiter** : SEC-5 et SEC-7 décrivent des frontières de confiance assumées. Ils
 demandent une phrase de documentation, pas du code.

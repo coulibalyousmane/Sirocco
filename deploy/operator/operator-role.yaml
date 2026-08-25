@@ -25,7 +25,8 @@ rules:
   resources:
   - services
   verbs:
-  - '*'
+  - get
+  - create
 - apiGroups:
   - ""
   resources:
@@ -39,7 +40,9 @@ rules:
   resources:
   - statefulsets
   verbs:
-  - '*'
+  - get
+  - create
+  - update
 - apiGroups:
   - apps
   resources:
@@ -53,7 +56,8 @@ rules:
   resources:
   - jobs
   verbs:
-  - '*'
+  - get
+  - create
 - apiGroups:
   - batch
   resources:

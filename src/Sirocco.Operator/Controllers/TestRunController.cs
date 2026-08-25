@@ -23,10 +23,19 @@ namespace Sirocco.Operator.Controllers;
 /// terminé, plutôt que d'ajouter un deuxième mécanisme de suivi pour un seul champ.
 /// </para>
 /// </summary>
+// SEC-6 (AUDIT.md) : ces quatre-la etaient toutes en RbacVerb.All ("*"), y compris sur des
+// ressources filles jamais mises a jour ni supprimees par ce controleur (voir ReconcileAsync,
+// EnsureExistsAsync, ScaleWorkersToZeroAsync) — un operateur compromis pouvait donc supprimer ou
+// modifier n'importe quel Job/StatefulSet/Service existant du cluster, pas seulement les siens.
+// Reduits aux verbes reellement exerces : Job (cree, jamais relu par nom apres coup ni mis a
+// jour), StatefulSet (cree, puis relu et mis a jour pour l'autoscaling et le retour a 0 replique),
+// Service (cree une fois, jamais modifie). Aucun Delete nulle part : la suppression des ressources
+// filles se fait par le garbage collection natif de Kubernetes via OwnerReference, jamais par un
+// appel explicite de ce controleur (voir DeletedAsync).
 [EntityRbac(typeof(V1TestRun), Verbs = RbacVerb.All)]
-[EntityRbac(typeof(V1Job), Verbs = RbacVerb.All)]
-[EntityRbac(typeof(V1StatefulSet), Verbs = RbacVerb.All)]
-[EntityRbac(typeof(V1Service), Verbs = RbacVerb.All)]
+[EntityRbac(typeof(V1Job), Verbs = RbacVerb.Get | RbacVerb.Create)]
+[EntityRbac(typeof(V1StatefulSet), Verbs = RbacVerb.Get | RbacVerb.Create | RbacVerb.Update)]
+[EntityRbac(typeof(V1Service), Verbs = RbacVerb.Get | RbacVerb.Create)]
 [EntityRbac(typeof(V1Secret), Verbs = RbacVerb.Get | RbacVerb.List | RbacVerb.Watch)]
 public sealed class TestRunController(IKubernetesClient client, ILogger<TestRunController> logger) : IEntityController<V1TestRun>
 {

@@ -86,11 +86,29 @@ maître et deux workers portent bien les quatre réglages, et le tir a terminé 
 un plugin NuGet atterrit dans un cache, tous deux hors de `/app` — le verrouiller demanderait de
 monter les emplacements temporaires un par un.
 
-**Limites assumées, pas résolues ici** : les manifestes générés par l'outil CLI KubeOps
-(`dotnet kubeops generate operator`) utilisent un `ClusterRole`/`ClusterRoleBinding` — l'opérateur
-surveille les `TestRun` sur tout le cluster plutôt que dans un seul namespace ; restreindre la
-portée demanderait de configurer explicitement le champ de surveillance côté runtime, non fait
-ici. Pas de scénario personnalisé via `ConfigMap` (seuls les workflows déjà nommés dans
+**RBAC réduit aux verbes réellement exercés.** Les quatre attributs `[EntityRbac]` du contrôleur
+sur `Job`/`StatefulSet`/`Service` étaient tous en `RbacVerb.All` (`verbs: ['*']`) — y compris sur
+des ressources filles que le contrôleur ne fait jamais que créer, relire par nom, ou (pour le seul
+`StatefulSet`, à des fins d'autoscaling et de retour à 0 réplique) mettre à jour. Un opérateur
+compromis pouvait donc supprimer ou modifier n'importe quel `Job`/`StatefulSet`/`Service` existant
+du cluster, pas seulement les siens. Réduit à `get`+`create` sur `Job` et `Service`, `get`+`create`+
+`update` sur `StatefulSet`, aucun `delete` nulle part — la suppression des ressources filles reste
+entièrement portée par le garbage collection natif de Kubernetes (`OwnerReference`), jamais par un
+appel explicite du contrôleur. Vérifié sur le cluster réel par contre-épreuve RBAC directe
+(`kubectl auth can-i --as=system:serviceaccount:<namespace>:default`) : `get`/`create`/`update`
+restent autorisés, `delete`/`list`/`watch` sont désormais refusés — puis par un vrai cycle de
+réconciliation (création des quatre ressources filles, lecture du statut du `Job`, réduction du
+`StatefulSet` à 0 réplique), sans une seule erreur d'autorisation dans les journaux de l'opérateur.
+Les règles générées sur les sous-ressources `*/status` (get/update/patch) restent, elles, plus
+larges que ce que le contrôleur utilise — KubeOps les émet inconditionnellement pour tout type
+annoté, indépendamment des verbes demandés sur la ressource principale ; les retailler à la main
+romprait la reproductibilité de l'artefact généré, pour un gain marginal (un statut ne porte pas de
+spec, rien à créer ni détruire par ce biais).
+
+**Limite assumée, pas résolue ici** : le rôle reste un `ClusterRole`/`ClusterRoleBinding` —
+l'opérateur surveille les `TestRun` sur tout le cluster plutôt que dans un seul namespace ;
+restreindre la portée demanderait de configurer explicitement le champ de surveillance côté
+runtime, non fait ici. Pas de scénario personnalisé via `ConfigMap` (seuls les workflows déjà nommés dans
 `SiroccoHostOptions` sont sélectionnables via `spec.workflow`). Pas d'automatisation
 TLS/`cert-manager` : `spec` ne câble pas `Sirocco__ClusterCertificateThumbprint` — HTTP en clair
 à l'intérieur du cluster, même choix assumé que `docker-compose.yml` aujourd'hui. Pas de
