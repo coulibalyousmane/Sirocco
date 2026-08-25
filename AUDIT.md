@@ -16,7 +16,8 @@ projets ; graphe complet des `ProjectReference`/`PackageReference` ; `dotnet for
 comparaison des drapeaux documentés contre le parseur.
 
 **Hors périmètre, à énoncer plutôt qu'à laisser croire** : aucune mesure de couverture de code
-n'a été produite (voir QUAL-2), aucun fuzzing du parseur déclaratif, aucun audit de performance
+n'avait été produite à la date de l'audit — elle l'a été depuis, en corrigeant QUAL-2 (70,8 % de
+lignes) ; aucun fuzzing du parseur déclaratif, aucun audit de performance
 sous charge, aucune revue ligne à ligne des 187 fichiers de `src` — les constats de code viennent
 de motifs recherchés et de lectures ciblées sur les chemins sensibles.
 
@@ -33,8 +34,9 @@ de motifs recherchés et de lectures ciblées sur les chemins sensibles.
 - **Hygiène de code inhabituelle** : aucun `async void`, **aucun `catch` vide**, aucun
   `TODO`/`FIXME`/`HACK` dans tout le dépôt, et le seul `Thread.Sleep` vit dans `PrecisionWait` avec
   un commentaire expliquant pourquoi il ne doit pas être remplacé.
-- **Les 187 fichiers de `src` sont tous nommés dans les tests** (750 tests verts). Métrique de
-  mention, pas de couverture — mais aucune classe n'est ignorée en bloc.
+- **Les 187 fichiers de `src` sont tous nommés dans les tests** (761 tests verts), et depuis la
+  correction de QUAL-2 ce n'est plus une métrique de mention : la couverture réelle est de
+  **70,8 % de lignes / 66,7 % de branches**, mesurée à chaque run et gardée par un plancher.
 - **`FixedTimeEquals` réellement employé** pour le secret partagé
   (`ClusterAuthentication.cs:47`) : la comparaison en temps constant annoncée existe.
 - **CI sans exposition de secrets** : `ci.yml` n'en référence aucun, donc son déclencheur
@@ -309,12 +311,53 @@ nouveau côté copie de travail. Le filet qui compte est ailleurs : `.gitattribu
 l'entrée dans l'index, donc un clone neuf et la CI verront toujours du LF quoi qu'il arrive sur le
 disque de qui commite.
 
-### QUAL-2 — Moyen — La couverture est mesurable mais jamais mesurée
+### QUAL-2 — ~~Moyen~~ → **corrigé le 25 août 2026** — La couverture était mesurable mais jamais mesurée
 
-`coverlet.collector` 6.0.4 est référencé (`Sirocco.UnitTests.csproj:20`), mais **aucune étape de
-CI ne collecte ni ne publie de couverture** : aucun `--collect` dans les workflows. 750 tests
-verts sans savoir quelles branches sont exercées — et c'est précisément ce qui permettrait de
-transformer le « 187/187 fichiers nommés » ci-dessus en une vraie mesure.
+`coverlet.collector` 6.0.4 était référencé (`Sirocco.UnitTests.csproj:20`), mais **aucune étape de
+CI ne collectait ni ne publiait de couverture** : aucun `--collect` dans les workflows. 761 tests
+verts sans savoir quelles branches sont exercées.
+
+**Corrigé.** `build-and-test` collecte désormais à chaque run, et la mesure est à la fois lisible et
+contraignante : ReportGenerator (déclaré dans `.config/dotnet-tools.json`, donc reproductible en
+local par `dotnet tool restore`) pousse un tableau par assembly dans le **résumé du run**, publie le
+**rapport HTML en artefact** (`couverture-html`), et un **plancher à 65 % de lignes** fait échouer le
+job en dessous. Détail complet dans [Pipeline CI](docs/projet/ci.md#couverture-de-code).
+
+**Le chiffre : 70,8 % de lignes, 66,7 % de branches** (5 449/7 693, mesuré en `Release`, la
+configuration de la CI).
+
+Trois décisions énoncées plutôt que subies :
+
+- **Pas de Codecov ni de Coveralls.** Ce constat-ci en aurait détruit un autre : la liste « Ce qui
+  est solide » relève que `ci.yml` ne référence aucun secret, donc que son déclencheur
+  `pull_request` ne peut rien exfiltrer depuis un fork. Un jeton d'envoi à un service tiers, sur un
+  dépôt public, aurait échangé cette propriété contre l'affichage d'un chiffre que le résumé du run
+  donne déjà.
+- **Un plancher, pas une cible**, et volontairement sous la mesure réelle : il doit attraper la
+  disparition des tests d'un sous-système, pas signaler la variation normale d'un runner partagé.
+- **Aucun filtre d'exclusion.** Le chiffre est brut. Écarter le code généré (protobuf, générateur de
+  regex, qui pèsent sur `Sirocco.Scenarios`) l'aurait embelli sans rien changer à ce qui est
+  réellement vérifié.
+
+**Ce que la mesure a appris, au-delà du constat.** Le détail par assembly confirme chiffres à l'appui
+les choix de vérification déjà écrits dans les commentaires du `.csproj` : `Application` 94,3 %,
+`Domain` 92,9 %, `Infrastructure` 91,4 % — mais `Sirocco.Host` à **14 %**, et `Sirocco.Operator` à
+66,1 % de lignes pour seulement 22,6 % de branches. Ces deux chiffres bas ne sont pas des lacunes :
+ce sont les zones délibérément vérifiées par de vrais tirs (tout le câblage distribué) ou impossibles
+à tester sans cluster (`TestRunController`, KubeOps n'offrant pas de harnais hors cluster). La mesure
+ne contredit donc pas la stratégie de test du projet, **elle la chiffre**.
+
+| Vérification | Résultat |
+|---|---|
+| Séquence exacte de la CI rejouée en local (`--results-directory`, glob ReportGenerator, 3 sorties) | 3 rapports écrits, exit 0 |
+| Barrière au plancher réel (65 %) | exit **0** |
+| Contre-épreuve, plancher porté à 99 % | exit **1**, message nommant le chiffre |
+| Lecture de la valeur | `"linecoverage"` mesuré **unique** dans `Summary.json` (contre 209 `"branchcoverage"`) — lecture sans ambiguïté |
+
+**Reste ouvert** : le plancher est calibré sur une mesure Windows/`Release`. Le premier run Linux
+donnera la vraie base ; il sera resserré à ce moment-là, pas avant. Et `awk` plutôt que `jq` pour
+lire le JSON — non par méfiance envers `jq`, présent sur les runners, mais parce qu'il est absent du
+Git Bash où l'étape a été mise au point, donc invérifiable en local.
 
 ### QUAL-3 — Faible — Blocage synchrone sur du code asynchrone
 
@@ -407,8 +450,9 @@ première minute :
 Barrière repassée après correction : build 0/0, **761 tests** verts, `dotnet format` à 0 violation
 sur la solution **et** sur les deux projets du harnais, DocFX 0 avertissement.
 
-**Ensuite, par ordre de gain** : ~~SEC-4~~ et ~~QUAL-1~~ (corrigés le 24 août), QUAL-2, puis le
-reste.
+**Ensuite, par ordre de gain** : ~~SEC-4~~ et ~~QUAL-1~~ (corrigés le 24 août), ~~QUAL-2~~ (corrigé
+le 25 août). **Les trois constats « Moyen » restants sont traités** ; ne subsistent que des
+« Faible » et des « Info ».
 
 **À ne pas traiter** : SEC-5, SEC-6 et SEC-7 décrivent des frontières de confiance assumées. Ils
 demandent une phrase de documentation, pas du code.

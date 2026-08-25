@@ -24,8 +24,72 @@ jobs:
       - name: Compiler (Release)
         run: dotnet build Sirocco.sln --configuration Release --no-restore
 
-      - name: Tests unitaires
-        run: dotnet test tests/Sirocco.UnitTests --configuration Release --no-build
+      - name: Tests unitaires avec collecte de couverture
+        # coverlet.collector etait reference par Sirocco.UnitTests.csproj depuis toujours sans
+        # qu'aucune etape ne s'en serve : des tests verts, sans savoir quelles branches etaient
+        # exercees. C'est ce --collect qui ferme l'ecart.
+        run: >
+          dotnet test tests/Sirocco.UnitTests --configuration Release --no-build
+          --collect:"XPlat Code Coverage" --results-directory coverage
+
+      - name: Restaurer les outils dotnet
+        run: dotnet tool restore
+
+      - name: Publier la couverture dans le resume du run, et la faire mordre
+        # Deux sorties depuis le meme Cobertura : un tableau markdown pousse dans le resume du run
+        # (le chiffre est lu sans avoir a ouvrir un artefact) et un Summary.json machine-lisible qui
+        # sert de verdict.
+        #
+        # Pas de Codecov ni de Coveralls, et ce n'est pas une preference : ci.yml ne reference
+        # aujourd'hui aucun secret, donc son declencheur `pull_request` ne peut rien exfiltrer
+        # depuis un fork. Ajouter un jeton d'envoi a un service tiers detruirait precisement cette
+        # propriete, sur un depot public, pour afficher un chiffre que le resume du run donne deja.
+        run: |
+          dotnet reportgenerator \
+            "-reports:coverage/**/coverage.cobertura.xml" \
+            "-targetdir:coverage/report" \
+            "-reporttypes:MarkdownSummaryGithub;JsonSummary;Html"
+          cat coverage/report/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+
+          # awk et non jq : jq est bien present sur les runners Ubuntu, mais absent du Git Bash ou
+          # cette etape a ete mise au point, donc inverifiable en local. `"linecoverage"` n'apparait
+          # qu'une seule fois dans Summary.json (mesure verifiee : 1 occurrence contre 209 pour
+          # `"branchcoverage"`, qui existe aussi par classe) — la lecture est donc sans ambiguite.
+          lire() {
+            awk -v cle="\"$1\"" '
+              index($0, cle) { gsub(/[^0-9.]/, "", $2); print $2; exit }
+            ' coverage/report/Summary.json
+          }
+          LIGNES=$(lire linecoverage)
+          # Premiere occurrence : le bloc de synthese precede les classes dans le fichier.
+          BRANCHES=$(lire branchcoverage)
+          echo "Couverture mesuree : $LIGNES % de lignes, $BRANCHES % de branches (plancher : $PLANCHER %)."
+
+          # Un plancher, pas une cible. Il existe pour empecher le constat de retomber a l'etat
+          # ou l'audit l'a trouve — mesurable mais jamais mesure — pas pour reclamer un chiffre
+          # plus flatteur. Il est volontairement sous la mesure reelle (70,8 % en Release) : il doit
+          # attraper la disparition des tests d'un sous-systeme, pas signaler la variation normale
+          # d'un runner partage. A relever quand une base mesuree sous Linux existera.
+          awk -v v="$LIGNES" -v p="$PLANCHER" 'BEGIN {
+            if (v + 0 < p + 0) {
+              printf "La couverture de lignes est tombee a %s %%, sous le plancher de %s %%.\n", v, p
+              printf "Le rapport HTML detaille est publie en artefact du run (couverture-html).\n"
+              exit 1
+            }
+          }'
+        env:
+          PLANCHER: "65"
+
+      - name: Publier le rapport de couverture detaille
+        # Le tableau du resume dit *combien*, ce rapport dit *ou* : c'est ce qui rend la mesure
+        # actionnable plutot que decorative. `always()` pour qu'il soit la surtout quand la
+        # barriere ci-dessus vient d'echouer.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: couverture-html
+          path: coverage/report
+          retention-days: 14
 
       - name: Empaqueter Sirocco.Cli (outil dotnet)
         run: dotnet pack src/Sirocco.Cli --configuration Release --no-build

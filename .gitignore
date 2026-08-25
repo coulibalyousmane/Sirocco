@@ -154,6 +154,11 @@ _TeamCity*
 coverage*.json
 coverage*.xml
 coverage*.info
+# Dossier de sortie de `dotnet test --results-directory coverage` et du rapport ReportGenerator
+# (voir la barriere de couverture dans .github/workflows/ci.yml). Les trois motifs ci-dessus ne
+# couvrent que des fichiers nommes coverage*, pas Summary.json ni le rapport HTML.
+coverage/
+TestResults/
 
 # Visual Studio code coverage results
 *.coverage
