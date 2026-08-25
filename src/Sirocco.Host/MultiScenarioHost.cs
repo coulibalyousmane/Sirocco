@@ -96,7 +96,8 @@ internal static class MultiScenarioHost
             scenario.PluginWorkflowType,
             scenario.PluginPackageId,
             scenario.PluginPackageVersion,
-            scenario.PluginPackageSources);
+            scenario.PluginPackageSources,
+            siroccoOptions.AllowUnsignedPlugins);
 
         string targetBaseUrl = string.IsNullOrWhiteSpace(scenario.TargetBaseUrl) ? siroccoOptions.TargetBaseUrl : scenario.TargetBaseUrl;
         HttpClient httpClient = StandaloneHost.BuildHttpClient(targetBaseUrl);

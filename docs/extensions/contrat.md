@@ -18,7 +18,8 @@ sirocco run mon-plugin.dll --plugin-type MonNamespace.MonWorkflow --target-url h
 ```
 
 `WorkflowFileLoader` reconnaît maintenant l'extension `.dll` en plus de `.yaml`/`.json`
-(déclaratif) et `.csx`/`.cs` (scripté) : il charge l'assembly (`Assembly.LoadFrom`), résout le
+(déclaratif) et `.csx`/`.cs` (scripté) : il charge l'assembly (`PluginWorkflowLoader`, dans un
+`AssemblyLoadContext` isolé — voir « Isolation et signature » plus bas), résout le
 type à instancier — `--plugin-type` s'il est renseigné (nom complet ou simple), sinon le seul
 type public implémentant `IWorkflow` si l'assembly n'en expose qu'un — puis l'instancie via son
 constructeur public sans paramètre. Même flag disponible par scénario en mode scénarios
@@ -71,22 +72,46 @@ bibliothèque est extraite. Un plugin qui dépend d'un paquet tiers au-delà de 
 être publié en assembly fusionnée, ou accepter que le chargement de type échoue si une référence ne
 se résout pas.
 
+**Isolation et signature (SEC-7, AUDIT.md).** Chaque assembly de plugin (résolue via
+`--plugin-package` ou chargée directement par chemin) se charge dans son propre
+`AssemblyLoadContext` collectible plutôt que dans le contexte par défaut — les dépendances propres
+d'un plugin ne se mélangent pas à celles de l'hôte ni d'un autre plugin chargé dans le même
+processus. `Sirocco.Domain` (le contrat partagé) reste explicitement résolu depuis le contexte par
+défaut, sans quoi le cast vers `IWorkflow` échouerait.
+
+Un paquet résolu par `--plugin-package` doit en outre être signé, sans quoi la résolution échoue :
+`NuGetPluginResolver` vérifie la présence d'une signature et que le contenu du paquet correspond
+toujours à ce qui a été signé (`ISignedPackageReader.ValidateIntegrityAsync`). Cette vérification
+ne prouve **pas** que le certificat signataire est de confiance, valide ou non révoqué — une
+tentative de vérification de chaîne complète a été testée contre un vrai paquet nuget.org
+légitimement signé (`Newtonsoft.Json`) et l'a rejeté à cause de l'expiration du certificat de
+signature depuis, un cas que nuget.org authentifie via un contre-scellé RFC3161 que `NuGet.Packaging`
+seul ne rejoue pas — implémenter cette partie à la main aurait été un faux sentiment de sécurité
+plutôt qu'une correction réelle. Le typosquatting (un paquet valablement signé par son propre
+auteur sous un nom proche) n'est donc pas détecté, voir `SECURITY.md`. Une source privée qui ne
+signe pas ses paquets doit lever explicitement ce refus : `--plugin-allow-unsigned` en CLI,
+`AllowUnsignedPlugins`/`Sirocco:AllowUnsignedPlugins` en configuration.
+
 Vérifié par un vrai tir : `Sirocco.SamplePlugin` empaqueté via `dotnet pack` dans un dossier local
 (un flux NuGet à part entière, celui d'un miroir d'entreprise hors ligne — pas une approximation de
 nuget.org), résolu par `--plugin-package Sirocco.SamplePlugin --plugin-source <dossier>` contre
-`Sirocco.SampleTarget` réellement démarré : 0 % d'échec, confirmé une deuxième fois avec
+`Sirocco.SampleTarget` réellement démarré : refusé tel quel (`dotnet pack` ne signe pas), 0 %
+d'échec une fois `--plugin-allow-unsigned` ajouté — confirmé une deuxième fois avec
 `--plugin-package-version` explicite pour vérifier le chemin de cache.
 
 Pour refaire ce tir, il faut lever explicitement le verrou d'empaquetage :
 
 ```bash
 dotnet pack samples/Sirocco.SamplePlugin -c Release -p:IsPackable=true -o ./local-feed
+sirocco run --plugin-package Sirocco.SamplePlugin --plugin-source ./local-feed --plugin-allow-unsigned --target-url http://localhost:5299 --rps 20 --duration 30s
 ```
 
 `Directory.Build.props` pose `IsPackable=false` par défaut et seuls les cinq paquets réellement
 publiés le remettent à `true` — un envoi sur nuget.org étant définitif, mieux vaut oublier de
 publier que squatter un identifiant pour toujours. Ce plugin est un exemple : il n'a rien à faire
 sur nuget.org, mais il doit rester empaquetable à la demande, puisque c'est tout son objet.
+`--plugin-allow-unsigned` n'est nécessaire ici que parce que `dotnet pack` ne signe pas — un vrai
+paquet publié sur nuget.org ou signé via `nuget sign`/`dotnet nuget sign` n'en a pas besoin.
 
 ## Protocoles de référence
 
@@ -123,7 +148,7 @@ lignes de référence) passe par des variables d'environnement, pas par `appsett
 [Contrat de plugin](#contrat-de-plugin).
 
 **Trouvaille réelle, documentée plutôt que corrigée dans le cœur** : un plugin chargé par
-`Assembly.LoadFrom` doit être **publié** (`dotnet publish`), pas seulement compilé —
+`PluginWorkflowLoader` doit être **publié** (`dotnet publish`), pas seulement compilé —
 `dotnet build` seul ne copie pas les dépendances NuGet transitives à côté de l'assembly, que
 `PluginWorkflowLoader` ne résout alors plus (`Microsoft.Data.Sqlite` introuvable au chargement).
 Publier suffit pour une dépendance gérée, mais pas pour sa bibliothèque **native** : `SQLitePCLRaw`
@@ -202,7 +227,7 @@ SQL, transposée à un courtier plutôt qu'un serveur de base de données.
 erreur (`PluginWorkflowLoader` résout la réflexion sans toucher à MQTTnet), mais `ExecuteAsync`
 échoue dès le premier accès à un type MQTTnet, faute de trouver `MQTTnet.dll` à côté de l'assembly.
 Confirmé en isolant le problème via un harnais direct (mêmes appels, sans passer par
-`Assembly.LoadFrom`) avant de le reproduire puis de le corriger par publication — la limite tient
+`PluginWorkflowLoader`) avant de le reproduire puis de le corriger par publication — la limite tient
 bien au chargement dynamique d'un plugin avec dépendance externe, pas à un aléa propre à SQLite.
 
 Vérifié par deux vrais tirs contre le courtier MQTT embarqué de `Sirocco.SampleTarget` : sélection

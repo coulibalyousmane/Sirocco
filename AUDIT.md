@@ -252,13 +252,52 @@ plus larges que ce qu'utilise le contrôleur — KubeOps les émet inconditionne
 annoté, retaillage non fait pour ne pas diverger de l'artefact généré. Détail complet dans
 [Opérateur Kubernetes](docs/distribue/kubernetes.md#opérateur-kubernetes).
 
-### SEC-7 — Faible — Les plugins sont chargés sans isolation ni vérification de signature
+### SEC-7 — ~~Faible~~ → **corrigé le 25 août 2026** — Les plugins étaient chargés sans isolation ni vérification de signature
 
-`PluginWorkflowLoader.cs:45` utilise `Assembly.LoadFrom` : pas d'`AssemblyLoadContext` isolé, donc
+`PluginWorkflowLoader.cs:45` utilisait `Assembly.LoadFrom` : pas d'`AssemblyLoadContext` isolé, donc
 ni déchargement ni cloisonnement des dépendances. Aucune vérification de signature de paquet dans
-`src/Sirocco.Scenarios/Plugins/`. `--plugin-package X` contre nuget.org revient donc à exécuter le
-code d'un nom saisi au clavier, typosquatting compris. Inhérent à un système de plugins, mais à
-énoncer comme frontière de confiance.
+`src/Sirocco.Scenarios/Plugins/`. `--plugin-package X` contre nuget.org revenait donc à exécuter le
+code d'un nom saisi au clavier, typosquatting compris.
+
+**Corrigé, sur demande explicite** — l'audit initial classait ce constat « à énoncer comme
+frontière de confiance », pas à corriger (même famille que SEC-5) ; l'utilisateur a explicitement
+demandé de le traiter quand même.
+
+- **Isolation** : `PluginWorkflowLoader.Load` charge chaque assembly de plugin dans son propre
+  `AssemblyLoadContext` collectible (`PluginLoadContext`), pas dans le contexte par défaut. Les
+  dépendances propres d'un plugin ne se mélangent plus à celles de l'hôte ni de plugins chargés
+  précédemment. `Sirocco.Domain` (le contrat partagé — `IWorkflow` etc.) reste explicitement
+  résolu depuis le contexte par défaut, sans quoi le cast vers `IWorkflow` lèverait
+  `InvalidCastException`. Aucun `Unload()` explicite : le contexte est collectible, le GC le
+  réclame une fois le workflow hors de portée — un vrai progrès sur le contexte par défaut, qui ne
+  se décharge jamais, mais pas un déchargement déterministe.
+- **Signature** : `NuGetPluginResolver` rejette par défaut un paquet non signé, ou dont le contenu
+  ne correspond plus à ce qui a été signé (`ISignedPackageReader.ValidateIntegrityAsync`), avec un
+  échappatoire explicite (`allowUnsignedPlugins` / `--plugin-allow-unsigned` /
+  `Sirocco:AllowUnsignedPlugins`) pour une source privée qui ne signe pas ses paquets.
+
+**Limite délibérément non couverte, testée avant d'être écartée** : la vérification ne couvre que
+la présence d'une signature et l'intégrité du contenu depuis cette signature — pas la confiance ou
+la validité du certificat signataire. Une vraie tentative de vérification de chaîne
+(`SignedCms.CheckSignature` avec validation de chaîne) a été testée contre un vrai paquet nuget.org
+légitimement signé (`Newtonsoft.Json` 13.0.3) : elle le **rejette**, parce que son certificat de
+signature a expiré depuis — nuget.org authentifie ce cas via un contre-scellé RFC3161, que
+`NuGet.Packaging` seul (sans `NuGet.Commands`, hors périmètre) ne rejoue pas. Implémenter cette
+partie à la main aurait été un faux sentiment de sécurité plausible-mais-fragile plutôt qu'une
+correction réelle — écartée sur cette base, pas par facilité. Un plugin valablement signé par son
+propre auteur sous un nom typosquatté n'est donc toujours pas détecté : le typosquatting reste un
+risque inhérent à un système de plugins, énoncé, pas résolu.
+
+| Vérification | Avant | Après |
+|---|---|---|
+| Isolation : type du contexte de chargement d'un plugin | contexte par défaut (jamais déchargé) | contexte collectible dédié, distinct par plugin |
+| `Sirocco.Domain`/`IWorkflow` reste le même type entre hôte et plugin | — | oui (11 tests, y compris les 2 nouveaux d'isolation) |
+| Paquet non signé (`dotnet pack` sans signature) | chargé sans avertissement | **refusé** par défaut, chargé avec `allowUnsignedPlugins` |
+| Paquet signé, contenu inchangé | — | accepté (signature réelle, certificat auto-signé hors ligne) |
+| Paquet signé puis altéré d'un octet | — | **refusé**, message explicite |
+| Vrai tir CLI (`Sirocco.SamplePlugin` empaqueté via `dotnet pack`, résolu par `--plugin-package` contre `Sirocco.SampleTarget` réellement démarré) | — | 0 % d'échec, refusé sans `--plugin-allow-unsigned`, accepté avec |
+
+Détail complet dans [Contrat de plugin](docs/extensions/contrat.md#résolution-nuget).
 
 ### SEC-8 — Info — Secret de démonstration en clair dans `docker-compose.yml`
 
@@ -522,9 +561,12 @@ Barrière repassée après correction : build 0/0, **761 tests** verts, `dotnet 
 sur la solution **et** sur les deux projets du harnais, DocFX 0 avertissement.
 
 **Ensuite, par ordre de gain** : ~~SEC-4~~ et ~~QUAL-1~~ (corrigés le 24 août), ~~QUAL-2~~,
-~~SEC-9~~ et ~~SEC-6~~ (corrigés le 25 août). **Les trois constats « Moyen » et deux des trois
-« Faible » de sécurité sont traités** ; ne subsistent que SEC-5, SEC-7, SEC-8 et les constats
-hors sécurité classés « Faible »/« Info ».
+~~SEC-9~~, ~~SEC-6~~ et ~~SEC-7~~ (corrigés le 25 août). **Les trois constats « Moyen » et les
+trois « Faible » de sécurité sont tous traités** ; ne subsistent que SEC-8 (« Info ») et les
+constats hors sécurité classés « Faible »/« Info ».
 
-**À ne pas traiter** : SEC-5 et SEC-7 décrivent des frontières de confiance assumées. Ils
-demandent une phrase de documentation, pas du code.
+**À ne pas traiter** : SEC-5 décrit une frontière de confiance assumée. Il demande une phrase de
+documentation, pas du code — contrairement à SEC-7, classé dans la même famille par l'audit
+initial mais corrigé quand même sur demande explicite (voir sa section : l'isolation et la
+vérification de présence/intégrité de la signature sont de vrais correctifs, la partie confiance
+du certificat reste un résidu énoncé, pas un refus de corriger).

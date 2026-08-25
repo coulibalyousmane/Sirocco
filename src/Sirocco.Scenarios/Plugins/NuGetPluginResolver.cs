@@ -2,6 +2,7 @@
 using NuGet.Common;
 using NuGet.Frameworks;
 using NuGet.Packaging;
+using NuGet.Packaging.Signing;
 using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
 using NuGet.Versioning;
@@ -26,6 +27,22 @@ namespace Sirocco.Scenarios.Plugins;
 /// <see cref="PluginWorkflowLoader.Load"/> echoue au chargement de type si une reference ne se
 /// resout pas — meme classe de limite que documentee sur <c>FindWorkflowTypes</c>.
 /// </para>
+/// <para>
+/// SEC-7 (AUDIT.md) : un paquet resolu (fraichement telecharge ou relu du cache local) doit etre
+/// signe et son contenu doit correspondre exactement a ce qui a ete signe
+/// (<see cref="EnsurePackageIsTrustedAsync"/>), sans quoi la resolution echoue — comportement par
+/// defaut, ecartable via <paramref name="allowUnsignedPlugins"/> pour une source privee qui ne
+/// signe pas ses paquets. Cette verification prouve la presence d'une signature et l'integrite du
+/// contenu depuis cette signature (voir <see cref="ISignedPackageReader.ValidateIntegrityAsync"/>) ;
+/// elle ne prouve pas que le certificat signataire est de confiance, valide ou non revoque —
+/// <see cref="SignatureUtility"/> le documente explicitement sur ses methodes de chaine
+/// ("does not perform revocation, trust, or certificate validity checking"). L'alternative testee
+/// (verification de chaine via <c>SignedCms.CheckSignature</c>) rejette de vrais paquets nuget.org
+/// legitimement signes des que leur certificat de signature a expire depuis — nuget.org
+/// authentifie ce cas via un contre-sceau RFC3161, que cette classe ne rejoue pas. Un plugin
+/// valablement signe par son propre auteur sous un nom typosquatte n'est donc pas detecte — c'est
+/// le residu deja enonce par SEC-7 : "inherent a un systeme de plugins".
+/// </para>
 /// </summary>
 public static class NuGetPluginResolver
 {
@@ -39,15 +56,23 @@ public static class NuGetPluginResolver
     /// est <see langword="null"/>) et retourne le chemin de la <c>.dll</c> a charger via
     /// <see cref="PluginWorkflowLoader.Load"/>.
     /// </summary>
+    /// <param name="allowUnsignedPlugins">
+    /// <see langword="false"/> par defaut : un paquet sans signature, ou dont le contenu ne
+    /// correspond plus a ce qui a ete signe, est rejete (SEC-7, AUDIT.md). A reserver a une
+    /// source privee qui ne signe pas ses paquets.
+    /// </param>
     /// <exception cref="FormatException">
     /// Le paquet ou la version demandee n'existe dans aucune des sources, le telechargement
-    /// echoue, ou le paquet ne contient aucune bibliotheque compatible avec <c>net10.0</c>.
+    /// echoue, le paquet ne contient aucune bibliotheque compatible avec <c>net10.0</c>, ou (sauf
+    /// <paramref name="allowUnsignedPlugins"/>) le paquet n'est pas signe ou son contenu ne
+    /// correspond plus a sa signature.
     /// </exception>
     public static async Task<string> ResolveAssemblyPathAsync(
         string packageId,
         string? version = null,
         IReadOnlyList<string>? sources = null,
         string? cacheDirectory = null,
+        bool allowUnsignedPlugins = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
@@ -65,7 +90,9 @@ public static class NuGetPluginResolver
             (string cachedDirectory, string cachedNupkgPath) = CachePaths(effectiveCacheDirectory, normalizedId, cachedVersion);
             if (File.Exists(cachedNupkgPath))
             {
-                return ExtractAssembly(cachedNupkgPath, cachedDirectory, packageId, cachedVersion);
+                return await ExtractAssemblyAsync(
+                    cachedNupkgPath, cachedDirectory, packageId, cachedVersion, allowUnsignedPlugins, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
 
@@ -84,7 +111,8 @@ public static class NuGetPluginResolver
                 .ConfigureAwait(false);
         }
 
-        return ExtractAssembly(nupkgPath, packageDirectory, packageId, resolvedVersion);
+        return await ExtractAssemblyAsync(nupkgPath, packageDirectory, packageId, resolvedVersion, allowUnsignedPlugins, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>Chemin du repertoire et du <c>.nupkg</c> mis en cache pour une version donnee.</summary>
@@ -187,13 +215,23 @@ public static class NuGetPluginResolver
     /// <summary>
     /// Choisit le groupe <c>lib/&lt;tfm&gt;</c> le plus proche de <c>net10.0</c>
     /// (<see cref="FrameworkReducer"/>) puis extrait ses fichiers dans le cache local — une seule
-    /// fois par version, les appels suivants reutilisent l'extraction existante.
+    /// fois par version, les appels suivants reutilisent l'extraction existante. Verifie d'abord
+    /// la signature du paquet (<see cref="EnsurePackageIsTrustedAsync"/>) — a chaque appel, meme
+    /// sur un <c>.nupkg</c> deja en cache localement, pas seulement au premier telechargement.
     /// </summary>
-    private static string ExtractAssembly(string nupkgPath, string packageDirectory, string packageId, NuGetVersion version)
+    private static async Task<string> ExtractAssemblyAsync(
+        string nupkgPath,
+        string packageDirectory,
+        string packageId,
+        NuGetVersion version,
+        bool allowUnsignedPlugins,
+        CancellationToken cancellationToken)
     {
         List<FrameworkSpecificGroup> libItems;
         using (PackageArchiveReader reader = new(nupkgPath))
         {
+            await EnsurePackageIsTrustedAsync(reader, packageId, version, allowUnsignedPlugins, cancellationToken)
+                .ConfigureAwait(false);
             libItems = [.. reader.GetLibItems()];
         }
 
@@ -241,5 +279,42 @@ public static class NuGetPluginResolver
         return assemblyPath ?? throw new FormatException(
             $"Le paquet '{packageId}' {version} ne contient aucune assembly .dll dans le groupe " +
             $"'{group.TargetFramework.GetShortFolderName()}'.");
+    }
+
+    /// <summary>
+    /// SEC-7 (AUDIT.md) : rejette un paquet non signe (sauf <paramref name="allowUnsignedPlugins"/>)
+    /// ou dont le contenu ne correspond plus a ce qui a ete signe. Voir la remarque de classe pour
+    /// la portee exacte de cette verification — presence et integrite, pas confiance du certificat.
+    /// </summary>
+    private static async Task EnsurePackageIsTrustedAsync(
+        PackageArchiveReader reader, string packageId, NuGetVersion version, bool allowUnsignedPlugins, CancellationToken cancellationToken)
+    {
+        if (!await reader.IsSignedAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (allowUnsignedPlugins)
+            {
+                return;
+            }
+
+            throw new FormatException(
+                $"Le paquet de plugin '{packageId}' {version} n'est pas signe. Sirocco refuse par defaut de " +
+                "charger un paquet de plugin sans signature (SEC-7, AUDIT.md) ; passez allowUnsignedPlugins " +
+                "(--plugin-allow-unsigned en CLI, Sirocco:AllowUnsignedPlugins en configuration) pour une " +
+                "source privee qui ne signe pas ses paquets.");
+        }
+
+        PrimarySignature signature = await reader.GetPrimarySignatureAsync(cancellationToken).ConfigureAwait(false)
+            ?? throw new FormatException(
+                $"Le paquet de plugin '{packageId}' {version} se declare signe mais n'expose aucune signature primaire lisible.");
+
+        try
+        {
+            await reader.ValidateIntegrityAsync(signature.SignatureContent, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SignatureException ex)
+        {
+            throw new FormatException(
+                $"Le paquet de plugin '{packageId}' {version} a change depuis sa signature (SEC-7, AUDIT.md) : {ex.Message}", ex);
+        }
     }
 }

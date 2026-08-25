@@ -1,7 +1,11 @@
-﻿using Microsoft.CodeAnalysis;
+﻿using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Emit;
+using NuGet.Common;
 using NuGet.Packaging;
+using NuGet.Packaging.Signing;
 using NuGet.Versioning;
 using Sirocco.Domain.Execution;
 using Sirocco.Scenarios.Plugins;
@@ -14,6 +18,13 @@ namespace Sirocco.UnitTests.Plugins;
 /// pack</c>/<c>dotnet pack</c>), jamais un double du protocole NuGet lui-meme. Un dossier local
 /// est un type de source NuGet a part entiere (celui d'un flux d'entreprise hors ligne), pas une
 /// approximation de nuget.org.
+/// <para>
+/// Les paquets de ces tests sont deliberement non signes : <c>allowUnsignedPlugins: true</c> est
+/// passe explicitement partout ou seule la logique de resolution (version, cache, sources,
+/// compatibilite de framework) est en jeu — voir <see cref="NuGetPluginResolverSignatureTests"/>
+/// pour la politique de signature elle-meme (SEC-7, AUDIT.md), qui a besoin de vrais paquets
+/// signes hors ligne (<see cref="CertificateRequest"/> + <see cref="SigningUtility"/>).
+/// </para>
 /// </summary>
 public sealed class NuGetPluginResolverTests
 {
@@ -24,7 +35,7 @@ public sealed class NuGetPluginResolverTests
         BuildLocalPackage(feed, "Sirocco.Test.Plugin", "1.2.3", "resolved-explicit-version");
 
         string assemblyPath = await NuGetPluginResolver.ResolveAssemblyPathAsync(
-            "Sirocco.Test.Plugin", "1.2.3", [feed], cache);
+            "Sirocco.Test.Plugin", "1.2.3", [feed], cache, allowUnsignedPlugins: true);
 
         Assert.True(File.Exists(assemblyPath));
         IWorkflow workflow = PluginWorkflowLoader.Load(assemblyPath);
@@ -39,7 +50,7 @@ public sealed class NuGetPluginResolverTests
         BuildLocalPackage(feed, "Sirocco.Test.Plugin", "2.0.0", "new-version");
 
         string assemblyPath = await NuGetPluginResolver.ResolveAssemblyPathAsync(
-            "Sirocco.Test.Plugin", version: null, [feed], cache);
+            "Sirocco.Test.Plugin", version: null, [feed], cache, allowUnsignedPlugins: true);
 
         IWorkflow workflow = PluginWorkflowLoader.Load(assemblyPath);
         Assert.Equal("new-version", workflow.Name);
@@ -52,13 +63,13 @@ public sealed class NuGetPluginResolverTests
         BuildLocalPackage(feed, "Sirocco.Test.Plugin", "1.0.0", "cached-version");
 
         string firstPath = await NuGetPluginResolver.ResolveAssemblyPathAsync(
-            "Sirocco.Test.Plugin", "1.0.0", [feed], cache);
+            "Sirocco.Test.Plugin", "1.0.0", [feed], cache, allowUnsignedPlugins: true);
 
         // Le flux devient inutilisable : si la deuxieme resolution y retournait, elle echouerait.
         Directory.Delete(feed, recursive: true);
 
         string secondPath = await NuGetPluginResolver.ResolveAssemblyPathAsync(
-            "Sirocco.Test.Plugin", "1.0.0", [feed], cache);
+            "Sirocco.Test.Plugin", "1.0.0", [feed], cache, allowUnsignedPlugins: true);
 
         Assert.Equal(firstPath, secondPath);
         Assert.True(File.Exists(secondPath));
@@ -72,7 +83,7 @@ public sealed class NuGetPluginResolverTests
         BuildLocalPackage(populatedFeed, "Sirocco.Test.Plugin", "1.0.0", "from-second-source");
 
         string assemblyPath = await NuGetPluginResolver.ResolveAssemblyPathAsync(
-            "Sirocco.Test.Plugin", "1.0.0", [emptyFeed, populatedFeed], cache);
+            "Sirocco.Test.Plugin", "1.0.0", [emptyFeed, populatedFeed], cache, allowUnsignedPlugins: true);
 
         IWorkflow workflow = PluginWorkflowLoader.Load(assemblyPath);
         Assert.Equal("from-second-source", workflow.Name);
@@ -84,7 +95,7 @@ public sealed class NuGetPluginResolverTests
         (string feed, string cache) = CreateDirectories();
 
         FormatException ex = await Assert.ThrowsAsync<FormatException>(
-            () => NuGetPluginResolver.ResolveAssemblyPathAsync("Does.Not.Exist", "1.0.0", [feed], cache));
+            () => NuGetPluginResolver.ResolveAssemblyPathAsync("Does.Not.Exist", "1.0.0", [feed], cache, allowUnsignedPlugins: true));
         Assert.Contains("Does.Not.Exist", ex.Message, StringComparison.Ordinal);
     }
 
@@ -95,11 +106,35 @@ public sealed class NuGetPluginResolverTests
         BuildLocalPackage(feed, "Sirocco.Test.Plugin", "1.0.0", "unreachable", targetFrameworkFolder: "net40");
 
         FormatException ex = await Assert.ThrowsAsync<FormatException>(
-            () => NuGetPluginResolver.ResolveAssemblyPathAsync("Sirocco.Test.Plugin", "1.0.0", [feed], cache));
+            () => NuGetPluginResolver.ResolveAssemblyPathAsync("Sirocco.Test.Plugin", "1.0.0", [feed], cache, allowUnsignedPlugins: true));
         Assert.Contains("net10.0", ex.Message, StringComparison.Ordinal);
     }
 
-    private static (string Feed, string Cache) CreateDirectories()
+    [Fact]
+    public async Task An_unsigned_package_is_rejected_by_default()
+    {
+        (string feed, string cache) = CreateDirectories();
+        BuildLocalPackage(feed, "Sirocco.Test.Plugin", "1.0.0", "unsigned");
+
+        FormatException ex = await Assert.ThrowsAsync<FormatException>(
+            () => NuGetPluginResolver.ResolveAssemblyPathAsync("Sirocco.Test.Plugin", "1.0.0", [feed], cache));
+        Assert.Contains("n'est pas signe", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_unsigned_package_is_accepted_when_explicitly_allowed()
+    {
+        (string feed, string cache) = CreateDirectories();
+        BuildLocalPackage(feed, "Sirocco.Test.Plugin", "1.0.0", "unsigned-allowed");
+
+        string assemblyPath = await NuGetPluginResolver.ResolveAssemblyPathAsync(
+            "Sirocco.Test.Plugin", "1.0.0", [feed], cache, allowUnsignedPlugins: true);
+
+        IWorkflow workflow = PluginWorkflowLoader.Load(assemblyPath);
+        Assert.Equal("unsigned-allowed", workflow.Name);
+    }
+
+    internal static (string Feed, string Cache) CreateDirectories()
     {
         string feed = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"sirocco-nuget-feed-{Guid.NewGuid():N}")).FullName;
         string cache = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"sirocco-nuget-cache-{Guid.NewGuid():N}")).FullName;
@@ -135,7 +170,7 @@ public sealed class NuGetPluginResolverTests
         builder.Save(stream);
     }
 
-    private static string CompileWorkflowAssembly(string workflowName)
+    internal static string CompileWorkflowAssembly(string workflowName)
     {
         string source = $$"""
             public sealed class GeneratedWorkflow : Sirocco.Domain.Execution.IWorkflow

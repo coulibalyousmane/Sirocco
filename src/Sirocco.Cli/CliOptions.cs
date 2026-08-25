@@ -26,6 +26,8 @@ internal sealed class CliOptions
 
     public IReadOnlyList<string> PluginPackageSources { get; private init; } = [];
 
+    public bool AllowUnsignedPlugins { get; private init; }
+
     public string? TargetUrl { get; private init; }
 
     public double? Rps { get; private init; }
@@ -67,6 +69,7 @@ internal sealed class CliOptions
         string? pluginPackageId = null;
         string? pluginPackageVersion = null;
         List<string> pluginPackageSources = [];
+        bool allowUnsignedPlugins = false;
         string? targetUrl = null;
         double? rps = null;
         double? fromRps = null;
@@ -106,6 +109,10 @@ internal sealed class CliOptions
 
                 case "--plugin-source" when i + 1 < args.Length:
                     pluginPackageSources.Add(args[++i]);
+                    break;
+
+                case "--plugin-allow-unsigned":
+                    allowUnsignedPlugins = true;
                     break;
 
                 case "--target-url" when i + 1 < args.Length:
@@ -267,6 +274,7 @@ internal sealed class CliOptions
             PluginPackageId = pluginPackageId,
             PluginPackageVersion = pluginPackageVersion,
             PluginPackageSources = pluginPackageSources,
+            AllowUnsignedPlugins = allowUnsignedPlugins,
             TargetUrl = targetUrl,
             Rps = rps,
             FromRps = fromRps,

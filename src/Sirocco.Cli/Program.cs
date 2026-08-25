@@ -27,6 +27,10 @@ const string USAGE = """
                                  si omis.
       --plugin-source <url>     Source NuGet interrogee pour --plugin-package, repetable. nuget.org
                                  seul si omis.
+      --plugin-allow-unsigned   Accepte un paquet --plugin-package non signe, ou dont le contenu
+                                 ne correspond plus a sa signature. Refuse par defaut (SEC-7,
+                                 AUDIT.md) ; a reserver a une source privee qui ne signe pas ses
+                                 paquets.
       --target-url <url>        Adresse de base de la cible. Requis, sauf si deja fourni via
                                  Sirocco:TargetBaseUrl dans un appsettings.json du repertoire courant.
       --rps <n>                 Debit cible constant, en requetes par seconde (avec --duration).
@@ -154,6 +158,7 @@ if (options.Vus is int vus)
         PluginPackageId = options.PluginPackageId ?? builder.Configuration["Sirocco:PluginPackageId"],
         PluginPackageVersion = options.PluginPackageVersion ?? builder.Configuration["Sirocco:PluginPackageVersion"],
         PluginPackageSources = options.PluginPackageSources.Count > 0 ? options.PluginPackageSources : ReadPluginPackageSources(builder.Configuration),
+        AllowUnsignedPlugins = options.AllowUnsignedPlugins || builder.Configuration.GetValue<bool>("Sirocco:AllowUnsignedPlugins"),
         Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
         ExitAfterRun = true,
         ReportHtmlPath = options.ReportHtmlPath,
@@ -182,6 +187,7 @@ else if (options.VusFrom is int vusFrom && options.VusTo is int vusTo)
         PluginPackageId = options.PluginPackageId ?? builder.Configuration["Sirocco:PluginPackageId"],
         PluginPackageVersion = options.PluginPackageVersion ?? builder.Configuration["Sirocco:PluginPackageVersion"],
         PluginPackageSources = options.PluginPackageSources.Count > 0 ? options.PluginPackageSources : ReadPluginPackageSources(builder.Configuration),
+        AllowUnsignedPlugins = options.AllowUnsignedPlugins || builder.Configuration.GetValue<bool>("Sirocco:AllowUnsignedPlugins"),
         Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
         ExitAfterRun = true,
         ReportHtmlPath = options.ReportHtmlPath,
@@ -205,6 +211,7 @@ else if (options.Iterations is long sharedIterations)
         PluginPackageId = options.PluginPackageId ?? builder.Configuration["Sirocco:PluginPackageId"],
         PluginPackageVersion = options.PluginPackageVersion ?? builder.Configuration["Sirocco:PluginPackageVersion"],
         PluginPackageSources = options.PluginPackageSources.Count > 0 ? options.PluginPackageSources : ReadPluginPackageSources(builder.Configuration),
+        AllowUnsignedPlugins = options.AllowUnsignedPlugins || builder.Configuration.GetValue<bool>("Sirocco:AllowUnsignedPlugins"),
         Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
         ExitAfterRun = true,
         ReportHtmlPath = options.ReportHtmlPath,
@@ -266,6 +273,7 @@ else
             PluginPackageId = options.PluginPackageId ?? builder.Configuration["Sirocco:PluginPackageId"],
             PluginPackageVersion = options.PluginPackageVersion ?? builder.Configuration["Sirocco:PluginPackageVersion"],
             PluginPackageSources = options.PluginPackageSources.Count > 0 ? options.PluginPackageSources : ReadPluginPackageSources(builder.Configuration),
+            AllowUnsignedPlugins = options.AllowUnsignedPlugins || builder.Configuration.GetValue<bool>("Sirocco:AllowUnsignedPlugins"),
             Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
             ExitAfterRun = true,
             ReportHtmlPath = options.ReportHtmlPath,

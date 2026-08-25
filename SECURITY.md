@@ -33,8 +33,11 @@ fonction, pas un défaut. Cela déplace la frontière entre « comportement atte
 - Exécuter le code d'un scénario que vous fournissez. Un scénario scripté (`.csx`, compilé par
   Roslyn) ou un plugin (`--plugin-type`, `--plugin-package`) s'exécute avec les privilèges du
   processus, sans bac à sable. **Un scénario ou un plugin est du code : traitez-le comme tel.**
-  `--plugin-package` interroge nuget.org par défaut et aucune signature n'est vérifiée — vérifiez
-  l'identifiant que vous saisissez, le typosquatting existe sur tous les registres publics.
+  `--plugin-package` interroge nuget.org par défaut et refuse un paquet non signé, mais cette
+  vérification ne prouve que la présence d'une signature et l'intégrité du contenu, jamais la
+  confiance du certificat signataire ni l'identité de son auteur — vérifiez l'identifiant que vous
+  saisissez, le typosquatting existe sur tous les registres publics, y compris pour un paquet
+  valablement signé par son propre auteur.
 - Enregistrer ce que le proxy enregistreur voit passer. Le HAR produit contient le trafic capturé.
 
 **Sont en revanche des vulnérabilités, à signaler :**

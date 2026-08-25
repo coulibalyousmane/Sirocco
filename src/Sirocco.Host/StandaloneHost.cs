@@ -69,7 +69,8 @@ public static class StandaloneHost
             siroccoOptions.PluginWorkflowType,
             siroccoOptions.PluginPackageId,
             siroccoOptions.PluginPackageVersion,
-            siroccoOptions.PluginPackageSources);
+            siroccoOptions.PluginPackageSources,
+            siroccoOptions.AllowUnsignedPlugins);
 
         // Client HTTP unique, partage par tous les utilisateurs virtuels : c'est ce partage — pas
         // un client par requete — qui permet au pool de connexions du SocketsHttpHandler de tenir
@@ -213,7 +214,8 @@ public static class StandaloneHost
         string? pluginWorkflowType = null,
         string? pluginPackageId = null,
         string? pluginPackageVersion = null,
-        IReadOnlyList<string>? pluginPackageSources = null)
+        IReadOnlyList<string>? pluginPackageSources = null,
+        bool allowUnsignedPlugins = false)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
@@ -228,7 +230,7 @@ public static class StandaloneHost
             // chargement d'un scenario n'a jamais lieu sur le chemin critique, une seule fois
             // avant le premier tir.
             string assemblyPath = NuGetPluginResolver
-                .ResolveAssemblyPathAsync(pluginPackageId, pluginPackageVersion, pluginPackageSources)
+                .ResolveAssemblyPathAsync(pluginPackageId, pluginPackageVersion, pluginPackageSources, allowUnsignedPlugins: allowUnsignedPlugins)
                 .GetAwaiter()
                 .GetResult();
 

@@ -170,7 +170,7 @@ avec un message explicite plutôt qu'une exception de réflexion brute.
 
 Un simple `dotnet build` suffit **uniquement si la seule dépendance est `Sirocco.Domain`** — le cas
 de SSE et GraphQL ci-dessus, et de l'exemple plus haut. Dès qu'une dépendance NuGet supplémentaire
-entre en jeu (le cas de SQL et MQTT), il faut **publier** (`dotnet publish`) : `Assembly.LoadFrom`
+entre en jeu (le cas de SQL et MQTT), il faut **publier** (`dotnet publish`) : `PluginWorkflowLoader`
 charge l'assembly du plugin depuis son propre dossier, et `dotnet build` seul ne copie pas les
 dépendances NuGet transitives à côté d'elle — seul `dotnet publish` le fait. Une dépendance
 **native** (comme `SQLitePCLRaw` pour SQL) va plus loin : elle doit en plus être cherchée par le
@@ -202,7 +202,7 @@ protocole (HTTP in-process, broker TCP local, serveur GraphQL in-process).
 Si `ExecuteAsync` échoue silencieusement une fois chargée par `sirocco run` (`VirtualUserWorker`
 avale toute exception de scénario sans jamais la journaliser, y compris avec
 `Logging__LogLevel__Default=Debug`), le diagnostic le plus rapide reste une petite application
-console jetable avec une **`ProjectReference`** vers l'extension (pas `Assembly.LoadFrom`), qui
+console jetable avec une **`ProjectReference`** vers l'extension (pas `PluginWorkflowLoader`), qui
 appelle `workflow.ExecuteAsync(context, ct)` directement dans un `try`/`catch` — cela isole en une
 minute si le bug est dans la logique du workflow ou dans le chemin de chargement du plugin.
 

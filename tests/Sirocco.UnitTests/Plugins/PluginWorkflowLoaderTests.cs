@@ -1,4 +1,5 @@
-﻿using Microsoft.CodeAnalysis;
+﻿using System.Runtime.Loader;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Emit;
 using Sirocco.Domain.Execution;
@@ -9,18 +10,74 @@ namespace Sirocco.UnitTests.Plugins;
 /// <summary>
 /// Verifie <see cref="PluginWorkflowLoader"/> contre de vraies assemblies .NET compilees a la
 /// volee (Roslyn, <c>Emit</c> vers un fichier temporaire) — pas des doublures : le contrat de
-/// plugin n'a de sens que verifie contre une assembly reellement chargeable par
-/// <see cref="System.Reflection.Assembly.LoadFrom"/>, exactement comme le ferait un plugin tiers.
+/// plugin n'a de sens que verifie contre une assembly reellement chargeable, exactement comme le
+/// ferait un plugin tiers.
 /// <para>
-/// Aucun fichier compile n'est supprime apres un <see cref="PluginWorkflowLoader.Load"/> reussi
-/// (ou echoue apres chargement) : <c>Assembly.LoadFrom</c> verrouille le fichier sur Windows pour
-/// toute la duree du processus, sans mecanisme de dechargement ici (un
-/// <c>AssemblyLoadContext</c> collectible sortirait du scope du contrat de plugin de cette
-/// premiere version) — les fichiers restent dans le repertoire temporaire, purges par le systeme.
+/// SEC-7 (AUDIT.md) : chaque appel a <see cref="PluginWorkflowLoader.Load"/> charge l'assembly
+/// dans un <see cref="AssemblyLoadContext"/> collectible dedie, pas dans
+/// <see cref="AssemblyLoadContext.Default"/> — voir les deux premiers tests de cette classe. Tous
+/// les autres tests verifient deja implicitement que <c>Sirocco.Domain</c> (le contrat partage,
+/// exclu de cette isolation) reste correctement resolu : un plugin qui caste vers
+/// <see cref="IWorkflow"/> depuis un contexte different leverait <see cref="InvalidCastException"/>
+/// avant meme d'atteindre les assertions.
 /// </para>
 /// </summary>
 public sealed class PluginWorkflowLoaderTests
 {
+    [Fact]
+    public void The_plugin_assembly_loads_into_an_isolated_collectible_context()
+    {
+        string path = CompileWorkflowAssembly("""
+            public sealed class IsolatedWorkflow : Sirocco.Domain.Execution.IWorkflow
+            {
+                public string Name => "isolated";
+                public void RegisterSteps(Sirocco.Domain.Metrics.StepRegistry registry) { }
+                public System.Threading.Tasks.ValueTask ExecuteAsync(
+                    Sirocco.Domain.Execution.IVirtualUserContext context, System.Threading.CancellationToken cancellationToken) =>
+                    System.Threading.Tasks.ValueTask.CompletedTask;
+            }
+            """);
+
+        IWorkflow workflow = PluginWorkflowLoader.Load(path);
+
+        AssemblyLoadContext? context = AssemblyLoadContext.GetLoadContext(workflow.GetType().Assembly);
+        Assert.NotNull(context);
+        Assert.NotSame(AssemblyLoadContext.Default, context);
+        Assert.True(context.IsCollectible);
+    }
+
+    [Fact]
+    public void Two_plugins_load_into_two_distinct_contexts()
+    {
+        string firstPath = CompileWorkflowAssembly("""
+            public sealed class FirstIsolatedWorkflow : Sirocco.Domain.Execution.IWorkflow
+            {
+                public string Name => "first-isolated";
+                public void RegisterSteps(Sirocco.Domain.Metrics.StepRegistry registry) { }
+                public System.Threading.Tasks.ValueTask ExecuteAsync(
+                    Sirocco.Domain.Execution.IVirtualUserContext context, System.Threading.CancellationToken cancellationToken) =>
+                    System.Threading.Tasks.ValueTask.CompletedTask;
+            }
+            """);
+        string secondPath = CompileWorkflowAssembly("""
+            public sealed class SecondIsolatedWorkflow : Sirocco.Domain.Execution.IWorkflow
+            {
+                public string Name => "second-isolated";
+                public void RegisterSteps(Sirocco.Domain.Metrics.StepRegistry registry) { }
+                public System.Threading.Tasks.ValueTask ExecuteAsync(
+                    Sirocco.Domain.Execution.IVirtualUserContext context, System.Threading.CancellationToken cancellationToken) =>
+                    System.Threading.Tasks.ValueTask.CompletedTask;
+            }
+            """);
+
+        IWorkflow first = PluginWorkflowLoader.Load(firstPath);
+        IWorkflow second = PluginWorkflowLoader.Load(secondPath);
+
+        AssemblyLoadContext? firstContext = AssemblyLoadContext.GetLoadContext(first.GetType().Assembly);
+        AssemblyLoadContext? secondContext = AssemblyLoadContext.GetLoadContext(second.GetType().Assembly);
+        Assert.NotSame(firstContext, secondContext);
+    }
+
     [Fact]
     public void A_single_candidate_is_selected_without_a_type_name()
     {

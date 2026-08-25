@@ -200,6 +200,14 @@ public sealed class SiroccoHostOptions
     public IReadOnlyList<string> PluginPackageSources { get; init; } = [];
 
     /// <summary>
+    /// <see langword="false"/> par defaut : un paquet resolu via <see cref="PluginPackageId"/> qui
+    /// n'est pas signe, ou dont le contenu ne correspond plus a sa signature, fait echouer la
+    /// resolution (SEC-7, AUDIT.md ; voir <c>NuGetPluginResolver</c>). A reserver a une source
+    /// privee qui ne signe pas ses paquets.
+    /// </summary>
+    public bool AllowUnsignedPlugins { get; init; }
+
+    /// <summary>
     /// Regles de succes/echec evaluees en fin de tir. Vide par defaut : sans seuil, il n'y a
     /// pas de gate, et le tir ne peut jamais "echouer" au sens CI du terme.
     /// <para>
