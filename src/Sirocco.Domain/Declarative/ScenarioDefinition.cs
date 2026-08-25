@@ -82,6 +82,18 @@ public sealed record ScenarioDefinition
         {
             dataset.Validate();
 
+            // "env" est reserve aux variables d'environnement ({{env.NOM}}, voir
+            // DeclarativeWorkflow.TrySubstitute) : sans ce garde-fou, un jeu de donnees nomme
+            // ainsi changerait silencieusement de sens a la substitution plutot que d'echouer
+            // au chargement.
+            if (string.Equals(dataset.Name, "env", StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "Le nom de jeu de donnees 'env' est reserve aux variables d'environnement "
+                    + "({{env.NOM}}) et ne peut pas etre reutilise pour un jeu de donnees.",
+                    nameof(Datasets));
+            }
+
             if (!seenDatasetNames.Add(dataset.Name))
             {
                 throw new ArgumentException(

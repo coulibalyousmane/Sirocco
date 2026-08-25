@@ -1,0 +1,25 @@
+# Injection d'un secret depuis l'environnement du processus, contre Sirocco.SampleTarget.
+#
+# {{env.NOM}} lit la variable d'environnement NOM du processus qui execute le tir — c'est la
+# seule facon pour un scenario declaratif de faire vivre un jeton hors du fichier de scenario
+# plutot qu'en clair dedans (voir docs/scenarios/donnees-assertions.md#variables-denvironnement).
+# Meme mecanisme de substitution que {{jeu.colonne}} ou une variable extraite : une variable non
+# definie echoue l'etape sans jamais envoyer la requete.
+#
+# Ce fichier est execute par ci.yml, qui definit SIROCCO_DEMO_API_TOKEN avant de le lancer. Si
+# cette variable venait a manquer, chaque iteration echouerait et le seuil d'erreur du job la
+# ferait echouer — c'est la preuve, pas une supposition, que la substitution a reellement lieu.
+#
+# Exécution, depuis la racine du dépôt :
+#   SIROCCO_DEMO_API_TOKEN=un-jeton sirocco run docs/examples/scenarios/variables-environnement.yaml \
+#     --target-url http://localhost:5281 --rps 10 --duration 5s --max-vus 4
+
+name: variables-environnement
+
+steps:
+  - name: browse
+    method: GET
+    path: /api/catalog/products
+    headers:
+      Authorization: "Bearer {{env.SIROCCO_DEMO_API_TOKEN}}"
+    expectedStatusCodes: [200]

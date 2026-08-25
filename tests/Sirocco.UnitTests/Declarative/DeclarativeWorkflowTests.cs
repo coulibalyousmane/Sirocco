@@ -493,6 +493,70 @@ public sealed class DeclarativeWorkflowTests
         Assert.Equal(RequestOutcome.AssertionFailed, Assert.Single(sink.For(checkoutStep)).Outcome);
     }
 
+    /// <summary>
+    /// Le coeur de la correction : un scenario declaratif peut desormais faire vivre un secret
+    /// hors du fichier plutot qu'en clair dedans, dans les trois memes emplacements qu'une
+    /// variable extraite (chemin, en-tete, corps).
+    /// </summary>
+    [Fact]
+    public async Task An_environment_variable_placeholder_resolves_into_the_path_header_and_body()
+    {
+        const string variable = "SIROCCO_TEST_TOKEN_7F3A";
+        string placeholder = "{{env." + variable + "}}";
+        Environment.SetEnvironmentVariable(variable, "secret-value");
+        try
+        {
+            ScenarioDefinition definition = new()
+            {
+                Name = "smoke",
+                Steps =
+                [
+                    Step(
+                        "checkout",
+                        method: "POST",
+                        path: "/api/checkout/" + placeholder,
+                        body: "{\"token\":\"" + placeholder + "\"}",
+                        headers: new Dictionary<string, string> { ["Authorization"] = "Bearer " + placeholder }),
+                ],
+            };
+
+            (DeclarativeWorkflow workflow, VirtualUserContext context, _, StubHttpMessageHandler handler, _) = CreateHarness(definition);
+            handler.On(HttpMethod.Post, "/api/checkout/secret-value", HttpStatusCode.OK);
+
+            await RunIterationAsync(workflow, context);
+
+            Assert.Equal("/api/checkout/secret-value", handler.Requests[0].Path);
+            Assert.Equal("Bearer secret-value", handler.Requests[0].Header("Authorization"));
+            Assert.Equal("""{"token":"secret-value"}""", handler.Requests[0].Body);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, null);
+        }
+    }
+
+    [Fact]
+    public async Task An_unset_environment_variable_fails_the_step_without_sending_a_request()
+    {
+        const string variable = "SIROCCO_TEST_UNSET_9K2L";
+        Environment.SetEnvironmentVariable(variable, null);
+
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps = [Step("checkout", headers: new Dictionary<string, string> { ["Authorization"] = "Bearer {{env." + variable + "}}" })],
+        };
+
+        (DeclarativeWorkflow workflow, VirtualUserContext context, CollectingMetricSink sink, StubHttpMessageHandler handler, StepRegistry steps) =
+            CreateHarness(definition);
+
+        await RunIterationAsync(workflow, context);
+
+        Assert.Empty(handler.Requests);
+        Assert.True(steps.TryGetId("checkout", out StepId checkoutStep));
+        Assert.Equal(RequestOutcome.AssertionFailed, Assert.Single(sink.For(checkoutStep)).Outcome);
+    }
+
     [Fact]
     public async Task Extracted_variables_do_not_leak_into_the_next_iteration()
     {

@@ -214,6 +214,11 @@ jobs:
         # transclus par une page du site est reellement joue ici, avec un seuil sur le taux
         # d'erreur — sans seuil, sirocco run sortirait 0 meme a 100 % d'echec et la CI
         # validerait un exemple casse.
+        #
+        # SIROCCO_DEMO_API_TOKEN nourrit variables-environnement.yaml ({{env.SIROCCO_DEMO_API_TOKEN}}).
+        # Si cette variable manquait, la substitution echouerait a chaque iteration et le seuil
+        # d'erreur ci-dessous ferait echouer ce job : c'est la preuve que la substitution a
+        # reellement lieu, pas une supposition.
         run: |
           for f in docs/examples/scenarios/*.yaml; do
             echo "::group::$f"
@@ -222,6 +227,8 @@ jobs:
               --threshold "__iteration:ErrorRate:LessThanOrEqual:0.01"
             echo "::endgroup::"
           done
+        env:
+          SIROCCO_DEMO_API_TOKEN: "ci-demo-token"
 
       - name: Tir reel de chaque fragment de configuration de la documentation
         # Sirocco.Host n'a pas d'option pour designer un fichier de configuration : il lit

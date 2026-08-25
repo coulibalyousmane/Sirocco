@@ -95,6 +95,19 @@ public sealed class ScenarioDefinitionTests
     }
 
     [Fact]
+    public void A_dataset_named_env_is_rejected_because_the_name_is_reserved_for_environment_variables()
+    {
+        ScenarioDefinition scenario = new()
+        {
+            Name = "smoke",
+            Steps = [CreateStep()],
+            Datasets = [CreateDataSet("env")],
+        };
+
+        Assert.Throws<ArgumentException>(scenario.Validate);
+    }
+
+    [Fact]
     public void An_invalid_dataset_makes_the_whole_scenario_invalid()
     {
         ScenarioDefinition scenario = new()

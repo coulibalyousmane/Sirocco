@@ -45,6 +45,39 @@ sur 3 utilisateurs virtuels, chacun recevant sa propre ligne à chaque itératio
 instrumentation temporaire) ; `scenarios/scripted-checkout.csx` (voir plus bas) recevant de même
 un identifiant distinct par utilisateur virtuel depuis `scenarios/users.csv`.
 
+## Variables d'environnement
+
+Jusqu'ici, un scénario déclaratif n'avait **aucun moyen de faire vivre un secret hors du fichier
+de scénario** : les seules sources de substitution étaient les jeux de données (des fichiers,
+donc committables et lisibles par quiconque a le fichier) et la corrélation depuis une réponse
+précédente. Un jeton d'API statique devait donc être écrit en clair dans le YAML — exactement la
+faute que le [convertisseur HAR](../convertisseurs/index.md#convertisseur-har) avait commise avant
+d'être corrigé.
+
+`{{env.NOM}}` lit la variable d'environnement `NOM` du **processus qui exécute le tir**, avec le
+même mécanisme de substitution que `{{jeu.colonne}}` — accessible dans le chemin, un en-tête ou le
+corps d'une étape :
+
+[!code-yaml[](../examples/scenarios/variables-environnement.yaml)]
+*Fichier exécuté par la CI : `docs/examples/scenarios/variables-environnement.yaml`*
+
+Comme une extraction manquée, une variable non définie **échoue l'étape sans jamais envoyer la
+requête** — le jeton n'est jamais transmis à moitié substitué. `env` est un nom de jeu de données
+réservé : `ScenarioDefinition.Validate()` rejette un jeu de données nommé ainsi au chargement,
+plutôt que de laisser `{{env.x}}` changer silencieusement de sens selon qu'un jeu de données porte
+ou non ce nom.
+
+**Frontière de confiance à connaître** : `{{env.NOM}}` donne accès à **n'importe quelle** variable
+du processus, pas seulement à celles que l'opérateur a voulu exposer au scénario — même modèle que
+`__ENV` de k6 ou `System.getenv` de Gatling, pas une restriction propre à Sirocco. Un scénario
+déclaratif n'avait jusqu'ici aucune autorité ambiante : c'est la première fois qu'il peut lire quoi
+que ce soit hors de son propre fichier. Ne faites tourner un scénario dont vous n'êtes pas l'auteur
+que dans un processus qui ne détient aucun secret sans rapport avec le tir lui-même.
+
+Vérifié par un vrai tir contre `Sirocco.SampleTarget`, dans les deux sens : sans la variable,
+100 % des itérations échouent (aucune requête n'atteint la cible) ; avec elle, 0 % d'échec et le
+seuil de la CI est respecté.
+
 ## Checks
 
 Deuxième bullet de la [roadmap phase 2](https://github.com/coulibalyousmane/Sirocco/blob/main/ROADMAP.md#phase-2--des-scénarios-quon-peut-réellement-écrire) :

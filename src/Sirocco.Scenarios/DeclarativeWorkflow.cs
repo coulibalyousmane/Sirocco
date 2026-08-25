@@ -21,6 +21,16 @@ namespace Sirocco.Scenarios;
 /// les etapes de cette iteration.
 /// </para>
 /// <para>
+/// <c>{{env.NOM}}</c> lit la variable d'environnement <c>NOM</c> du processus — seule facon
+/// pour un scenario declaratif de faire vivre un secret hors du fichier de scenario plutot
+/// qu'en clair dedans. Resolue directement (<see cref="Environment.GetEnvironmentVariable"/>),
+/// pas via <see cref="ScenarioDefinition.Datasets"/> : lire toutes les variables du processus a
+/// chaque iteration pour n'en utiliser que quelques-unes couterait sans necessite sur le chemin
+/// critique d'un generateur de charge. <c>env</c> est donc un nom de jeu de donnees reserve
+/// (voir <see cref="ScenarioDefinition.Validate"/>) : une variable non definie echoue l'etape
+/// comme une extraction manquee, sans jamais envoyer la requete avec le gabarit litteral.
+/// </para>
+/// <para>
 /// Un check (<see cref="CheckRule"/>) est une assertion logique sur la reponse d'une etape,
 /// rapportee sur sa <b>propre</b> etape du rapport — jamais sur celle de la requete HTTP dont
 /// il derive, qui garde l'issue que <see cref="HttpStepDefinition.ExpectedStatusCodes"/> lui
@@ -277,8 +287,9 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
     }
 
     /// <summary>
-    /// Remplace chaque <c>{{nom}}</c> ou <c>{{jeu.colonne}}</c> par la variable correspondante.
-    /// Renvoie <see langword="false"/> si au moins un nom reference n'a pas ete extrait — le
+    /// Remplace chaque <c>{{nom}}</c>, <c>{{jeu.colonne}}</c> ou <c>{{env.NOM}}</c> par la
+    /// variable, la valeur de jeu de donnees, ou la variable d'environnement correspondante.
+    /// Renvoie <see langword="false"/> si au moins un nom reference n'a pas ete resolu — le
     /// gabarit est alors laisse tel quel dans <paramref name="result"/>, sans etre envoye.
     /// </summary>
     private static bool TrySubstitute(string template, IReadOnlyDictionary<string, string> variables, out string result)
@@ -292,7 +303,21 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
         bool allResolved = true;
         result = _placeholderPattern.Replace(template, match =>
         {
-            if (variables.TryGetValue(match.Groups[1].Value, out string? value))
+            string name = match.Groups[1].Value;
+
+            if (name.StartsWith(ENVIRONMENT_PREFIX, StringComparison.Ordinal))
+            {
+                string? environmentValue = Environment.GetEnvironmentVariable(name[ENVIRONMENT_PREFIX.Length..]);
+                if (environmentValue is not null)
+                {
+                    return environmentValue;
+                }
+
+                allResolved = false;
+                return match.Value;
+            }
+
+            if (variables.TryGetValue(name, out string? value))
             {
                 return value;
             }
@@ -303,6 +328,14 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
 
         return allResolved;
     }
+
+    /// <summary>
+    /// Prefixe reserve des variables d'environnement (<c>{{env.NOM}}</c>). Voir
+    /// <see cref="ScenarioDefinition.Validate"/>, qui rejette un jeu de donnees nomme
+    /// litteralement <c>env</c> pour que la collision echoue au chargement plutot que de changer
+    /// silencieusement de comportement.
+    /// </summary>
+    private const string ENVIRONMENT_PREFIX = "env.";
 
     [GeneratedRegex(@"\{\{([\w.]+)\}\}")]
     private static partial Regex PlaceholderPattern();
