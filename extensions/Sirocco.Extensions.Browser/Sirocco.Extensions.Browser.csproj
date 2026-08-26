@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    Cinquieme protocole de reference : le navigateur (ROADMAP.md, ligne "Test navigateur
+    (Web Vitals)"). Il valide le contrat de plugin sous un angle qu'aucun des quatre autres
+    n'exerce : le scenario ne parle plus un protocole reseau du tout, il pilote un vrai Chromium
+    et rapporte ce que le NAVIGATEUR a mesure — LCP, FCP, TTFB, CLS.
+    Contrairement aux quatre autres, ce plugin ne peut pas tourner a forte concurrence : un
+    contexte de navigateur coute des centaines de Mo. Il se pilote en modele ferme (option vus),
+    jamais en debit (option rps) ; voir la remarque de classe de BrowserWorkflow.
+  -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Sirocco.Extensions.Browser</PackageId>
+    <Description>Extension Sirocco pour les tests navigateur : pilote un vrai Chromium via Playwright et rapporte les Web Vitals mesures par le navigateur (LCP, FCP, TTFB, CLS). Dependance a des binaires de navigateur — a consommer par PackageReference + dotnet publish, pas par l'option plugin-package.</Description>
+    <PackageTags>load-testing;performance;sirocco-extension;browser;web-vitals;playwright</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Sirocco.Domain\Sirocco.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Playwright" Version="1.62.0" />
+  </ItemGroup>
+
+</Project>

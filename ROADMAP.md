@@ -34,7 +34,7 @@ Légende : ● solide · ◐ partiel · ○ absent
 | Installation en une commande | ○ cloner et compiler | ● brew, apt, docker | ● bundle, maven | ● NuGet |
 | Écosystème d'extensions communautaire | ○ | ● `xk6` | ◐ | ◐ plugins officiels |
 | Conversion HAR / OpenAPI / Postman / *recorder* proxy | ● les quatre | ● | ● *recorder* proxy | ○ |
-| Test navigateur (Web Vitals) | ○ | ● k6 browser | ◐ Enterprise | ○ |
+| Test navigateur (Web Vitals) | ◐ `Sirocco.Extensions.Browser` | ● k6 browser | ◐ Enterprise | ○ |
 
 **L'écosystème d'extensions reste `○` sciemment**, malgré un modèle d'extension entièrement fait
 (phase 6) : un écosystème se mesure à des extensions **tierces** publiées, pas à la mécanique qui
@@ -59,6 +59,26 @@ les rendrait possibles. Quatre prérequis, dont trois sont désormais faits :
    rafraîchissement automatique.
 
 Le `●` de k6 est une conséquence d'utilisateurs, pas d'implémentation.
+
+**Le test navigateur est passé à `◐` le 27 août 2026** — `◐` et pas `●`, sciemment : un seul
+navigateur (Chromium), concurrence à un chiffre par nature, et CLS sans centile ni seuil. Contrairement
+à la ligne « écosystème », celle-ci s'achetait au code : elle ne dépendait d'aucun tiers.
+`Sirocco.Extensions.Browser` pilote un vrai Chromium via Playwright et publie LCP, FCP et TTFB comme
+des **étapes** — donc avec centiles et seuils, `ResponseP75Milliseconds` étant précisément le centile
+auquel les Web Vitals sont définis. Détail et limites dans
+[Navigateur (Web Vitals)](docs/extensions/contrat.md#navigateur-web-vitals).
+
+**Un vrai défaut du moteur, trouvé parce que ce protocole est lent.** La file de jetons valait
+`max(vus × 2, 64)`, donc 64 dès que l'effectif est petit. Les ordonnanceurs tirés par les
+utilisateurs virtuels (modèle fermé, nombre d'itérations) horodatant chaque jeton à l'émission, la
+file se remplissait d'un coup et les travailleurs la vidaient longtemps après la fin du palier :
+`--vus 1 --duration 10s` donnait **74 itérations en 71,8 s**, 63 s de dette fantôme, et surtout des
+**centiles faussés** puisque `ResponseTicks` part de cet horodatage. Ces modèles plafonnent désormais
+la file à l'effectif — ce que la remarque de classe de `ClosedModelScheduler` décrivait déjà comme le
+comportement voulu. Même tir après correction : **11 itérations en 12,5 s**, dette 4,1 s. Invisible
+jusqu'ici parce qu'une itération HTTP d'une milliseconde vide 64 jetons en 64 ms ; le navigateur, à
+une seconde par itération, l'a rendu évident. Le modèle ouvert garde le défaut : sa file doit
+absorber une rafale, et la dette qu'elle produit y est le vrai signal de saturation.
 
 ## Le différenciateur réel n'est pas celui qu'on croit
 

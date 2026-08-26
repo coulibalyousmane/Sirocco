@@ -115,6 +115,7 @@ internal static class MultiScenarioHost
                 MaxVirtualUsers = plan.EffectiveMaxVirtualUsers,
                 RampProfile = plan.RampProfile,
                 IterationsPerVirtualUser = plan.IterationsPerVirtualUser,
+                TokenQueueCapacity = plan.TokenQueueCapacity,
             },
             Thresholds = scenario.Thresholds,
             IsClosedModel = scenario.IsClosedModel,

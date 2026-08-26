@@ -229,7 +229,7 @@ minute si le bug est dans la logique du workflow ou dans le chemin de chargement
 - **Dépendances natives** : à la charge du plugin lui-même (`NativeLibrary.SetDllImportResolver`),
   jamais du contrat.
 
-## Les quatre protocoles de référence, comme exemples travaillés
+## Les cinq protocoles de référence, comme exemples travaillés
 
 | Protocole | Facette validée |
 |---|---|
@@ -237,6 +237,7 @@ minute si le bug est dans la logique du workflow ou dans le chemin de chargement
 | [SSE](contrat.md#sse) | Un usage différent du client HTTP partagé (flux continu), zéro dépendance NuGet supplémentaire |
 | [MQTT](contrat.md#mqtt) | Un protocole différent orienté publication/abonnement, dépendance managée sans composant natif |
 | [GraphQL](contrat.md#graphql) | Un autre usage HTTP où succès/échec se lit dans le corps de la réponse, pas dans le code de statut |
+| [Navigateur](contrat.md#navigateur-web-vitals) | Aucun protocole réseau propre : le plugin pilote un vrai Chromium et rapporte les mesures **du navigateur** |
 
 Vérifié en suivant ce guide à la lettre, depuis un dossier vide : un plugin minimal
 (`dotnet new classlib`, la même forme que l'exemple ci-dessus) construit par un simple `dotnet build`

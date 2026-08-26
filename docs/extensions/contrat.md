@@ -147,7 +147,7 @@ paquet publié sur nuget.org ou signé via `nuget sign`/`dotnet nuget sign` n'en
 
 ### Extensions publiées et convention de découverte
 
-Les quatre protocoles de référence sont publiés comme paquets NuGet, pas seulement présents dans le
+Les cinq protocoles de référence sont publiés comme paquets NuGet, pas seulement présents dans le
 dépôt : sans une seule extension publiée, la convention d'écriture d'extension n'a aucun exemple
 consommable à copier. Chacun porte l'étiquette **`sirocco-extension`** — la convention de découverte
 du projet, `nuget.org` n'offrant pas de réservation de préfixe pour une communauté. **Cette
@@ -166,6 +166,7 @@ déduit** :
 | [`Sirocco.Extensions.GraphQl`](#graphql) | ✅ aucune dépendance | ✅ |
 | [`Sirocco.Extensions.Mqtt`](#mqtt) | ✅ `MQTTnet` restauré transitivement | ✅ |
 | [`Sirocco.Extensions.Sql`](#sql) | ❌ `DllNotFoundException: e_sqlite3` | ✅ |
+| [`Sirocco.Extensions.Browser`](#navigateur-web-vitals) | ❌ binaires de navigateur | ✅ (+ `playwright install`) |
 
 Le cas SQL est la limite « actifs natifs » énoncée plus haut, observée en vrai : la chaîne
 **managée** est bien restaurée sur quatre niveaux (`Microsoft.Data.Sqlite` →
@@ -180,6 +181,10 @@ Troisième bullet de la phase 6 : des extensions écrites contre le contrat de p
 valider en conditions réelles plutôt que dans l'abstrait. `Sirocco.SamplePlugin` prouvait le
 mécanisme de chargement ; ces extensions prouvent qu'un protocole *différent* de HTTP tient dans
 le même contrat, sans rien changer au cœur.
+
+Quatre au titre de la phase 6 (SQL, SSE, MQTT, GraphQL), plus un cinquième ajouté depuis —
+[le navigateur](#navigateur-web-vitals), qui ne parle aucun protocole réseau lui-même et se
+contente de rapporter les mesures du navigateur.
 
 ### SQL
 
@@ -328,3 +333,64 @@ Vérifié par deux vrais tirs contre le vrai schéma GraphQL de `Sirocco.SampleT
 défaut, puis `--plugin-type` explicite avec une plage d'identifiants réduite — les deux à 0 %
 d'échec sur `GraphQL query` et `GraphQL mutation`.
 
+
+### Navigateur (Web Vitals)
+
+Cinquième protocole de référence, et le seul qui ne parle **aucun** protocole réseau lui-même :
+`Sirocco.Extensions.Browser` pilote un vrai Chromium via
+[Playwright](https://playwright.dev/dotnet/) et rapporte ce que le **navigateur** a mesuré — LCP,
+FCP, TTFB et CLS. Il valide donc le contrat sous un angle qu'aucun des quatre autres n'exerce : le
+plugin ne mesure pas ses propres appels, il transporte les mesures de quelqu'un d'autre.
+
+```bash
+dotnet publish extensions/Sirocco.Extensions.Browser -o publish/browser-plugin
+pwsh -File publish/browser-plugin/playwright.ps1 install chromium
+sirocco run publish/browser-plugin/Sirocco.Extensions.Browser.dll --target-url http://localhost:5281 --vus 2 --duration 30s
+```
+
+**Modèle fermé obligatoire.** Un contexte de navigateur coûte des centaines de Mo et une navigation
+prend des secondes : ce plugin tourne à concurrence à un chiffre. Il se pilote en `--vus`, jamais en
+`--rps` — sous un profil en débit, le moteur serait en dette d'ordonnancement permanente et
+rapporterait une dette catastrophique à chaque tir : exact, et inutile. Le partage habituel
+s'applique : le navigateur *mesure l'expérience*, un tir protocolaire *génère la charge*.
+
+**Où va chaque vital, et pourquoi.** LCP, FCP et TTFB sont des durées en millisecondes, non
+négatives et bornées : publiées comme des **étapes** plutôt que comme des métriques personnalisées,
+elles héritent gratuitement de l'histogramme de latence, donc des centiles *et* des seuils.
+`ResponseP75Milliseconds` existe déjà, et c'est exactement le centile auquel les Web Vitals sont
+définis — `--threshold "LCP:ResponseP75Milliseconds:LessThanOrEqual:2500"` s'écrit directement.
+Elles sont publiées avec un instant théorique égal à l'instant réel, donc **sans dette
+d'ordonnancement** : un Web Vital n'a pas de départ planifié, et l'inverse ferait entrer le retard
+de l'injecteur dans la valeur rapportée.
+
+**Limite connue, énoncée plutôt que contournée** : CLS n'a **ni centile ni seuil**. C'est un score
+sans unité (typiquement 0 à 1, fractionnaire) qu'un histogramme de millisecondes ne représente pas ;
+il part donc en métrique personnalisée `trend`, dont `CustomMetricSnapshot` n'expose que min,
+moyenne et max. Le commentaire de cette classe anticipait déjà le correctif — « un histogramme dédié
+resterait à construire si le besoin de centiles se confirmait » — et ce protocole est précisément
+cette confirmation, laissée à un chantier suivant plutôt que bâclée ici.
+
+**Un vrai défaut du moteur trouvé en vérifiant.** Le premier tir réel a donné 74 itérations en
+71,8 s pour `--vus 1 --duration 10s`, avec 63 s de dette et une étape `navigation` à 35 s de médiane.
+Cause : la file de jetons vaut `max(vus × 2, 64)`, donc **64** dès que l'effectif est petit.
+L'ordonnanceur du modèle fermé horodate chaque jeton à l'émission, remplit la file d'un coup, et les
+travailleurs la vident longtemps après l'expiration du palier — d'où un débordement de durée, une
+dette fantôme, et surtout des **centiles faussés**, puisque `ResponseTicks` se mesure depuis cet
+horodatage. Les modèles tirés par les utilisateurs virtuels (fermé et nombre d'itérations) plafonnent
+désormais la file à l'effectif lui-même, ce que la remarque de classe de `ClosedModelScheduler`
+décrivait déjà comme le comportement voulu. Même tir après correction : 11 itérations en 12,5 s,
+dette 4,1 s. Le modèle ouvert garde le défaut : sa file doit absorber une rafale, et la dette qu'elle
+produit y est le vrai signal de saturation.
+
+Il reste une attente en file **bornée à environ une itération** — un jeton est écrit dès qu'un
+utilisateur virtuel se libère, il attend donc au plus la durée de l'itération en cours. Sur l'étape
+`navigation`, lisez `p99 brut` (le temps de service) pour le chargement lui-même ; les trois vitals,
+eux, ne sont pas concernés.
+
+`Sirocco.SampleTarget` sert une page réelle sur `/demo`, construite pour que les trois mesures soient
+**non nulles** — sans quoi un tir vert ne prouverait rien : la latence simulée donne le TTFB, une
+ligne unique est peinte en premier (le FCP), un grand bloc est inséré à 150 ms et devient le plus
+grand élément peint (le LCP, donc postérieur au FCP), et une bannière insérée après coup au-dessus du
+contenu provoque un vrai glissement de mise en page (le CLS). Vérifié par un vrai tir : TTFB p50
+32,8 ms, FCP p50 76,3 ms, **LCP p50 220,2 ms**, CLS 0,03 sur 45 itérations, 0 % d'échec — les quatre
+valeurs cohérentes entre elles et avec la construction de la page.

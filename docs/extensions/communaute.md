@@ -53,11 +53,12 @@ désigne que les extensions de ce dépôt.
 
 [!include[](_index-communaute.md)]
 
-## Les quatre extensions de référence
+## Les cinq extensions de référence
 
 Elles vivent dans ce dépôt et servent d'exemples travaillés du contrat, chacune validant une facette
 différente — voir [Extensions publiées et convention de découverte](contrat.md#extensions-publiées-et-convention-de-découverte)
-pour le détail, y compris **laquelle des deux voies de consommation fonctionne pour chacune** (le
-paquet SQL, à dépendance native, ne se charge pas par `--plugin-package`).
+pour le détail, y compris **laquelle des deux voies de consommation fonctionne pour chacune** (les
+paquets SQL et navigateur, à dépendances hors `lib/<tfm>`, ne se chargent pas par
+`--plugin-package`).
 
 Pour écrire la vôtre : [Guide d'écriture d'extension](guide.md).

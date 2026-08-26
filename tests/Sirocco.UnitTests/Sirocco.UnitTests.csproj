@@ -76,6 +76,13 @@
          teste ici contre un vrai serveur GraphQL en boucle locale (GraphQlTestServer, meme
          gabarit que SseTestServer). -->
     <ProjectReference Include="..\..\extensions\Sirocco.Extensions.GraphQl\Sirocco.Extensions.GraphQl.csproj" />
+    <!-- Cinquieme protocole de reference (navigateur) : seule la partie PURE est testee ici,
+         WebVitalsSample — lecture du releve rendu par la page, et conversion d'un vital en mesure
+         Sirocco. Le pilotage de Chromium lui-meme ne l'est pas : il demande de vrais binaires de
+         navigateur (playwright install), donc un prerequis hors du depot, et la discipline du
+         projet interdit de le remplacer par un mock du navigateur. Il est verifie par un vrai tir,
+         documente dans docs/extensions/contrat.md. -->
+    <ProjectReference Include="..\..\extensions\Sirocco.Extensions.Browser\Sirocco.Extensions.Browser.csproj" />
     <!-- TestRunResources (opérateur Kubernetes, phase 7) : logique pure de construction des
          objets Kubernetes désirés à partir d'une TestRun, sans cluster ni appel réseau. Le
          contrôleur lui-même (TestRunController) n'est pas testé ici : KubeOps ne fournit pas

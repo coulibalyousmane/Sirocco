@@ -55,6 +55,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sirocco.Operator", "src\Sir
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sirocco.ExtensionIndex", "tools\Sirocco.ExtensionIndex\Sirocco.ExtensionIndex.csproj", "{38D394F3-CAFC-4956-8564-93B50682815E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sirocco.Extensions.Browser", "extensions\Sirocco.Extensions.Browser\Sirocco.Extensions.Browser.csproj", "{84C9E447-BAB1-48B7-BEDD-B7CCC6570BB7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -317,6 +319,18 @@ Global
 		{38D394F3-CAFC-4956-8564-93B50682815E}.Release|x64.Build.0 = Release|Any CPU
 		{38D394F3-CAFC-4956-8564-93B50682815E}.Release|x86.ActiveCfg = Release|Any CPU
 		{38D394F3-CAFC-4956-8564-93B50682815E}.Release|x86.Build.0 = Release|Any CPU
+		{84C9E447-BAB1-48B7-BEDD-B7CCC6570BB7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{84C9E447-BAB1-48B7-BEDD-B7CCC6570BB7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{84C9E447-BAB1-48B7-BEDD-B7CCC6570BB7}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{84C9E447-BAB1-48B7-BEDD-B7CCC6570BB7}.Debug|x64.Build.0 = Debug|Any CPU
+		{84C9E447-BAB1-48B7-BEDD-B7CCC6570BB7}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{84C9E447-BAB1-48B7-BEDD-B7CCC6570BB7}.Debug|x86.Build.0 = Debug|Any CPU
+		{84C9E447-BAB1-48B7-BEDD-B7CCC6570BB7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{84C9E447-BAB1-48B7-BEDD-B7CCC6570BB7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{84C9E447-BAB1-48B7-BEDD-B7CCC6570BB7}.Release|x64.ActiveCfg = Release|Any CPU
+		{84C9E447-BAB1-48B7-BEDD-B7CCC6570BB7}.Release|x64.Build.0 = Release|Any CPU
+		{84C9E447-BAB1-48B7-BEDD-B7CCC6570BB7}.Release|x86.ActiveCfg = Release|Any CPU
+		{84C9E447-BAB1-48B7-BEDD-B7CCC6570BB7}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -343,5 +357,6 @@ Global
 		{5D8A1C63-7E2F-4B9D-A3C5-9F1E4B6D2A80} = {BE133D91-034E-1084-498B-FF24C4084A55}
 		{A71EE222-E0D1-43CC-8478-767948AD4B89} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{38D394F3-CAFC-4956-8564-93B50682815E} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
+		{84C9E447-BAB1-48B7-BEDD-B7CCC6570BB7} = {BE133D91-034E-1084-498B-FF24C4084A55}
 	EndGlobalSection
 EndGlobal

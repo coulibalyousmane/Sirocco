@@ -89,6 +89,68 @@ app.MapGet("/api/catalog/products", async (CancellationToken cancellationToken) 
     return Results.Ok(catalog);
 });
 
+// Page servie par /demo. Auto-suffisante (aucune ressource externe : ni CDN, ni police, ni image
+// distante) pour que la mesure ne depende que de la cible, jamais du reseau de quelqu'un d'autre.
+const string DEMO_PAGE_HTML = """
+    <!doctype html>
+    <html lang="fr">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Sirocco — page de demonstration</title>
+      <style>
+        body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; }
+        #banniere { background: #10263f; color: #fff; padding: 18px; font-size: 18px; }
+        #heros { background: #e8eef5; min-height: 360px; padding: 32px; font-size: 34px; line-height: 1.3; }
+        .attente { color: #7a8798; font-size: 15px; }
+      </style>
+    </head>
+    <body>
+      <div id="conteneur-banniere"></div>
+      <main>
+        <p class="attente">Chargement du contenu principal...</p>
+        <div id="conteneur-heros"></div>
+      </main>
+      <script>
+        // Le bloc principal n'existe PAS au premier rendu : la page peint d'abord une seule ligne
+        // (c'est le FCP), puis ce grand bloc arrive et devient le plus grand element peint (le LCP).
+        // Sans cette separation, le heros serait deja le plus grand element au premier rendu et LCP
+        // vaudrait exactement FCP — un tir vert ne prouverait alors pas que LCP est reellement lu.
+        setTimeout(function () {
+          var heros = document.createElement('div');
+          heros.id = 'heros';
+          heros.textContent = 'Contenu principal : le plus grand element peint de cette page.';
+          document.getElementById('conteneur-heros').appendChild(heros);
+        }, 150);
+
+        // Banniere inseree APRES coup, au-dessus du contenu : tout ce qui suit se decale vers le
+        // bas. C'est un vrai glissement de mise en page, donc un CLS non nul a mesurer.
+        setTimeout(function () {
+          var conteneur = document.getElementById('conteneur-banniere');
+          var banniere = document.createElement('div');
+          banniere.id = 'banniere';
+          banniere.textContent = 'Banniere inseree apres le rendu initial — provoque un glissement.';
+          conteneur.appendChild(banniere);
+        }, 260);
+      </script>
+    </body>
+    </html>
+    """;
+
+// Page HTML reelle pour le protocole de reference navigateur (Sirocco.Extensions.Browser). Elle
+// n'est pas decorative : elle est construite pour que les trois Web Vitals mesures soient
+// NON NULS, sans quoi un tir vert ne prouverait rien.
+//   - TTFB : la latence simulee de la cible s'applique comme a tout autre endpoint.
+//   - LCP  : le bloc principal n'apparait qu'apres un court delai cote client, donc le plus grand
+//            element peint arrive apres le premier rendu.
+//   - CLS  : une banniere est inseree APRES coup au-dessus du contenu, qui se decale donc vers le
+//            bas — un vrai glissement de mise en page, exactement ce que CLS quantifie.
+app.MapGet("/demo", async (CancellationToken cancellationToken) =>
+{
+    await SimulateLatencyAsync(options, cancellationToken);
+    return Results.Content(DEMO_PAGE_HTML, "text/html; charset=utf-8");
+});
+
 app.MapPost("/api/checkout", async (HttpContext http, CheckoutRequest request, CancellationToken cancellationToken) =>
 {
     if (!tokens.IsValid(BearerTokenOf(http)))
