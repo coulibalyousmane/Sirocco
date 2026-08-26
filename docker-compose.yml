@@ -7,6 +7,10 @@
 # Le maitre s'arrete seul une fois le tir termine (Sirocco__ExitAfterRun=true) ; les workers
 # restent actifs (services long-vivants, comme en production) — "docker compose down" pour
 # tout arreter.
+#
+# Le secret de cluster (SIROCCO_CLUSTER_SHARED_SECRET) se surcharge via un fichier .env a la
+# racine (ignore par git, voir .env.example) — ne jamais remplacer la valeur par defaut ci-dessous
+# directement dans ce fichier pour un usage reel.
 
 services:
   sampletarget:
@@ -29,7 +33,7 @@ services:
       Sirocco__TargetBaseUrl: http://sampletarget:5281
       Sirocco__MaxVirtualUsers: "20"
       Sirocco__ExitAfterRun: "true"
-      Sirocco__ClusterSharedSecret: "demo-cluster-secret"
+      Sirocco__ClusterSharedSecret: "${SIROCCO_CLUSTER_SHARED_SECRET:-demo-cluster-secret-a-ne-jamais-reutiliser}"
       Sirocco__Profile__0__FromRps: "0"
       Sirocco__Profile__0__ToRps: "10"
       Sirocco__Profile__0__DurationSeconds: "10"
@@ -54,7 +58,7 @@ services:
       ASPNETCORE_URLS: http://+:5300
       Sirocco__Role: worker
       Sirocco__TargetBaseUrl: http://sampletarget:5281
-      Sirocco__ClusterSharedSecret: "demo-cluster-secret"
+      Sirocco__ClusterSharedSecret: "${SIROCCO_CLUSTER_SHARED_SECRET:-demo-cluster-secret-a-ne-jamais-reutiliser}"
       Worker__MasterUrl: http://master:5299
       Worker__SelfUrl: http://worker1:5300
     depends_on:
@@ -69,7 +73,7 @@ services:
       ASPNETCORE_URLS: http://+:5300
       Sirocco__Role: worker
       Sirocco__TargetBaseUrl: http://sampletarget:5281
-      Sirocco__ClusterSharedSecret: "demo-cluster-secret"
+      Sirocco__ClusterSharedSecret: "${SIROCCO_CLUSTER_SHARED_SECRET:-demo-cluster-secret-a-ne-jamais-reutiliser}"
       Worker__MasterUrl: http://master:5299
       Worker__SelfUrl: http://worker2:5300
     depends_on:

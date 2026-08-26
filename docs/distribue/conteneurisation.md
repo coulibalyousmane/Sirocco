@@ -12,6 +12,12 @@ docker compose up --build --exit-code-from master
 *`docker-compose.yml` — c'est aussi le seul endroit du dépôt où la configuration par variables
 d'environnement (`Sirocco__*`, `Master__*`, `Worker__*`) est écrite en entier*
 
+`Sirocco__ClusterSharedSecret` s'écrit `${SIROCCO_CLUSTER_SHARED_SECRET:-demo-cluster-secret-a-ne-jamais-reutiliser}`
+(interpolation native de Docker Compose) plutôt qu'en clair : un `.env` à la racine (ignoré par
+git, voir `.env.example`) le surcharge sans toucher au fichier versionné, et le repli explicitement
+nommé rend une copie accidentelle vers un environnement réel plus difficile à manquer qu'une
+valeur neutre (SEC-8, AUDIT.md).
+
 Quatre services : `sampletarget` (la cible), `master` et deux `worker*`. Le maître s'arrête
 seul une fois le tir terminé (`Sirocco__ExitAfterRun=true`, code de sortie reflétant le
 verdict des seuils — utilisable directement en CI) ; les workers restent actifs comme de

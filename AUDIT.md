@@ -299,11 +299,27 @@ risque inhérent à un système de plugins, énoncé, pas résolu.
 
 Détail complet dans [Contrat de plugin](docs/extensions/contrat.md#résolution-nuget).
 
-### SEC-8 — Info — Secret de démonstration en clair dans `docker-compose.yml`
+### SEC-8 — ~~Info~~ → **corrigé le 26 août 2026** — Secret de démonstration en clair dans `docker-compose.yml`
 
-`Sirocco__ClusterSharedSecret: "demo-cluster-secret"` apparaît trois fois (lignes 32, 57, 72). Le
-nom annonce la couleur et c'est un fichier de démo ; le risque est la copie telle quelle vers un
-environnement réel. Aucun secret réel n'a été trouvé dans le dépôt.
+`Sirocco__ClusterSharedSecret: "demo-cluster-secret"` apparaissait trois fois (lignes 32, 57, 72).
+Le nom annonçait la couleur et c'est un fichier de démo ; le risque était la copie telle quelle
+vers un environnement réel. Aucun secret réel n'a été trouvé dans le dépôt.
+
+**Corrigé.** Les trois occurrences lisent désormais `${SIROCCO_CLUSTER_SHARED_SECRET:-demo-cluster-secret-a-ne-jamais-reutiliser}`
+— l'interpolation native de Docker Compose. Un `.env` à la racine (déjà ignoré par git, `.gitignore:7`)
+surcharge le secret sans toucher au fichier versionné ; `.env.example` (nouveau) documente la
+variable. Sans `.env`, le repli explicitement nommé `demo-cluster-secret-a-ne-jamais-reutiliser`
+rend une copie accidentelle en environnement réel plus difficile à manquer qu'un nom neutre.
+
+| Vérification | Résultat |
+|---|---|
+| `docker compose config`, sans `.env` | les trois services résolvent le repli nommé |
+| `docker compose config`, avec un `.env` de test | les trois services résolvent la valeur du `.env` |
+| Vrai tir distribué (`docker compose up --build --exit-code-from master`) | 4 conteneurs, seuils respectés, code de sortie 0 — aucune régression sur la démo |
+
+**Reste ouvert, énoncé plutôt que corrigé ici** : rien n'empêche techniquement d'écrire un vrai
+secret directement dans `docker-compose.yml` plutôt que dans `.env` — la protection est une
+convention outillée (interpolation + `.gitignore`), pas une contrainte imposée par le code.
 
 ### SEC-9 — ~~Moyen~~ → **corrigé le 25 août 2026** — Aucune façon d'injecter un secret dans un scénario déclaratif
 
@@ -561,9 +577,9 @@ Barrière repassée après correction : build 0/0, **761 tests** verts, `dotnet 
 sur la solution **et** sur les deux projets du harnais, DocFX 0 avertissement.
 
 **Ensuite, par ordre de gain** : ~~SEC-4~~ et ~~QUAL-1~~ (corrigés le 24 août), ~~QUAL-2~~,
-~~SEC-9~~, ~~SEC-6~~ et ~~SEC-7~~ (corrigés le 25 août). **Les trois constats « Moyen » et les
-trois « Faible » de sécurité sont tous traités** ; ne subsistent que SEC-8 (« Info ») et les
-constats hors sécurité classés « Faible »/« Info ».
+~~SEC-9~~, ~~SEC-6~~ et ~~SEC-7~~ (corrigés le 25 août), ~~SEC-8~~ (corrigé le 26 août). **Tous
+les constats de sécurité sont désormais traités, sauf SEC-5** ; ne subsistent que les constats
+hors sécurité classés « Faible »/« Info ».
 
 **À ne pas traiter** : SEC-5 décrit une frontière de confiance assumée. Il demande une phrase de
 documentation, pas du code — contrairement à SEC-7, classé dans la même famille par l'audit
