@@ -15,6 +15,24 @@
     metier. Aucune dependance au-dela de Sirocco.Domain : System.Text.Json et HttpClient suffisent,
     rien a publier au-dela d'un dotnet build (meme constat que SSE, contrairement a SQL/MQTT).
   -->
+  <!--
+    Publiee comme extension de reference (ROADMAP.md, ligne "Ecosysteme d'extensions
+    communautaire") : sans une seule extension publiee, la convention d'ecriture d'extension n'a
+    aucun exemple consommable a copier. L'etiquette sirocco-extension est la convention de
+    decouverte, pas un adoubement — voir docs/extensions/contrat.md.
+  -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Sirocco.Extensions.GraphQl</PackageId>
+    <Description>Extension Sirocco pour GraphQL : POST sur un point d'entree unique, succes ou echec lu dans le champ "errors" du corps JSON plutot que dans le code de statut. Aucune dependance au-dela de Sirocco.Domain.</Description>
+    <PackageTags>load-testing;performance;sirocco-extension;graphql</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Sirocco.Domain\Sirocco.Domain.csproj" />
   </ItemGroup>

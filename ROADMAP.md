@@ -37,13 +37,20 @@ Légende : ● solide · ◐ partiel · ○ absent
 | Test navigateur (Web Vitals) | ○ | ● k6 browser | ◐ Enterprise | ○ |
 
 **L'écosystème d'extensions reste `○` sciemment**, malgré un modèle d'extension entièrement fait
-(phase 6) et la résolution des dépendances transitives ajoutée le 26 août 2026 : un écosystème se
-mesure à des extensions tierces publiées, pas à la mécanique qui les rendrait possibles. Trois
-prérequis dans l'ordre — un tag `vX.Y.Z` qui publie enfin `Sirocco.Domain` sur nuget.org (sans quoi
-un tiers ne peut pas compiler contre le contrat), la résolution transitive (**faite** : sans elle
-seules des extensions sans aucune dépendance étaient distribuables), puis les quatre extensions de
-référence empaquetées comme premiers exemples publiés. Le `●` de k6 est une conséquence
-d'utilisateurs, pas d'implémentation.
+(phase 6) : un écosystème se mesure à des extensions **tierces** publiées, pas à la mécanique qui
+les rendrait possibles. Trois prérequis, dont deux sont désormais faits :
+
+1. Un tag `vX.Y.Z` qui publie enfin `Sirocco.Domain` sur nuget.org — sans quoi un tiers ne peut pas
+   compiler contre le contrat. **Reste à faire**, et c'est le seul blocage réel : il demande la clé
+   d'API nuget.org en secret de dépôt.
+2. La résolution des dépendances transitives — **faite le 26 août 2026**. Sans elle, seules des
+   extensions sans aucune dépendance étaient distribuables par paquet, ce qui exclut de fait la
+   plupart des protocoles réels.
+3. Les quatre extensions de référence empaquetées comme premiers exemples publiés — **fait le
+   26 août 2026** (étiquette `sirocco-extension`, README par paquet, garde-fou de release porté de
+   cinq à neuf paquets).
+
+Le `●` de k6 est une conséquence d'utilisateurs, pas d'implémentation.
 
 ## Le différenciateur réel n'est pas celui qu'on croit
 
@@ -349,7 +356,16 @@ seul SQL, Kafka, MQTT, AMQP et le reste est un puits sans fond. Le modèle d'ext
   `TargetInvocationException` non traduite — trace de pile brute et code de sortie 127 au lieu d'un
   message.
 - ~~**Protocoles de référence**~~ écrits comme extensions pour valider le contrat : SQL, SSE, MQTT,
-  GraphQL. **Les quatre sont faits.**
+  GraphQL. **Les quatre sont faits.** Et **publiables comme paquets depuis le 26 août 2026** (étiquette
+  `sirocco-extension`, README par paquet) : ce sont les premiers exemples consommables de la
+  convention d'écriture d'extension, voir [Extensions publiées](docs/extensions/contrat.md#extensions-publiées-et-convention-de-découverte).
+  Vérifié par de vrais tirs depuis les paquets réellement produits par `dotnet pack Sirocco.sln` :
+  SSE, GraphQL et MQTT se chargent par `--plugin-package` (0 % d'échec chacun, `MQTTnet` restauré
+  transitivement) ; **SQL non** — sa bibliothèque native `e_sqlite3` vit dans `runtimes/<rid>/native`,
+  que la restauration transitive ne sert pas, d'où un `DllNotFoundException`. Il se consomme par
+  `PackageReference` + `dotnet publish`, voie vérifiée elle aussi par un vrai tir (SELECT et INSERT
+  réels, 0 % d'échec). Publié quand même : cette voie-là fonctionne, et le taire serait pire que le
+  documenter.
   - ~~**SQL**~~ — fait, voir [Protocoles de référence — SQL](docs/extensions/contrat.md#sql) :
     `extensions/Sirocco.Extensions.Sql` interroge une vraie base SQLite (deux etapes reelles par
     iteration, SELECT parametre et INSERT) plutot que le client HTTP partage — referme le SQL

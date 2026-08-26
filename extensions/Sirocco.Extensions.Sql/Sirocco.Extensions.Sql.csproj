@@ -13,6 +13,28 @@
     dependance au-dela de Sirocco.Domain : le pilote SQLite lui-meme — aucun serveur externe requis,
     ce qui garde la verification end-to-end reproductible sans infrastructure supplementaire.
   -->
+  <!--
+    Publiee comme extension de reference (ROADMAP.md, ligne "Ecosysteme d'extensions
+    communautaire"), avec une reserve verifiee par un vrai tir : c'est la seule des quatre qui ne se
+    charge PAS par l'option plugin-package de la CLI, sa dependance native e_sqlite3 vivant dans
+    runtimes/[rid]/native, que la restauration transitive ne sert pas (DllNotFoundException). Elle
+    se consomme donc par PackageReference + dotnet publish, ou MSBuild resout les actifs natifs.
+    Publiee quand meme parce que cette voie-la fonctionne et qu'elle reste l'exemple travaille d'un
+    protocole reellement different de HTTP. L'etiquette sirocco-extension est la convention de
+    decouverte, pas un adoubement — voir docs/extensions/contrat.md.
+  -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Sirocco.Extensions.Sql</PackageId>
+    <Description>Extension Sirocco pour SQL (SQLite) : SELECT parametre et INSERT reels, chacun chronometre comme une etape. Dependance native — a consommer par PackageReference + dotnet publish, pas par --plugin-package.</Description>
+    <PackageTags>load-testing;performance;sirocco-extension;sql;sqlite</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Sirocco.Domain\Sirocco.Domain.csproj" />
   </ItemGroup>

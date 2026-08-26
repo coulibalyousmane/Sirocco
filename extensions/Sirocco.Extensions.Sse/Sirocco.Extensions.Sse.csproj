@@ -14,6 +14,24 @@
     depot. Aucune dependance au-dela de Sirocco.Domain : HttpClient et la lecture de flux viennent du
     BCL, rien a publier au-dela d'un dotnet build (contrairement a SQL, voir SqlWorkflow).
   -->
+  <!--
+    Publiee comme extension de reference (ROADMAP.md, ligne "Ecosysteme d'extensions
+    communautaire") : sans une seule extension publiee, la convention d'ecriture d'extension n'a
+    aucun exemple consommable a copier. L'etiquette sirocco-extension est la convention de
+    decouverte, pas un adoubement — voir docs/extensions/contrat.md.
+  -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Sirocco.Extensions.Sse</PackageId>
+    <Description>Extension Sirocco pour Server-Sent Events : lit un flux text/event-stream au fil de l'eau et chronometre la reception des evenements. Aucune dependance au-dela de Sirocco.Domain.</Description>
+    <PackageTags>load-testing;performance;sirocco-extension;sse;server-sent-events</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Sirocco.Domain\Sirocco.Domain.csproj" />
   </ItemGroup>

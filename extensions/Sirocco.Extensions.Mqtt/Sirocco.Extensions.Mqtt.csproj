@@ -14,6 +14,26 @@
     Sirocco.Domain : le client MQTTnet lui-meme, aucun serveur externe requis pour la verification
     end-to-end (voir samples/Sirocco.SampleTarget, qui heberge son propre broker embarque).
   -->
+  <!--
+    Publiee comme extension de reference (ROADMAP.md, ligne "Ecosysteme d'extensions
+    communautaire") : sans une seule extension publiee, la convention d'ecriture d'extension n'a
+    aucun exemple consommable a copier. C'est aussi le cas qui prouve la resolution transitive du
+    26 aout 2026 : sa dependance MQTTnet est restauree par l'option plugin-package de la CLI, ce
+    qui etait impossible avant. L'etiquette sirocco-extension est la convention de decouverte, pas un
+    adoubement — voir docs/extensions/contrat.md.
+  -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Sirocco.Extensions.Mqtt</PackageId>
+    <Description>Extension Sirocco pour MQTT : publication puis reception du meme message via abonnement, round-trip complet chronometre. Dependance managee MQTTnet, aucun composant natif.</Description>
+    <PackageTags>load-testing;performance;sirocco-extension;mqtt;iot</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Sirocco.Domain\Sirocco.Domain.csproj" />
   </ItemGroup>

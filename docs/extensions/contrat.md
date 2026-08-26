@@ -138,12 +138,40 @@ dotnet pack samples/Sirocco.SamplePlugin -c Release -p:IsPackable=true -o ./loca
 sirocco run --plugin-package Sirocco.SamplePlugin --plugin-source ./local-feed --plugin-allow-unsigned --target-url http://localhost:5299 --rps 20 --duration 30s
 ```
 
-`Directory.Build.props` pose `IsPackable=false` par défaut et seuls les cinq paquets réellement
+`Directory.Build.props` pose `IsPackable=false` par défaut et seuls les neuf paquets réellement
 publiés le remettent à `true` — un envoi sur nuget.org étant définitif, mieux vaut oublier de
 publier que squatter un identifiant pour toujours. Ce plugin est un exemple : il n'a rien à faire
 sur nuget.org, mais il doit rester empaquetable à la demande, puisque c'est tout son objet.
 `--plugin-allow-unsigned` n'est nécessaire ici que parce que `dotnet pack` ne signe pas — un vrai
 paquet publié sur nuget.org ou signé via `nuget sign`/`dotnet nuget sign` n'en a pas besoin.
+
+### Extensions publiées et convention de découverte
+
+Les quatre protocoles de référence sont publiés comme paquets NuGet, pas seulement présents dans le
+dépôt : sans une seule extension publiée, la convention d'écriture d'extension n'a aucun exemple
+consommable à copier. Chacun porte l'étiquette **`sirocco-extension`** — la convention de découverte
+du projet, `nuget.org` n'offrant pas de réservation de préfixe pour une communauté. **Cette
+étiquette n'est pas un adoubement** : n'importe qui peut la poser, et la poser ne fait pas d'un
+paquet quelque chose de vérifié par ce dépôt. Rien ne remplace le fait de savoir quel code vous
+exécutez (voir `SECURITY.md` sur le typosquatting).
+
+Les deux voies de consommation d'un paquet d'extension ne sont pas équivalentes, et laquelle
+fonctionne dépend de la nature des dépendances — **vérifié par un vrai tir sur les quatre, pas
+déduit** :
+
+| Extension | `--plugin-package` | `PackageReference` + `dotnet publish` |
+|---|---|---|
+| [`Sirocco.Extensions.Sse`](#sse) | ✅ aucune dépendance | ✅ |
+| [`Sirocco.Extensions.GraphQl`](#graphql) | ✅ aucune dépendance | ✅ |
+| [`Sirocco.Extensions.Mqtt`](#mqtt) | ✅ `MQTTnet` restauré transitivement | ✅ |
+| [`Sirocco.Extensions.Sql`](#sql) | ❌ `DllNotFoundException: e_sqlite3` | ✅ |
+
+Le cas SQL est la limite « actifs natifs » énoncée plus haut, observée en vrai : la chaîne
+**managée** est bien restaurée sur quatre niveaux (`Microsoft.Data.Sqlite` →
+`SQLitePCLRaw.batteries_v2`/`core`/`provider.e_sqlite3`), mais la bibliothèque native `e_sqlite3`
+vit dans `runtimes/<rid>/native`, que ce chemin ne sert pas. `PackageReference` + `dotnet publish`
+fonctionne, parce que MSBuild sait résoudre les actifs par identifiant de plateforme — c'est la voie
+documentée dans le README de ce paquet.
 
 ## Protocoles de référence
 

@@ -61,6 +61,12 @@ jobs:
   #   3. compte de paquets : un projet ajoute plus tard qui redeviendrait packable squatterait un
   #      identifiant pour toujours. Le defaut IsPackable=false de Directory.Build.props est la
   #      premiere barriere, ce compte est la seconde.
+  #
+  # Neuf paquets depuis le 26 aout 2026 : les cinq bibliotheques du moteur, plus les quatre
+  # extensions de reference (ROADMAP.md, ligne "Ecosysteme d'extensions communautaire") -- sans une
+  # seule extension publiee, la convention d'ecriture d'extension n'a aucun exemple consommable a
+  # copier. Cette liste reste explicite et exhaustive, precisement pour que l'ajout d'un cinquieme
+  # projet packable soit un geste conscient et non un effet de bord.
   nuget:
     runs-on: ubuntu-latest
     steps:
@@ -90,13 +96,13 @@ jobs:
       - name: Empaqueter
         run: dotnet pack Sirocco.sln --configuration Release --output dist-nuget
 
-      - name: Verifier qu'il y a exactement les cinq paquets attendus
+      - name: Verifier qu'il y a exactement les neuf paquets attendus
         run: |
           set -euo pipefail
           tag="${{ github.ref_name }}"
           v="${tag#v}"
           produits=$(cd dist-nuget && ls *.nupkg | sort | tr '\n' ' ')
-          attendus="Sirocco.Application.$v.nupkg Sirocco.Cli.$v.nupkg Sirocco.Domain.$v.nupkg Sirocco.Infrastructure.$v.nupkg Sirocco.Scenarios.$v.nupkg "
+          attendus="Sirocco.Application.$v.nupkg Sirocco.Cli.$v.nupkg Sirocco.Domain.$v.nupkg Sirocco.Extensions.GraphQl.$v.nupkg Sirocco.Extensions.Mqtt.$v.nupkg Sirocco.Extensions.Sql.$v.nupkg Sirocco.Extensions.Sse.$v.nupkg Sirocco.Infrastructure.$v.nupkg Sirocco.Scenarios.$v.nupkg "
           echo "produits : $produits"
           if [ "$produits" != "$attendus" ]; then
             echo "::error::Paquets inattendus. Attendus : $attendus" >&2
