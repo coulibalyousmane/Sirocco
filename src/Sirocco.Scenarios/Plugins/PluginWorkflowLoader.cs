@@ -31,10 +31,44 @@ namespace Sirocco.Scenarios.Plugins;
 /// de garantie de dechargement deterministe, mais un vrai progres sur le contexte par defaut, qui
 /// ne se decharge jamais.
 /// </para>
+/// <para>
+/// Les dependances du plugin sont cherchees d'abord via <see cref="AssemblyDependencyResolver"/>
+/// (le <c>.deps.json</c> d'un <c>dotnet publish</c>), puis, a defaut, par simple sondage du
+/// repertoire de l'assembly — c'est ce second chemin qui sert un plugin distribue par paquet NuGet,
+/// dont <see cref="NuGetPluginResolver"/> restaure le graphe de dependances a plat a cote de lui
+/// sans produire de <c>.deps.json</c>. Consequence assumee : une dependance presente dans ce
+/// repertoire prime sur celle de l'hote, y compris pour une bibliotheque que les deux partagent —
+/// c'est l'isolation voulue, mais un plugin qui y deposerait une assembly de framework s'exposerait
+/// a un conflit de types des qu'elle traverserait la frontiere.
+/// </para>
 /// </summary>
 public static class PluginWorkflowLoader
 {
     private const string SHARED_CONTRACT_ASSEMBLY_NAME = "Sirocco.Domain";
+
+    /// <summary>
+    /// Assemblies que l'hote fournit deja et qu'un plugin ne doit jamais charger en copie privee —
+    /// les paquets bibliotheque publies par ce depot (<c>IsPackable=true</c>), dont l'identifiant de
+    /// paquet et le nom d'assembly coincident. Une deuxieme copie de l'une d'elles dans le contexte
+    /// du plugin y dedoublerait les types, et tout objet traversant la frontiere leverait
+    /// <see cref="InvalidCastException"/> — le meme raisonnement que pour
+    /// <see cref="SHARED_CONTRACT_ASSEMBLY_NAME"/>, etendu au reste de la surface partagee.
+    /// <para>
+    /// Liste **exacte**, jamais un prefixe <c>Sirocco.*</c> : une extension tierce peut legitimement
+    /// s'appeler <c>Sirocco.Extensions.Quelquechose</c> — c'est meme la convention encouragee — et
+    /// elle doit etre restauree comme n'importe quelle autre dependance.
+    /// </para>
+    /// </summary>
+    internal static IReadOnlySet<string> HostProvidedAssemblyNames => _hostProvidedAssemblyNames;
+
+    private static readonly HashSet<string> _hostProvidedAssemblyNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Sirocco.Domain",
+        "Sirocco.Application",
+        "Sirocco.Infrastructure",
+        "Sirocco.Scenarios",
+        "Sirocco.Cli",
+    };
 
     /// <summary>
     /// Contexte de chargement isole d'un plugin — un par appel a <see cref="Load"/>. Resout les
@@ -46,16 +80,37 @@ public static class PluginWorkflowLoader
         : AssemblyLoadContext(name: Path.GetFileNameWithoutExtension(pluginAssemblyPath), isCollectible: true)
     {
         private readonly AssemblyDependencyResolver _resolver = new(pluginAssemblyPath);
+        private readonly string _pluginDirectory = Path.GetDirectoryName(Path.GetFullPath(pluginAssemblyPath))!;
 
         protected override Assembly? Load(AssemblyName assemblyName)
         {
-            if (string.Equals(assemblyName.Name, SHARED_CONTRACT_ASSEMBLY_NAME, StringComparison.Ordinal))
+            if (assemblyName.Name is { } name && HostProvidedAssemblyNames.Contains(name))
             {
                 return null;
             }
 
-            string? resolvedPath = _resolver.ResolveAssemblyToPath(assemblyName);
+            string? resolvedPath = _resolver.ResolveAssemblyToPath(assemblyName) ?? ProbePluginDirectory(assemblyName);
             return resolvedPath is null ? null : LoadFromAssemblyPath(resolvedPath);
+        }
+
+        /// <summary>
+        /// Repli sur le repertoire du plugin quand <see cref="AssemblyDependencyResolver"/> ne resout
+        /// rien. Ce n'est pas un doublon de ce dernier : il s'appuie sur un <c>.deps.json</c>, que
+        /// produit <c>dotnet publish</c> mais **pas** un paquet NuGet — les assemblies qu'y depose
+        /// <see cref="NuGetPluginResolver"/> en restaurant le graphe de dependances ne seraient
+        /// autrement jamais trouvees. Les deux chemins restent donc necessaires : le resolveur
+        /// d'abord, qui sait aussi traiter les actifs specifiques a une plateforme, ce simple sondage
+        /// par nom de fichier ensuite.
+        /// </summary>
+        private string? ProbePluginDirectory(AssemblyName assemblyName)
+        {
+            if (string.IsNullOrEmpty(assemblyName.Name))
+            {
+                return null;
+            }
+
+            string candidate = Path.Combine(_pluginDirectory, $"{assemblyName.Name}.dll");
+            return File.Exists(candidate) ? candidate : null;
         }
     }
 
@@ -96,7 +151,25 @@ public static class PluginWorkflowLoader
                 $"Le type de plugin '{workflowType.FullName}' doit exposer un constructeur public sans " +
                 "parametre : Sirocco ne lui injecte aucune configuration dans cette premiere version, voir " +
                 "la remarque de classe de PluginWorkflowLoader.");
-        return (IWorkflow)constructor.Invoke(null);
+
+        try
+        {
+            return (IWorkflow)constructor.Invoke(null);
+        }
+        catch (TargetInvocationException ex) when (ex.InnerException is FileNotFoundException or FileLoadException)
+        {
+            // Cas reel, rencontre en verifiant la resolution transitive : une dependance du plugin
+            // manque a cote de son assembly. Sans cette traduction, l'appelant recevait une
+            // TargetInvocationException non gerée — donc une trace de pile brute et un code de sortie
+            // 127 plutot qu'un message.
+            throw new FormatException(
+                $"Le type de plugin '{workflowType.FullName}' n'a pas pu etre instancie : une de ses dependances " +
+                $"est introuvable a cote de '{assemblyPath}' ({ex.InnerException.Message.TrimEnd()}). Un plugin " +
+                "resolu par --plugin-package voit ses dependances NuGet restaurees automatiquement, sauf les " +
+                "bibliotheques natives ; un plugin designe par chemin de fichier doit etre publie via " +
+                "'dotnet publish' pour que ses dependances soient a cote de lui.",
+                ex);
+        }
     }
 
     /// <summary>

@@ -36,6 +36,15 @@ Légende : ● solide · ◐ partiel · ○ absent
 | Conversion HAR / OpenAPI / Postman / *recorder* proxy | ● les quatre | ● | ● *recorder* proxy | ○ |
 | Test navigateur (Web Vitals) | ○ | ● k6 browser | ◐ Enterprise | ○ |
 
+**L'écosystème d'extensions reste `○` sciemment**, malgré un modèle d'extension entièrement fait
+(phase 6) et la résolution des dépendances transitives ajoutée le 26 août 2026 : un écosystème se
+mesure à des extensions tierces publiées, pas à la mécanique qui les rendrait possibles. Trois
+prérequis dans l'ordre — un tag `vX.Y.Z` qui publie enfin `Sirocco.Domain` sur nuget.org (sans quoi
+un tiers ne peut pas compiler contre le contrat), la résolution transitive (**faite** : sans elle
+seules des extensions sans aucune dépendance étaient distribuables), puis les quatre extensions de
+référence empaquetées comme premiers exemples publiés. Le `●` de k6 est une conséquence
+d'utilisateurs, pas d'implémentation.
+
 ## Le différenciateur réel n'est pas celui qu'on croit
 
 En vérifiant l'état du marché pour ce document, un point s'est révélé faux : **k6, Gatling et
@@ -321,10 +330,24 @@ seul SQL, Kafka, MQTT, AMQP et le reste est un puits sans fond. Le modèle d'ext
   `--plugin-package-version`/`--plugin-source`) plutot qu'un chemin de fichier deja present sur le
   disque — telecharge le `.nupkg` depuis la premiere source qui le connait, extrait le groupe
   `lib/<tfm>` le plus proche de `net10.0` (`FrameworkReducer`), cache local persistant entre les
-  tirs (une version explicite deja en cache ne redeclenche aucun trafic reseau). Limite
-  documentee : aucune resolution de dependances transitives du paquet. Verifie par un vrai tir :
-  `Sirocco.SamplePlugin` empaquete via `dotnet pack` dans un dossier local (flux NuGet a part
+  tirs (une version explicite deja en cache ne redeclenche aucun trafic reseau). Verifie par un vrai
+  tir : `Sirocco.SamplePlugin` empaquete via `dotnet pack` dans un dossier local (flux NuGet a part
   entiere), resolu puis execute contre `Sirocco.SampleTarget` — 0 % d'echec.
+  **Dependances transitives restaurees depuis le 26 août 2026** (la limite documentee ici jusque-la) :
+  le graphe declare par le paquet est parcouru en largeur et les assemblies de chaque paquet atteint
+  sont extraites a cote de celle du plugin. C'est le premier des prerequis de la ligne « Écosysteme
+  d'extensions communautaire » du tableau concurrentiel : sans lui, seules des extensions **sans
+  aucune dependance** pouvaient etre distribuees par paquet, ce qui exclut de fait la plupart des
+  protocoles reels. Limites residuelles documentees : actifs `runtimes/<rid>/native` non servis,
+  arbitrage de version sommaire (voir [Résolution NuGet](docs/extensions/contrat.md#résolution-nuget)).
+  Verifie par un vrai tir : plugin empaquete dependant de `Polly` (donc transitivement de
+  `Polly.Core`, aucun des deux present dans l'hote), resolu depuis un flux local + nuget.org, execute
+  contre `Sirocco.SampleTarget` — 200 iterations, 0 % d'echec ; puis contre-epreuve en supprimant
+  `Polly.Core.dll` du cache, qui echoue bien faute de cette dependance. Deux defauts reels trouves
+  en verifiant : la regle d'exclusion du contrat partage etait un prefixe `Sirocco.*` (elle avalait
+  toute extension tierce ainsi nommee), et une dependance manquante remontait en
+  `TargetInvocationException` non traduite — trace de pile brute et code de sortie 127 au lieu d'un
+  message.
 - ~~**Protocoles de référence**~~ écrits comme extensions pour valider le contrat : SQL, SSE, MQTT,
   GraphQL. **Les quatre sont faits.**
   - ~~**SQL**~~ — fait, voir [Protocoles de référence — SQL](docs/extensions/contrat.md#sql) :

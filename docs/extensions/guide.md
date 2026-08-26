@@ -210,7 +210,9 @@ minute si le bug est dans la logique du workflow ou dans le chemin de chargement
 
 - **Aucune configuration injectée** dans le type instancié — variable d'environnement ou fichier
   dédié, jamais de section `appsettings.json` liée automatiquement.
-- **Aucune résolution de dépendances transitives** pour un plugin résolu par paquet NuGet.
+- **Dépendances transitives d'un paquet NuGet** : restaurées, mais seulement les actifs
+  `lib/<tfm>` — pas `runtimes/<rid>/native`, et l'arbitrage de version reste sommaire (voir
+  [Résolution NuGet](contrat.md#résolution-nuget)).
 - **Mode distribué non pris en charge** — comme pour un scénario scripté, `WorkerCoordinator` ne
   sait construire qu'un `DeclarativeWorkflow` à partir du contenu propagé aux workers.
 - **Dépendances natives** : à la charge du plugin lui-même (`NativeLibrary.SetDllImportResolver`),

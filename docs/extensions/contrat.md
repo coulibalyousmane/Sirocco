@@ -67,17 +67,49 @@ stable est résolue — mais **une version explicite déjà en cache ne redécle
 réseau**, une version publiée étant immuable, contrairement à « dernière version stable » qui doit
 toujours revalider auprès de la source.
 
-Limite assumée : aucune résolution de dépendances transitives du paquet — seule sa propre
-bibliothèque est extraite. Un plugin qui dépend d'un paquet tiers au-delà de `Sirocco.Domain` doit
-être publié en assembly fusionnée, ou accepter que le chargement de type échoue si une référence ne
-se résout pas.
+**Dépendances transitives.** Le graphe déclaré par le paquet est parcouru en largeur : chaque
+paquet atteint est téléchargé dans le même cache, et ses assemblies `lib/<tfm>` sont extraites **à
+plat, à côté de celle du plugin** — c'est de là que le contexte de chargement les résout. Sans ce
+parcours, un plugin distribué par paquet n'obtenait que sa propre `.dll` et échouait dès qu'il
+touchait une de ses dépendances, ce qui réservait la distribution par paquet aux extensions sans
+aucune dépendance. Le parcours n'est mené qu'une fois par version : un témoin
+`.sirocco-dependencies` écrit à côté du plugin court-circuite tout trafic réseau aux tirs suivants.
+
+Trois limites assumées, énoncées plutôt que devinées :
+
+- **Les paquets que l'hôte fournit déjà** (`Sirocco.Domain`, `Sirocco.Application`,
+  `Sirocco.Infrastructure`, `Sirocco.Scenarios`, `Sirocco.Cli`) sont ignorés : les télécharger
+  exigerait qu'ils soient publiés sur la source pour que le moindre plugin se résolve, et en charger
+  une copie privée dédoublerait les types du contrat partagé. C'est une liste **exacte**, pas un
+  préfixe `Sirocco.*` — une extension tierce nommée `Sirocco.Extensions.Quelquechose` est restaurée
+  comme n'importe quelle autre dépendance.
+- **Seuls les actifs `lib/<tfm>`** sont extraits, jamais `runtimes/<rid>/native` : une dépendance à
+  bibliothèque native (SQLite, par exemple) reste à distribuer via `dotnet publish`, comme le
+  [plugin SQL](#sql).
+- **L'arbitrage de version est sommaire** : première occurrence gagnante dans le parcours, et la
+  version retenue est la plus basse qui satisfait l'intervalle déclaré (la règle de NuGet pour une
+  dépendance directe). Un vrai solveur ferait du « nearest wins » sur le graphe complet ; deux
+  dépendances exigeant des versions incompatibles du même paquet ne sont pas signalées comme un
+  conflit.
+
+La signature (ci-dessous) est vérifiée sur les paquets de dépendance comme sur celui du plugin : une
+dépendance est du code qui s'exécutera dans le même processus.
 
 **Isolation et signature (SEC-7, AUDIT.md).** Chaque assembly de plugin (résolue via
 `--plugin-package` ou chargée directement par chemin) se charge dans son propre
 `AssemblyLoadContext` collectible plutôt que dans le contexte par défaut — les dépendances propres
 d'un plugin ne se mélangent pas à celles de l'hôte ni d'un autre plugin chargé dans le même
-processus. `Sirocco.Domain` (le contrat partagé) reste explicitement résolu depuis le contexte par
-défaut, sans quoi le cast vers `IWorkflow` échouerait.
+processus. Les assemblies que l'hôte fournit déjà (la liste exacte ci-dessus, `Sirocco.Domain` en
+tête) restent explicitement résolues depuis le contexte par défaut, sans quoi le cast vers
+`IWorkflow` échouerait sur des types dédoublés.
+
+Les dépendances du plugin sont cherchées d'abord via son `.deps.json` (`AssemblyDependencyResolver`,
+ce que produit `dotnet publish`), puis à défaut par simple sondage de son répertoire — c'est ce
+second chemin qui sert un plugin résolu par `--plugin-package`, dont le graphe est restauré à plat à
+côté de lui sans `.deps.json`. Conséquence assumée : une dépendance présente dans ce répertoire
+prime sur celle de l'hôte, y compris pour une bibliothèque que les deux partagent. C'est l'isolation
+voulue, mais un plugin qui y déposerait une assembly de framework s'exposerait à un conflit de types
+dès qu'elle traverserait la frontière.
 
 Un paquet résolu par `--plugin-package` doit en outre être signé, sans quoi la résolution échoue :
 `NuGetPluginResolver` vérifie la présence d'une signature et que le contenu du paquet correspond

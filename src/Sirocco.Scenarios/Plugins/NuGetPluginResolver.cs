@@ -2,6 +2,7 @@
 using NuGet.Common;
 using NuGet.Frameworks;
 using NuGet.Packaging;
+using NuGet.Packaging.Core;
 using NuGet.Packaging.Signing;
 using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
@@ -21,11 +22,38 @@ namespace Sirocco.Scenarios.Plugins;
 /// meme algorithme que celui utilise par NuGet/MSBuild eux-memes).
 /// </para>
 /// <para>
-/// Limite assumee : aucune resolution de dependances transitives du paquet — seule sa propre
-/// bibliotheque est extraite. Un plugin qui depend d'un paquet tiers au-dela de
-/// <c>Sirocco.Domain</c> doit le publier en assembly unique (fusionnee) ou accepter que
-/// <see cref="PluginWorkflowLoader.Load"/> echoue au chargement de type si une reference ne se
-/// resout pas — meme classe de limite que documentee sur <c>FindWorkflowTypes</c>.
+/// Les dependances transitives du paquet sont resolues aussi (<see cref="RestoreDependenciesAsync"/>) :
+/// le graphe declare par <c>GetPackageDependencies</c> est parcouru en largeur, chaque paquet
+/// atteint est telecharge dans le meme cache local, et ses assemblies du groupe <c>lib/&lt;tfm&gt;</c>
+/// le plus proche sont extraites **a plat, a cote de l'assembly du plugin** — c'est de la que
+/// <see cref="PluginWorkflowLoader"/> les resout au chargement. Sans ce parcours, un plugin
+/// distribue par paquet NuGet n'obtenait que sa propre <c>.dll</c> et echouait des qu'il touchait
+/// une de ses dependances, ce qui limitait la distribution par paquet aux seules extensions sans
+/// aucune dependance (ROADMAP.md, ligne "Ecosysteme d'extensions communautaire").
+/// </para>
+/// <para>
+/// Trois limites assumees de ce parcours, enoncees plutot que devinees :
+/// <list type="bullet">
+/// <item><description>
+/// Les paquets que l'hote fournit deja (<see cref="PluginWorkflowLoader.HostProvidedAssemblyNames"/>,
+/// liste exacte et non un prefixe <c>Sirocco.*</c>) sont ignores : les telecharger reviendrait a
+/// exiger qu'ils soient publies sur la source pour que le moindre plugin se resolve, et en charger
+/// une copie privee dedoublerait les types du contrat partage. Une extension tierce nommee
+/// <c>Sirocco.Extensions.Quelquechose</c> est en revanche restauree normalement.
+/// </description></item>
+/// <item><description>
+/// Seuls les actifs <c>lib/&lt;tfm&gt;</c> sont extraits, jamais <c>runtimes/&lt;rid&gt;/native</c> :
+/// une dependance a bibliotheque native (SQLite, par exemple) n'est donc pas servie par ce chemin,
+/// et reste a distribuer via <c>dotnet publish</c> comme documente dans le guide d'extension.
+/// </description></item>
+/// <item><description>
+/// L'arbitrage de version est volontairement simple : premiere occurrence gagnante dans le
+/// parcours en largeur, et la version retenue est la plus basse qui satisfait l'intervalle declare
+/// (<see cref="VersionRange.FindBestMatch"/>, la regle de NuGet pour une dependance directe). Un
+/// vrai solveur ferait du "nearest wins" sur le graphe complet ; deux dependances exigeant des
+/// versions incompatibles du meme paquet ne sont pas detectees comme un conflit.
+/// </description></item>
+/// </list>
 /// </para>
 /// <para>
 /// SEC-7 (AUDIT.md) : un paquet resolu (fraichement telecharge ou relu du cache local) doit etre
@@ -48,6 +76,12 @@ public static class NuGetPluginResolver
 {
     /// <summary>Source par defaut si <see cref="ResolveAssemblyPathAsync"/> n'en reçoit aucune.</summary>
     public const string DEFAULT_SOURCE = "https://api.nuget.org/v3/index.json";
+
+    /// <summary>
+    /// Temoin ecrit a cote de l'assembly du plugin une fois son graphe de dependances entierement
+    /// restaure — sa presence court-circuite tout le parcours aux resolutions suivantes.
+    /// </summary>
+    private const string DEPENDENCIES_MARKER_FILE_NAME = ".sirocco-dependencies";
 
     private static readonly NuGetFramework _targetFramework = NuGetFramework.ParseFolder("net10.0");
 
@@ -90,9 +124,13 @@ public static class NuGetPluginResolver
             (string cachedDirectory, string cachedNupkgPath) = CachePaths(effectiveCacheDirectory, normalizedId, cachedVersion);
             if (File.Exists(cachedNupkgPath))
             {
-                return await ExtractAssemblyAsync(
+                string cachedAssemblyPath = await ExtractAssemblyAsync(
                     cachedNupkgPath, cachedDirectory, packageId, cachedVersion, allowUnsignedPlugins, cancellationToken)
                     .ConfigureAwait(false);
+                await EnsureDependenciesAsync(
+                    cachedNupkgPath, cachedAssemblyPath, packageId, effectiveSources, effectiveCacheDirectory,
+                    allowUnsignedPlugins, cancellationToken).ConfigureAwait(false);
+                return cachedAssemblyPath;
             }
         }
 
@@ -111,8 +149,15 @@ public static class NuGetPluginResolver
                 .ConfigureAwait(false);
         }
 
-        return await ExtractAssemblyAsync(nupkgPath, packageDirectory, packageId, resolvedVersion, allowUnsignedPlugins, cancellationToken)
+        string assemblyPath = await ExtractAssemblyAsync(
+            nupkgPath, packageDirectory, packageId, resolvedVersion, allowUnsignedPlugins, cancellationToken)
             .ConfigureAwait(false);
+
+        await EnsureDependenciesAsync(
+            nupkgPath, assemblyPath, packageId, effectiveSources, effectiveCacheDirectory, allowUnsignedPlugins, cancellationToken)
+            .ConfigureAwait(false);
+
+        return assemblyPath;
     }
 
     /// <summary>Chemin du repertoire et du <c>.nupkg</c> mis en cache pour une version donnee.</summary>
@@ -235,11 +280,7 @@ public static class NuGetPluginResolver
             libItems = [.. reader.GetLibItems()];
         }
 
-        FrameworkReducer reducer = new();
-        NuGetFramework? bestMatch = reducer.GetNearest(_targetFramework, libItems.Select(static group => group.TargetFramework));
-        FrameworkSpecificGroup? group = bestMatch is null
-            ? null
-            : libItems.FirstOrDefault(candidate => candidate.TargetFramework.Equals(bestMatch));
+        FrameworkSpecificGroup? group = SelectNearestLibGroup(libItems);
 
         if (group is null)
         {
@@ -282,9 +323,230 @@ public static class NuGetPluginResolver
     }
 
     /// <summary>
+    /// Groupe <c>lib/&lt;tfm&gt;</c> le plus proche de <c>net10.0</c> parmi <paramref name="libItems"/>,
+    /// ou <see langword="null"/> si aucun n'est compatible — <see cref="FrameworkReducer"/>, le meme
+    /// algorithme que NuGet/MSBuild.
+    /// </summary>
+    private static FrameworkSpecificGroup? SelectNearestLibGroup(List<FrameworkSpecificGroup> libItems)
+    {
+        FrameworkReducer reducer = new();
+        NuGetFramework? bestMatch = reducer.GetNearest(_targetFramework, libItems.Select(static group => group.TargetFramework));
+        return bestMatch is null
+            ? null
+            : libItems.FirstOrDefault(candidate => candidate.TargetFramework.Equals(bestMatch));
+    }
+
+    /// <summary>
+    /// Restaure les dependances transitives du plugin une seule fois par version en cache : la
+    /// presence de <see cref="DEPENDENCIES_MARKER_FILE_NAME"/> a cote de l'assembly du plugin
+    /// signale un parcours deja mene a bien, et evite tout trafic reseau aux resolutions suivantes
+    /// — meme raisonnement que le <c>.nupkg</c> deja telecharge, dont l'existence suffit a court-circuiter
+    /// la source.
+    /// </summary>
+    private static async Task EnsureDependenciesAsync(
+        string nupkgPath,
+        string pluginAssemblyPath,
+        string pluginPackageId,
+        IReadOnlyList<string> sources,
+        string cacheDirectory,
+        bool allowUnsignedPlugins,
+        CancellationToken cancellationToken)
+    {
+        string pluginDirectory = Path.GetDirectoryName(pluginAssemblyPath)!;
+        string markerPath = Path.Combine(pluginDirectory, DEPENDENCIES_MARKER_FILE_NAME);
+        if (File.Exists(markerPath))
+        {
+            return;
+        }
+
+        using SourceCacheContext cache = new();
+        await RestoreDependenciesAsync(
+            nupkgPath, pluginDirectory, pluginPackageId, sources, cacheDirectory, allowUnsignedPlugins,
+            cache, NullLogger.Instance, cancellationToken).ConfigureAwait(false);
+
+        await File.WriteAllTextAsync(
+            markerPath,
+            $"Dependances transitives de '{pluginPackageId}' restaurees par Sirocco dans ce repertoire." + Environment.NewLine,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Parcourt en largeur le graphe de dependances declare par le paquet de plugin et extrait les
+    /// assemblies de chaque paquet atteint a plat dans <paramref name="pluginDirectory"/>. Voir la
+    /// remarque de classe pour les trois limites assumees (paquets <c>Sirocco.*</c> ignores, actifs
+    /// natifs non servis, arbitrage de version simple).
+    /// </summary>
+    /// <exception cref="FormatException">
+    /// Une dependance declaree n'existe dans aucune des sources. Un paquet trouve mais sans aucune
+    /// assembly compatible n'est pas une erreur : c'est le cas normal d'un metapaquet ou d'un paquet
+    /// d'analyseurs, qui n'a rien a contribuer au repertoire du plugin.
+    /// </exception>
+    private static async Task RestoreDependenciesAsync(
+        string nupkgPath,
+        string pluginDirectory,
+        string pluginPackageId,
+        IReadOnlyList<string> sources,
+        string cacheDirectory,
+        bool allowUnsignedPlugins,
+        SourceCacheContext cache,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        Queue<PackageDependency> pending = new(ReadDependencies(nupkgPath));
+        HashSet<string> visited = new(StringComparer.OrdinalIgnoreCase);
+
+        while (pending.Count > 0)
+        {
+            PackageDependency dependency = pending.Dequeue();
+
+            if (PluginWorkflowLoader.HostProvidedAssemblyNames.Contains(dependency.Id)
+                || !visited.Add(dependency.Id))
+            {
+                continue;
+            }
+
+            (SourceRepository repository, NuGetVersion version) = await FindDependencyAsync(
+                dependency, pluginPackageId, sources, cache, logger, cancellationToken).ConfigureAwait(false);
+
+            (string dependencyDirectory, string dependencyNupkgPath) =
+                CachePaths(cacheDirectory, dependency.Id.ToLowerInvariant(), version);
+
+            if (!File.Exists(dependencyNupkgPath))
+            {
+                Directory.CreateDirectory(dependencyDirectory);
+                await DownloadAsync(repository, dependency.Id, version, dependencyNupkgPath, cache, logger, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            await ExtractDependencyLibrariesAsync(
+                dependencyNupkgPath, pluginDirectory, dependency.Id, version, allowUnsignedPlugins, cancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (PackageDependency transitive in ReadDependencies(dependencyNupkgPath))
+            {
+                pending.Enqueue(transitive);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Dependances declarees par un <c>.nupkg</c> pour le groupe de framework le plus proche de
+    /// <c>net10.0</c> — un paquet declare un groupe par framework cible, et seul celui qui nous
+    /// concerne doit etre restaure.
+    /// </summary>
+    private static IReadOnlyList<PackageDependency> ReadDependencies(string nupkgPath)
+    {
+        using PackageArchiveReader reader = new(nupkgPath);
+        List<PackageDependencyGroup> groups = [.. reader.GetPackageDependencies()];
+
+        FrameworkReducer reducer = new();
+        NuGetFramework? bestMatch = reducer.GetNearest(_targetFramework, groups.Select(static group => group.TargetFramework));
+        PackageDependencyGroup? group = bestMatch is null
+            ? null
+            : groups.FirstOrDefault(candidate => candidate.TargetFramework.Equals(bestMatch));
+
+        return group is null ? [] : [.. group.Packages];
+    }
+
+    /// <summary>
+    /// Cherche une dependance dans chaque source, dans l'ordre, et retient la plus basse version qui
+    /// satisfait son intervalle (<see cref="VersionRange.FindBestMatch"/> — la regle de NuGet pour
+    /// une dependance directe, pas "la plus recente").
+    /// </summary>
+    private static async Task<(SourceRepository Repository, NuGetVersion Version)> FindDependencyAsync(
+        PackageDependency dependency,
+        string pluginPackageId,
+        IReadOnlyList<string> sources,
+        SourceCacheContext cache,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        foreach (string source in sources)
+        {
+            SourceRepository repository = Repository.Factory.GetCoreV3(source);
+            FindPackageByIdResource? resource = await repository
+                .GetResourceAsync<FindPackageByIdResource>(cancellationToken)
+                .ConfigureAwait(false);
+            if (resource is null)
+            {
+                continue;
+            }
+
+            IEnumerable<NuGetVersion> versions = await resource
+                .GetAllVersionsAsync(dependency.Id, cache, logger, cancellationToken)
+                .ConfigureAwait(false);
+            NuGetVersion? match = dependency.VersionRange.FindBestMatch(versions);
+            if (match is not null)
+            {
+                return (repository, match);
+            }
+        }
+
+        throw new FormatException(
+            $"Le paquet de plugin '{pluginPackageId}' declare la dependance '{dependency.Id}' " +
+            $"{dependency.VersionRange.PrettyPrint()}, introuvable dans " +
+            $"{(sources.Count == 1 ? "la source" : "les sources")} {string.Join(", ", sources)}.");
+    }
+
+    /// <summary>
+    /// Extrait les <c>.dll</c> du groupe <c>lib/&lt;tfm&gt;</c> le plus proche d'un paquet de
+    /// dependance, **a plat** dans <paramref name="pluginDirectory"/> : c'est cette colocalisation
+    /// qui permet a <see cref="PluginWorkflowLoader"/> de les resoudre au chargement. Un paquet sans
+    /// groupe compatible ne contribue rien, sans erreur (metapaquet, paquet d'analyseurs).
+    /// </summary>
+    private static async Task ExtractDependencyLibrariesAsync(
+        string nupkgPath,
+        string pluginDirectory,
+        string packageId,
+        NuGetVersion version,
+        bool allowUnsignedPlugins,
+        CancellationToken cancellationToken)
+    {
+        List<FrameworkSpecificGroup> libItems;
+        using (PackageArchiveReader reader = new(nupkgPath))
+        {
+            await EnsurePackageIsTrustedAsync(reader, packageId, version, allowUnsignedPlugins, cancellationToken)
+                .ConfigureAwait(false);
+            libItems = [.. reader.GetLibItems()];
+        }
+
+        FrameworkSpecificGroup? group = SelectNearestLibGroup(libItems);
+        if (group is null)
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(pluginDirectory);
+        using ZipArchive archive = ZipFile.OpenRead(nupkgPath);
+        foreach (string entryPath in group.Items)
+        {
+            if (!entryPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            ZipArchiveEntry? entry = archive.GetEntry(entryPath);
+            if (entry is null)
+            {
+                continue;
+            }
+
+            // A plat, et jamais en ecrasant : deux paquets exposant une assembly de meme nom laissent
+            // gagner la premiere rencontree dans le parcours en largeur (limite de classe).
+            string destination = Path.Combine(pluginDirectory, Path.GetFileName(entryPath));
+            if (!File.Exists(destination))
+            {
+                entry.ExtractToFile(destination, overwrite: false);
+            }
+        }
+    }
+
+    /// <summary>
     /// SEC-7 (AUDIT.md) : rejette un paquet non signe (sauf <paramref name="allowUnsignedPlugins"/>)
     /// ou dont le contenu ne correspond plus a ce qui a ete signe. Voir la remarque de classe pour
     /// la portee exacte de cette verification — presence et integrite, pas confiance du certificat.
+    /// Appliquee aux paquets de dependance comme au paquet de plugin : une dependance est du code qui
+    /// s'executera dans le meme processus.
     /// </summary>
     private static async Task EnsurePackageIsTrustedAsync(
         PackageArchiveReader reader, string packageId, NuGetVersion version, bool allowUnsignedPlugins, CancellationToken cancellationToken)
