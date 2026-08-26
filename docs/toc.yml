@@ -41,6 +41,8 @@
       href: extensions/contrat.md
     - name: Guide d'écriture d'extension
       href: extensions/guide.md
+    - name: Extensions publiées
+      href: extensions/communaute.md
 
 - name: Passer à l'échelle
   items:

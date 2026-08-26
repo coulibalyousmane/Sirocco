@@ -153,7 +153,8 @@ consommable à copier. Chacun porte l'étiquette **`sirocco-extension`** — la 
 du projet, `nuget.org` n'offrant pas de réservation de préfixe pour une communauté. **Cette
 étiquette n'est pas un adoubement** : n'importe qui peut la poser, et la poser ne fait pas d'un
 paquet quelque chose de vérifié par ce dépôt. Rien ne remplace le fait de savoir quel code vous
-exécutez (voir `SECURITY.md` sur le typosquatting).
+exécutez (voir `SECURITY.md` sur le typosquatting). L'index des paquets qui la portent, généré
+depuis une vraie requête nuget.org, est sur [Extensions publiées](communaute.md).
 
 Les deux voies de consommation d'un paquet d'extension ne sont pas équivalentes, et laquelle
 fonctionne dépend de la nature des dépendances — **vérifié par un vrai tir sur les quatre, pas

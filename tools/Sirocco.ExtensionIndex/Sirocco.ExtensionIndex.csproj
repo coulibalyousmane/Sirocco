@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    Interroge nuget.org pour l'etiquette sirocco-extension et regenere le fragment inclus par
+    docs/extensions/communaute.md (ROADMAP.md, ligne "Ecosysteme d'extensions communautaire",
+    troisieme prerequis : la decouverte). Meme client officiel que NuGetPluginResolver
+    (NuGet.Protocol), pour ne pas ecrire un deuxieme dialecte du protocole NuGet dans le depot.
+    IsPackable=false herite de Directory.Build.props : c'est un outil de maintenance du depot,
+    jamais un paquet publie.
+  -->
+  <ItemGroup>
+    <PackageReference Include="NuGet.Protocol" Version="7.9.0" />
+  </ItemGroup>
+
+</Project>

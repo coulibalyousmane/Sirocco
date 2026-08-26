@@ -38,7 +38,7 @@ Légende : ● solide · ◐ partiel · ○ absent
 
 **L'écosystème d'extensions reste `○` sciemment**, malgré un modèle d'extension entièrement fait
 (phase 6) : un écosystème se mesure à des extensions **tierces** publiées, pas à la mécanique qui
-les rendrait possibles. Trois prérequis, dont deux sont désormais faits :
+les rendrait possibles. Quatre prérequis, dont trois sont désormais faits :
 
 1. Un tag `vX.Y.Z` qui publie enfin `Sirocco.Domain` sur nuget.org — sans quoi un tiers ne peut pas
    compiler contre le contrat. **Reste à faire**, et c'est le seul blocage réel : il demande la clé
@@ -49,6 +49,14 @@ les rendrait possibles. Trois prérequis, dont deux sont désormais faits :
 3. Les quatre extensions de référence empaquetées comme premiers exemples publiés — **fait le
    26 août 2026** (étiquette `sirocco-extension`, README par paquet, garde-fou de release porté de
    cinq à neuf paquets).
+4. La découverte — **faite le 26 août 2026** : `tools/Sirocco.ExtensionIndex` interroge nuget.org
+   pour l'étiquette, revalide celle-ci sur les métadonnées de chaque paquet (la recherche nuget.org
+   étant approximative) et régénère le fragment inclus par
+   [Extensions publiées](docs/extensions/communaute.md). L'index est **vide aujourd'hui, et le dit
+   franchement** : rien n'est encore sur nuget.org, prérequis 1. La page énonce aussi que
+   l'étiquette n'est ni une inscription ni un adoubement — la découverte est ouverte, l'autorité
+   n'existe pas. Limite assumée : c'est un instantané, à régénérer avant chaque version, aucun
+   rafraîchissement automatique.
 
 Le `●` de k6 est une conséquence d'utilisateurs, pas d'implémentation.
 

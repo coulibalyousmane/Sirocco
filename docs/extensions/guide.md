@@ -187,9 +187,20 @@ dotnet pack MonPlugin -o ./local-feed
 sirocco run --plugin-package MonPlugin --plugin-source ./local-feed --target-url http://localhost:5281 --rps 20 --duration 30s
 ```
 
-Limite assumée : **aucune dépendance transitive du paquet n'est résolue**, seule la bibliothèque du
-plugin lui-même est extraite. Une extension qui dépend d'autre chose que `Sirocco.Domain` doit
-publier une assembly qui embarque déjà ses dépendances, ou accepter que le chargement échoue.
+Les dépendances transitives du paquet **sont** restaurées à côté de la bibliothèque du plugin, à une
+réserve près : seuls les actifs `lib/<tfm>` le sont, jamais `runtimes/<rid>/native`. Une extension à
+dépendance native (SQLite, par exemple) ne se charge donc pas par `--plugin-package` ; elle se
+consomme par `PackageReference` + `dotnet publish`, où MSBuild résout les actifs par plateforme.
+Voir [Résolution NuGet](contrat.md#résolution-nuget) pour les trois limites exactes.
+
+**Pour qu'on la trouve**, ajoutez l'étiquette de découverte du projet :
+
+```xml
+<PackageTags>load-testing;sirocco-extension;mon-protocole</PackageTags>
+```
+
+Elle n'est ni une inscription ni un adoubement — voir [Extensions publiées](communaute.md), qui
+explique la convention et liste les paquets qui la portent.
 
 ## Tester une extension
 

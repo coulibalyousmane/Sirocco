@@ -53,6 +53,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sirocco.Extensions.GraphQl"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sirocco.Operator", "src\Sirocco.Operator\Sirocco.Operator.csproj", "{A71EE222-E0D1-43CC-8478-767948AD4B89}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sirocco.ExtensionIndex", "tools\Sirocco.ExtensionIndex\Sirocco.ExtensionIndex.csproj", "{38D394F3-CAFC-4956-8564-93B50682815E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -303,6 +305,18 @@ Global
 		{A71EE222-E0D1-43CC-8478-767948AD4B89}.Release|x64.Build.0 = Release|Any CPU
 		{A71EE222-E0D1-43CC-8478-767948AD4B89}.Release|x86.ActiveCfg = Release|Any CPU
 		{A71EE222-E0D1-43CC-8478-767948AD4B89}.Release|x86.Build.0 = Release|Any CPU
+		{38D394F3-CAFC-4956-8564-93B50682815E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{38D394F3-CAFC-4956-8564-93B50682815E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{38D394F3-CAFC-4956-8564-93B50682815E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{38D394F3-CAFC-4956-8564-93B50682815E}.Debug|x64.Build.0 = Debug|Any CPU
+		{38D394F3-CAFC-4956-8564-93B50682815E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{38D394F3-CAFC-4956-8564-93B50682815E}.Debug|x86.Build.0 = Debug|Any CPU
+		{38D394F3-CAFC-4956-8564-93B50682815E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{38D394F3-CAFC-4956-8564-93B50682815E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{38D394F3-CAFC-4956-8564-93B50682815E}.Release|x64.ActiveCfg = Release|Any CPU
+		{38D394F3-CAFC-4956-8564-93B50682815E}.Release|x64.Build.0 = Release|Any CPU
+		{38D394F3-CAFC-4956-8564-93B50682815E}.Release|x86.ActiveCfg = Release|Any CPU
+		{38D394F3-CAFC-4956-8564-93B50682815E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -328,5 +342,6 @@ Global
 		{2B7E5F91-4C3A-4D8E-9A1B-6F2D8C0E5A47} = {BE133D91-034E-1084-498B-FF24C4084A55}
 		{5D8A1C63-7E2F-4B9D-A3C5-9F1E4B6D2A80} = {BE133D91-034E-1084-498B-FF24C4084A55}
 		{A71EE222-E0D1-43CC-8478-767948AD4B89} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{38D394F3-CAFC-4956-8564-93B50682815E} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 	EndGlobalSection
 EndGlobal
