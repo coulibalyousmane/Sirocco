@@ -347,13 +347,30 @@ silencieusement de sens à la substitution. Documenté dans
 | Jeu de données nommé `env` | rejeté par `Validate()` |
 | Tests unitaires | 2 nouveaux sur `DeclarativeWorkflow`, 1 sur `ScenarioDefinition` |
 
-**Reste ouvert, énoncé plutôt que corrigé ici** : `{{env.NOM}}` donne accès à n'importe quelle
-variable du processus, pas à une liste que l'opérateur aurait explicitement autorisée — même
-modèle que les trois concurrents cités, pas une restriction propre à Sirocco, mais c'est la
-**première** chose qui donne à un scénario déclaratif une autorité ambiante hors de son propre
-fichier. Documenté comme frontière de confiance dans la même page : ne faites tourner un
-scénario dont vous n'êtes pas l'auteur que dans un processus qui ne détient aucun secret sans
-rapport avec le tir.
+**Résidu ci-dessus, corrigé le 26 août 2026.** `{{env.NOM}}` donnait accès à n'importe quelle
+variable du processus, pas à une liste que l'opérateur aurait explicitement autorisée. Une
+`EnvironmentAccessPolicy` (`src/Sirocco.Scenarios/EnvironmentAccessPolicy.cs`) ferme ce residu :
+refus par défaut, décidée par l'opérateur qui lance le tir — jamais par le scénario lui-même, qui
+pourrait sinon s'auto-autoriser. `--allow-env NOM` (répétable) / `Sirocco:AllowedEnvironmentVariables`
+autorise des noms explicites ; `--allow-env-all` / `Sirocco:AllowAllEnvironmentVariables` ouvre
+l'accès en bloc, pour qui veut la parité avec `__ENV` de k6 ou `System.getenv` de Gatling. Rejet au
+**chargement** du scénario (`DeclarativeWorkflow`, avant le premier tir), pas à l'itération : un
+moteur de charge n'a pas à découvrir la même erreur de configuration des milliers de fois sur le
+chemin critique. Changement de défaut assumé avant le tag `v0.1.0`, même raisonnement que SEC-1.
+
+| Vérification | Résultat |
+|---|---|
+| Scénario référençant `{{env.NOM}}`, aucune politique fournie | rejeté à la construction, message citant le nom et `--allow-env` |
+| Nom explicitement autorisé (`--allow-env NOM`) | accepté, résolu normalement |
+| `--allow-env-all` | n'importe quel nom accepté, même absent de la liste |
+| Vrai tir CLI (`docs/examples/scenarios/variables-environnement.yaml` en CI) | refusé sans `--allow-env`, 0 % d'échec avec |
+| Tests unitaires | 5 nouveaux sur `DeclarativeWorkflow`, 5 sur `EnvironmentAccessPolicy`, 2 sur `CliOptions` |
+
+**Limite assumée, hors périmètre de cette liste** : ne s'applique qu'au format **déclaratif**. Un
+scénario **scripté** (`.csx`, Roslyn) compile du C# arbitraire et peut appeler
+`Environment.GetEnvironmentVariable` directement — code, il se fait confiance comme du code. La
+frontière reste donc « du YAML dont je ne suis pas l'auteur tourne sous liste d'autorisation ; un
+script est déjà une décision de confiance plus large ».
 
 ---
 
@@ -579,7 +596,9 @@ sur la solution **et** sur les deux projets du harnais, DocFX 0 avertissement.
 **Ensuite, par ordre de gain** : ~~SEC-4~~ et ~~QUAL-1~~ (corrigés le 24 août), ~~QUAL-2~~,
 ~~SEC-9~~, ~~SEC-6~~ et ~~SEC-7~~ (corrigés le 25 août), ~~SEC-8~~ (corrigé le 26 août). **Tous
 les constats de sécurité sont désormais traités, sauf SEC-5** ; ne subsistent que les constats
-hors sécurité classés « Faible »/« Info ».
+hors sécurité classés « Faible »/« Info ». Le résidu que SEC-9 énonçait sans le traiter (liste
+d'autorisation des variables d'environnement lisibles par un scénario) est lui aussi corrigé, le
+26 août — voir sa section.
 
 **À ne pas traiter** : SEC-5 décrit une frontière de confiance assumée. Il demande une phrase de
 documentation, pas du code — contrairement à SEC-7, classé dans la même famille par l'audit

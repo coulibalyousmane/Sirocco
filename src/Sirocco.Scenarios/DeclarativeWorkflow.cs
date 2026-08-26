@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using Sirocco.Domain.Data;
 using Sirocco.Domain.Declarative;
@@ -29,6 +30,10 @@ namespace Sirocco.Scenarios;
 /// critique d'un generateur de charge. <c>env</c> est donc un nom de jeu de donnees reserve
 /// (voir <see cref="ScenarioDefinition.Validate"/>) : une variable non definie echoue l'etape
 /// comme une extraction manquee, sans jamais envoyer la requete avec le gabarit litteral.
+/// Chaque nom <c>{{env.NOM}}</c> reference par le scenario doit en plus figurer dans
+/// l'<see cref="EnvironmentAccessPolicy"/> fournie au constructeur — sans quoi le chargement du
+/// scenario echoue avant le premier tir plutot que de lire silencieusement n'importe quelle
+/// variable du processus (SEC-9, AUDIT.md).
 /// </para>
 /// <para>
 /// Un check (<see cref="CheckRule"/>) est une assertion logique sur la reponse d'une etape,
@@ -73,13 +78,82 @@ public sealed partial class DeclarativeWorkflow : IWorkflow
 
     /// <summary>Cree le scenario a partir d'une description deja validee.</summary>
     /// <param name="definition">Description du scenario.</param>
-    public DeclarativeWorkflow(ScenarioDefinition definition)
+    /// <param name="environmentAccess">
+    /// Variables d'environnement que ce scenario a le droit de lire via <c>{{env.NOM}}</c>.
+    /// <see cref="EnvironmentAccessPolicy.Denied"/> par defaut : un scenario qui reference
+    /// <c>{{env.NOM}}</c> sans que l'operateur ait explicitement autorise ce nom fait echouer ce
+    /// constructeur (SEC-9, AUDIT.md), plutot que de lire silencieusement n'importe quelle
+    /// variable du processus qui execute le tir.
+    /// </param>
+    /// <exception cref="ArgumentException">
+    /// Le scenario est incoherent, ou reference au moins une variable d'environnement que
+    /// <paramref name="environmentAccess"/> n'autorise pas.
+    /// </exception>
+    public DeclarativeWorkflow(ScenarioDefinition definition, EnvironmentAccessPolicy? environmentAccess = null)
     {
         ArgumentNullException.ThrowIfNull(definition);
         definition.Validate();
+        ValidateEnvironmentAccess(definition, environmentAccess ?? EnvironmentAccessPolicy.Denied);
 
         _definition = definition;
         _stepIds = new StepId[definition.Steps.Count];
+    }
+
+    /// <summary>
+    /// Rejette au chargement, plutot qu'a l'iteration, tout <c>{{env.NOM}}</c> reference par
+    /// <paramref name="definition"/> (chemin, en-tetes, corps de n'importe quelle etape) et non
+    /// autorise par <paramref name="policy"/> — un moteur de charge decouvrirait sinon la meme
+    /// erreur de configuration des milliers de fois sur le chemin critique.
+    /// </summary>
+    private static void ValidateEnvironmentAccess(ScenarioDefinition definition, EnvironmentAccessPolicy policy)
+    {
+        HashSet<string> rejected = new(StringComparer.Ordinal);
+
+        void ScanForRejectedNames(string? template)
+        {
+            if (string.IsNullOrEmpty(template) || !template.Contains("{{", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            foreach (Match match in _placeholderPattern.Matches(template))
+            {
+                string name = match.Groups[1].Value;
+                if (!name.StartsWith(ENVIRONMENT_PREFIX, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                string variable = name[ENVIRONMENT_PREFIX.Length..];
+                if (!policy.Allows(variable))
+                {
+                    rejected.Add(variable);
+                }
+            }
+        }
+
+        foreach (HttpStepDefinition step in definition.Steps)
+        {
+            ScanForRejectedNames(step.Path);
+            ScanForRejectedNames(step.Body);
+            foreach (string value in step.Headers.Values)
+            {
+                ScanForRejectedNames(value);
+            }
+        }
+
+        if (rejected.Count == 0)
+        {
+            return;
+        }
+
+        string names = string.Join(", ", rejected.OrderBy(name => name, StringComparer.Ordinal));
+        throw new ArgumentException(
+            $"Ce scenario reference la ou les variables d'environnement suivantes, non autorisees "
+            + $"par la politique actuelle : {names}. Autorisez-les explicitement via --allow-env <nom> "
+            + "(repetable) ou Sirocco:AllowedEnvironmentVariables, ou ouvrez l'acces a toutes les "
+            + "variables via --allow-env-all / Sirocco:AllowAllEnvironmentVariables (SEC-9, AUDIT.md).",
+            nameof(definition));
     }
 
     /// <inheritdoc />

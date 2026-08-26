@@ -70,7 +70,9 @@ public static class StandaloneHost
             siroccoOptions.PluginPackageId,
             siroccoOptions.PluginPackageVersion,
             siroccoOptions.PluginPackageSources,
-            siroccoOptions.AllowUnsignedPlugins);
+            siroccoOptions.AllowUnsignedPlugins,
+            siroccoOptions.AllowedEnvironmentVariables,
+            siroccoOptions.AllowAllEnvironmentVariables);
 
         // Client HTTP unique, partage par tous les utilisateurs virtuels : c'est ce partage — pas
         // un client par requete — qui permet au pool de connexions du SocketsHttpHandler de tenir
@@ -215,13 +217,18 @@ public static class StandaloneHost
         string? pluginPackageId = null,
         string? pluginPackageVersion = null,
         IReadOnlyList<string>? pluginPackageSources = null,
-        bool allowUnsignedPlugins = false)
+        bool allowUnsignedPlugins = false,
+        IReadOnlyList<string>? allowedEnvironmentVariables = null,
+        bool allowAllEnvironmentVariables = false)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
         if (!string.IsNullOrWhiteSpace(scenarioFile))
         {
-            return WorkflowFileLoader.LoadFromFile(scenarioFile, pluginWorkflowType);
+            return WorkflowFileLoader.LoadFromFile(
+                scenarioFile,
+                pluginWorkflowType,
+                new EnvironmentAccessPolicy(allowedEnvironmentVariables ?? [], allowAllEnvironmentVariables));
         }
 
         if (!string.IsNullOrWhiteSpace(pluginPackageId))

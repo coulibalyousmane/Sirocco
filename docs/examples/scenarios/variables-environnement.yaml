@@ -10,9 +10,14 @@
 # cette variable venait a manquer, chaque iteration echouerait et le seuil d'erreur du job la
 # ferait echouer — c'est la preuve, pas une supposition, que la substitution a reellement lieu.
 #
+# --allow-env autorise explicitement ce nom : depuis SEC-9 (AUDIT.md), {{env.NOM}} est refuse au
+# chargement du scenario sans cette autorisation (ou --allow-env-all), pour qu'un scenario ne
+# puisse jamais lire une variable du processus que l'operateur n'a pas explicitement choisie.
+#
 # Exécution, depuis la racine du dépôt :
 #   SIROCCO_DEMO_API_TOKEN=un-jeton sirocco run docs/examples/scenarios/variables-environnement.yaml \
-#     --target-url http://localhost:5281 --rps 10 --duration 5s --max-vus 4
+#     --target-url http://localhost:5281 --rps 10 --duration 5s --max-vus 4 \
+#     --allow-env SIROCCO_DEMO_API_TOKEN
 
 name: variables-environnement
 

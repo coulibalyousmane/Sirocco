@@ -208,6 +208,25 @@ public sealed class SiroccoHostOptions
     public bool AllowUnsignedPlugins { get; init; }
 
     /// <summary>
+    /// Noms de variables d'environnement qu'un scenario declaratif peut lire via
+    /// <c>{{env.NOM}}</c> (voir <c>DeclarativeWorkflow</c>). Vide par defaut : sans
+    /// <see cref="AllowAllEnvironmentVariables"/>, toute reference <c>{{env.NOM}}</c> d'un
+    /// scenario fait echouer son chargement (SEC-9, AUDIT.md) — la liste doit etre choisie par
+    /// qui lance le tir, jamais deduite du scenario lui-meme, dans le meme esprit que
+    /// <see cref="AllowUnsignedPlugins"/>.
+    /// </summary>
+    public IReadOnlyList<string> AllowedEnvironmentVariables { get; init; } = [];
+
+    /// <summary>
+    /// <see langword="false"/> par defaut : si vrai, un scenario declaratif peut lire n'importe
+    /// quelle variable d'environnement du processus, sans etre limite a
+    /// <see cref="AllowedEnvironmentVariables"/> — parite avec <c>__ENV</c> de k6 ou
+    /// <c>System.getenv</c> de Gatling. A reserver a un processus qui ne detient aucun secret
+    /// sans rapport avec le tir.
+    /// </summary>
+    public bool AllowAllEnvironmentVariables { get; init; }
+
+    /// <summary>
     /// Regles de succes/echec evaluees en fin de tir. Vide par defaut : sans seuil, il n'y a
     /// pas de gate, et le tir ne peut jamais "echouer" au sens CI du terme.
     /// <para>

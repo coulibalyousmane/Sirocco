@@ -49,12 +49,12 @@ public sealed class DeclarativeWorkflowTests
         CollectingMetricSink Sink,
         StubHttpMessageHandler Handler,
         StepRegistry Steps)
-        CreateHarness(ScenarioDefinition definition)
+        CreateHarness(ScenarioDefinition definition, EnvironmentAccessPolicy? environmentAccess = null)
     {
         StubHttpMessageHandler handler = new();
         HttpClient client = new(handler) { BaseAddress = new Uri("https://target.example") };
 
-        DeclarativeWorkflow workflow = new(definition);
+        DeclarativeWorkflow workflow = new(definition, environmentAccess);
 
         StepRegistry registry = new();
         StepId iterationStep = registry.Register(WellKnownSteps.ITERATION);
@@ -520,7 +520,8 @@ public sealed class DeclarativeWorkflowTests
                 ],
             };
 
-            (DeclarativeWorkflow workflow, VirtualUserContext context, _, StubHttpMessageHandler handler, _) = CreateHarness(definition);
+            (DeclarativeWorkflow workflow, VirtualUserContext context, _, StubHttpMessageHandler handler, _) =
+                CreateHarness(definition, new EnvironmentAccessPolicy([variable], allowAll: false));
             handler.On(HttpMethod.Post, "/api/checkout/secret-value", HttpStatusCode.OK);
 
             await RunIterationAsync(workflow, context);
@@ -528,6 +529,65 @@ public sealed class DeclarativeWorkflowTests
             Assert.Equal("/api/checkout/secret-value", handler.Requests[0].Path);
             Assert.Equal("Bearer secret-value", handler.Requests[0].Header("Authorization"));
             Assert.Equal("""{"token":"secret-value"}""", handler.Requests[0].Body);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, null);
+        }
+    }
+
+    /// <summary>
+    /// SEC-9 (AUDIT.md) : sans autorisation explicite, un scenario qui reference une variable
+    /// d'environnement echoue a la construction — avant le premier tir, pas a la premiere
+    /// iteration — plutot que de pouvoir lire n'importe quelle variable du processus.
+    /// </summary>
+    [Fact]
+    public void An_environment_variable_not_in_the_allowlist_is_rejected_at_construction()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps = [Step("checkout", headers: new Dictionary<string, string> { ["Authorization"] = "Bearer {{env.SOME_SECRET}}" })],
+        };
+
+        ArgumentException exception = Assert.Throws<ArgumentException>(() => new DeclarativeWorkflow(definition));
+
+        Assert.Contains("SOME_SECRET", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("--allow-env", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_environment_variable_reference_without_any_policy_is_denied_by_default()
+    {
+        ScenarioDefinition definition = new()
+        {
+            Name = "smoke",
+            Steps = [Step("checkout", path: "/api/ping/{{env.NOM}}")],
+        };
+
+        Assert.Throws<ArgumentException>(() => new DeclarativeWorkflow(definition, environmentAccess: null));
+    }
+
+    [Fact]
+    public async Task Allow_all_environment_variables_permits_any_name_without_an_explicit_list()
+    {
+        const string variable = "SIROCCO_TEST_ALLOW_ALL_3Q8Z";
+        Environment.SetEnvironmentVariable(variable, "secret-value");
+        try
+        {
+            ScenarioDefinition definition = new()
+            {
+                Name = "smoke",
+                Steps = [Step("checkout", path: "/api/checkout/{{env." + variable + "}}")],
+            };
+
+            (DeclarativeWorkflow workflow, VirtualUserContext context, _, StubHttpMessageHandler handler, _) =
+                CreateHarness(definition, new EnvironmentAccessPolicy([], allowAll: true));
+            handler.On(HttpMethod.Get, "/api/checkout/secret-value", HttpStatusCode.OK);
+
+            await RunIterationAsync(workflow, context);
+
+            Assert.Equal("/api/checkout/secret-value", handler.Requests[0].Path);
         }
         finally
         {
@@ -548,7 +608,7 @@ public sealed class DeclarativeWorkflowTests
         };
 
         (DeclarativeWorkflow workflow, VirtualUserContext context, CollectingMetricSink sink, StubHttpMessageHandler handler, StepRegistry steps) =
-            CreateHarness(definition);
+            CreateHarness(definition, new EnvironmentAccessPolicy([variable], allowAll: false));
 
         await RunIterationAsync(workflow, context);
 

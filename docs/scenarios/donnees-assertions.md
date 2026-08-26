@@ -67,16 +67,25 @@ réservé : `ScenarioDefinition.Validate()` rejette un jeu de données nommé ai
 plutôt que de laisser `{{env.x}}` changer silencieusement de sens selon qu'un jeu de données porte
 ou non ce nom.
 
-**Frontière de confiance à connaître** : `{{env.NOM}}` donne accès à **n'importe quelle** variable
-du processus, pas seulement à celles que l'opérateur a voulu exposer au scénario — même modèle que
-`__ENV` de k6 ou `System.getenv` de Gatling, pas une restriction propre à Sirocco. Un scénario
-déclaratif n'avait jusqu'ici aucune autorité ambiante : c'est la première fois qu'il peut lire quoi
-que ce soit hors de son propre fichier. Ne faites tourner un scénario dont vous n'êtes pas l'auteur
-que dans un processus qui ne détient aucun secret sans rapport avec le tir lui-même.
+**Liste d'autorisation, décidée par l'opérateur, pas par le scénario.** Sans autorisation
+explicite, toute référence `{{env.NOM}}` fait **échouer le chargement du scénario**, avant le
+premier tir — un scénario déclaratif n'a aucune autorité ambiante par défaut. Deux façons de
+l'accorder, jamais depuis le fichier de scénario lui-même (qui pourrait sinon s'auto-autoriser) :
 
-Vérifié par un vrai tir contre `Sirocco.SampleTarget`, dans les deux sens : sans la variable,
-100 % des itérations échouent (aucune requête n'atteint la cible) ; avec elle, 0 % d'échec et le
-seuil de la CI est respecté.
+- **`--allow-env NOM`** (répétable) ou `Sirocco:AllowedEnvironmentVariables` — une liste explicite
+  de noms.
+- **`--allow-env-all`** ou `Sirocco:AllowAllEnvironmentVariables` — accès à n'importe quelle
+  variable du processus, la parité avec `__ENV` de k6 ou `System.getenv` de Gatling. À réserver à
+  un processus qui ne détient aucun secret sans rapport avec le tir lui-même : ne faites tourner un
+  scénario dont vous n'êtes pas l'auteur que dans un processus ainsi confiné.
+
+Corrige le résidu que SEC-9 (`AUDIT.md`) énonçait sans le traiter : la première version de
+`{{env.NOM}}` donnait accès à n'importe quelle variable du processus, sans distinction.
+
+Vérifié par un vrai tir contre `Sirocco.SampleTarget`, dans les deux sens : sans la variable ni
+autorisation, le chargement du scénario échoue avant d'envoyer la moindre requête ; avec la
+variable définie et `--allow-env SIROCCO_DEMO_API_TOKEN`, 0 % d'échec et le seuil de la CI est
+respecté.
 
 ## Checks
 

@@ -28,6 +28,10 @@ internal sealed class CliOptions
 
     public bool AllowUnsignedPlugins { get; private init; }
 
+    public IReadOnlyList<string> AllowedEnvironmentVariables { get; private init; } = [];
+
+    public bool AllowAllEnvironmentVariables { get; private init; }
+
     public string? TargetUrl { get; private init; }
 
     public double? Rps { get; private init; }
@@ -70,6 +74,8 @@ internal sealed class CliOptions
         string? pluginPackageVersion = null;
         List<string> pluginPackageSources = [];
         bool allowUnsignedPlugins = false;
+        List<string> allowedEnvironmentVariables = [];
+        bool allowAllEnvironmentVariables = false;
         string? targetUrl = null;
         double? rps = null;
         double? fromRps = null;
@@ -113,6 +119,14 @@ internal sealed class CliOptions
 
                 case "--plugin-allow-unsigned":
                     allowUnsignedPlugins = true;
+                    break;
+
+                case "--allow-env" when i + 1 < args.Length:
+                    allowedEnvironmentVariables.Add(args[++i]);
+                    break;
+
+                case "--allow-env-all":
+                    allowAllEnvironmentVariables = true;
                     break;
 
                 case "--target-url" when i + 1 < args.Length:
@@ -275,6 +289,8 @@ internal sealed class CliOptions
             PluginPackageVersion = pluginPackageVersion,
             PluginPackageSources = pluginPackageSources,
             AllowUnsignedPlugins = allowUnsignedPlugins,
+            AllowedEnvironmentVariables = allowedEnvironmentVariables,
+            AllowAllEnvironmentVariables = allowAllEnvironmentVariables,
             TargetUrl = targetUrl,
             Rps = rps,
             FromRps = fromRps,

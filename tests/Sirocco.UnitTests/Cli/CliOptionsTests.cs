@@ -28,6 +28,28 @@ public sealed class CliOptionsTests
     }
 
     [Fact]
+    public void Allow_env_is_repeatable_and_allow_env_all_is_captured()
+    {
+        CliOptions options = CliOptions.Parse([
+            "--allow-env", "SIROCCO_DEMO_API_TOKEN",
+            "--allow-env", "SOME_OTHER_NAME",
+            "--allow-env-all",
+        ]);
+
+        Assert.Equal(["SIROCCO_DEMO_API_TOKEN", "SOME_OTHER_NAME"], options.AllowedEnvironmentVariables);
+        Assert.True(options.AllowAllEnvironmentVariables);
+    }
+
+    [Fact]
+    public void Allow_env_and_allow_env_all_are_false_and_empty_by_default()
+    {
+        CliOptions options = CliOptions.Parse(["--target-url", "http://localhost:5299", "--rps", "10", "--duration", "5s"]);
+
+        Assert.Empty(options.AllowedEnvironmentVariables);
+        Assert.False(options.AllowAllEnvironmentVariables);
+    }
+
+    [Fact]
     public void A_workflow_name_replaces_the_positional_scenario_path()
     {
         CliOptions options = CliOptions.Parse(["--workflow", "websocket-echo"]);

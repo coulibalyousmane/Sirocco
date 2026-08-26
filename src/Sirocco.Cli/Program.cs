@@ -31,6 +31,13 @@ const string USAGE = """
                                  ne correspond plus a sa signature. Refuse par defaut (SEC-7,
                                  AUDIT.md) ; a reserver a une source privee qui ne signe pas ses
                                  paquets.
+      --allow-env <nom>         Autorise un scenario declaratif a lire la variable d'environnement
+                                 <nom> via {{env.nom}}, repetable. Sans --allow-env ni
+                                 --allow-env-all, toute reference {{env.nom}} fait echouer le
+                                 chargement du scenario (SEC-9, AUDIT.md).
+      --allow-env-all           Autorise un scenario declaratif a lire n'importe quelle variable
+                                 d'environnement du processus. A reserver a un processus qui ne
+                                 detient aucun secret sans rapport avec le tir.
       --target-url <url>        Adresse de base de la cible. Requis, sauf si deja fourni via
                                  Sirocco:TargetBaseUrl dans un appsettings.json du repertoire courant.
       --rps <n>                 Debit cible constant, en requetes par seconde (avec --duration).
@@ -159,6 +166,8 @@ if (options.Vus is int vus)
         PluginPackageVersion = options.PluginPackageVersion ?? builder.Configuration["Sirocco:PluginPackageVersion"],
         PluginPackageSources = options.PluginPackageSources.Count > 0 ? options.PluginPackageSources : ReadPluginPackageSources(builder.Configuration),
         AllowUnsignedPlugins = options.AllowUnsignedPlugins || builder.Configuration.GetValue<bool>("Sirocco:AllowUnsignedPlugins"),
+        AllowedEnvironmentVariables = options.AllowedEnvironmentVariables.Count > 0 ? options.AllowedEnvironmentVariables : ReadAllowedEnvironmentVariables(builder.Configuration),
+        AllowAllEnvironmentVariables = options.AllowAllEnvironmentVariables || builder.Configuration.GetValue<bool>("Sirocco:AllowAllEnvironmentVariables"),
         Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
         ExitAfterRun = true,
         ReportHtmlPath = options.ReportHtmlPath,
@@ -188,6 +197,8 @@ else if (options.VusFrom is int vusFrom && options.VusTo is int vusTo)
         PluginPackageVersion = options.PluginPackageVersion ?? builder.Configuration["Sirocco:PluginPackageVersion"],
         PluginPackageSources = options.PluginPackageSources.Count > 0 ? options.PluginPackageSources : ReadPluginPackageSources(builder.Configuration),
         AllowUnsignedPlugins = options.AllowUnsignedPlugins || builder.Configuration.GetValue<bool>("Sirocco:AllowUnsignedPlugins"),
+        AllowedEnvironmentVariables = options.AllowedEnvironmentVariables.Count > 0 ? options.AllowedEnvironmentVariables : ReadAllowedEnvironmentVariables(builder.Configuration),
+        AllowAllEnvironmentVariables = options.AllowAllEnvironmentVariables || builder.Configuration.GetValue<bool>("Sirocco:AllowAllEnvironmentVariables"),
         Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
         ExitAfterRun = true,
         ReportHtmlPath = options.ReportHtmlPath,
@@ -212,6 +223,8 @@ else if (options.Iterations is long sharedIterations)
         PluginPackageVersion = options.PluginPackageVersion ?? builder.Configuration["Sirocco:PluginPackageVersion"],
         PluginPackageSources = options.PluginPackageSources.Count > 0 ? options.PluginPackageSources : ReadPluginPackageSources(builder.Configuration),
         AllowUnsignedPlugins = options.AllowUnsignedPlugins || builder.Configuration.GetValue<bool>("Sirocco:AllowUnsignedPlugins"),
+        AllowedEnvironmentVariables = options.AllowedEnvironmentVariables.Count > 0 ? options.AllowedEnvironmentVariables : ReadAllowedEnvironmentVariables(builder.Configuration),
+        AllowAllEnvironmentVariables = options.AllowAllEnvironmentVariables || builder.Configuration.GetValue<bool>("Sirocco:AllowAllEnvironmentVariables"),
         Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
         ExitAfterRun = true,
         ReportHtmlPath = options.ReportHtmlPath,
@@ -274,6 +287,8 @@ else
             PluginPackageVersion = options.PluginPackageVersion ?? builder.Configuration["Sirocco:PluginPackageVersion"],
             PluginPackageSources = options.PluginPackageSources.Count > 0 ? options.PluginPackageSources : ReadPluginPackageSources(builder.Configuration),
             AllowUnsignedPlugins = options.AllowUnsignedPlugins || builder.Configuration.GetValue<bool>("Sirocco:AllowUnsignedPlugins"),
+            AllowedEnvironmentVariables = options.AllowedEnvironmentVariables.Count > 0 ? options.AllowedEnvironmentVariables : ReadAllowedEnvironmentVariables(builder.Configuration),
+            AllowAllEnvironmentVariables = options.AllowAllEnvironmentVariables || builder.Configuration.GetValue<bool>("Sirocco:AllowAllEnvironmentVariables"),
             Thresholds = options.Thresholds.Count > 0 ? options.Thresholds : ReadThresholds(builder.Configuration),
             ExitAfterRun = true,
             ReportHtmlPath = options.ReportHtmlPath,
@@ -286,11 +301,12 @@ try
 {
     StandaloneHost.Run(builder, siroccoOptions);
 }
-catch (Exception ex) when (ex is FileNotFoundException or NotSupportedException or FormatException)
+catch (Exception ex) when (ex is FileNotFoundException or NotSupportedException or FormatException or ArgumentException)
 {
     // Recouvre les erreurs de chargement du scenario (fichier introuvable, extension non
-    // reconnue, script scripte incompatible avec un publish self-contained fichier unique...) :
-    // un message clair plutot que la trace d'une exception non geree.
+    // reconnue, script scripte incompatible avec un publish self-contained fichier unique,
+    // variable d'environnement non autorisee par --allow-env/--allow-env-all...) : un message
+    // clair plutot que la trace d'une exception non geree.
     Console.Error.WriteLine(ex.Message);
     return 1;
 }
@@ -327,6 +343,9 @@ static IReadOnlyList<ThresholdRule> ReadThresholds(IConfiguration configuration)
 
 static IReadOnlyList<string> ReadPluginPackageSources(IConfiguration configuration) =>
     configuration.GetSection("Sirocco:PluginPackageSources").Get<List<string>>() ?? [];
+
+static IReadOnlyList<string> ReadAllowedEnvironmentVariables(IConfiguration configuration) =>
+    configuration.GetSection("Sirocco:AllowedEnvironmentVariables").Get<List<string>>() ?? [];
 
 static IReadOnlyList<ScenarioOptions> ReadScenarios(IConfiguration configuration) =>
     configuration.GetSection("Sirocco:Scenarios").Get<List<ScenarioOptions>>() ?? [];

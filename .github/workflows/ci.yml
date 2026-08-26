@@ -218,13 +218,17 @@ jobs:
         # SIROCCO_DEMO_API_TOKEN nourrit variables-environnement.yaml ({{env.SIROCCO_DEMO_API_TOKEN}}).
         # Si cette variable manquait, la substitution echouerait a chaque iteration et le seuil
         # d'erreur ci-dessous ferait echouer ce job : c'est la preuve que la substitution a
-        # reellement lieu, pas une supposition.
+        # reellement lieu, pas une supposition. --allow-env l'autorise explicitement : depuis
+        # SEC-9 (AUDIT.md), {{env.NOM}} est refuse au chargement du scenario sans cette
+        # autorisation, meme pour un scenario qui ne l'utiliserait pas (les autres exemples de la
+        # boucle l'ignorent simplement).
         run: |
           for f in docs/examples/scenarios/*.yaml; do
             echo "::group::$f"
             dotnet build/framework-dependent/sirocco.dll run "$f" \
               --target-url http://localhost:5281 --rps 10 --duration 5s --max-vus 40 \
-              --threshold "__iteration:ErrorRate:LessThanOrEqual:0.01"
+              --threshold "__iteration:ErrorRate:LessThanOrEqual:0.01" \
+              --allow-env SIROCCO_DEMO_API_TOKEN
             echo "::endgroup::"
           done
         env:
