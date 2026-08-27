@@ -40,9 +40,11 @@
     <ProjectReference Include="..\..\src\Sirocco.Application\Sirocco.Application.csproj" />
     <ProjectReference Include="..\..\src\Sirocco.Infrastructure\Sirocco.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Sirocco.Scenarios\Sirocco.Scenarios.csproj" />
-    <!-- Seule ClusterAuthentication (logique pure, sans dependance ASP.NET) est testee d'ici :
-         le reste du cablage distribue (WorkerCoordinator, MasterOrchestrationHostedService)
-         reste verifie par de vrais tirs, comme le reste du mode distribue. -->
+    <!-- Seule la logique pure de l'hote (sans dependance ASP.NET) est testee d'ici :
+         ClusterAuthentication, MultiScenarioRunner, et le plan de modele de charge de
+         StandaloneHost. Le reste du cablage distribue (WorkerCoordinator,
+         MasterOrchestrationHostedService) reste verifie par de vrais tirs, comme le reste du mode
+         distribue. -->
     <ProjectReference Include="..\..\src\Sirocco.Host\Sirocco.Host.csproj" />
     <!-- Idem pour le parseur d'arguments de Sirocco.Cli (CliOptions, CliDuration) : logique pure,
          sans dependance ASP.NET, testable directement sans lancer de processus. -->
