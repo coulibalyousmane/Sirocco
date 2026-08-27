@@ -108,9 +108,9 @@ réels — les lancer avant serait construire pour personne.
 
 *Effort faible · impact existentiel*
 
-Tant qu'il faut cloner un dépôt privé et compiler une solution pour lancer un tir, Sirocco n'a pas
-d'utilisateurs possibles, quelle que soit la qualité du moteur. C'est le seul point de cette liste
-qui bloque littéralement tout le reste, et c'est aussi le moins cher à traiter.
+Tant qu'il fallait cloner un dépôt privé et compiler une solution pour lancer un tir, Sirocco n'avait
+pas d'utilisateurs possibles, quelle que soit la qualité du moteur. C'était le seul point de cette
+liste qui bloquait littéralement tout le reste, et c'était aussi le moins cher à traiter.
 
 - ~~**Une vraie CLI**~~ — fait (`Sirocco.Cli`, voir [Interface de ligne de
   commande](docs/demarrer/cli.md#interface-de-ligne-de-commande)) : `sirocco run scenario.yaml --rps 50
@@ -118,8 +118,8 @@ qui bloque littéralement tout le reste, et c'est aussi le moins cher à traiter
   phase 3 ; en attendant, le profil se pilote en débit (`--rps` ou `--from-rps`/`--to-rps`).
 - ~~**Packaging `dotnet tool`**~~ — fait (`PackAsTool`, commande `sirocco`, voir
   [Installation](docs/demarrer/installation.md#installation)) : `dotnet tool install -g Sirocco.Cli` fonctionne
-  aujourd'hui depuis une source locale ou un flux privé, faute de publication sur nuget.org (le
-  dépôt reste privé — bullet suivant).
+  aujourd'hui depuis une source locale, faute de publication sur nuget.org : celle-ci est
+  déclenchée par un tag `vX.Y.Z`, jamais poussé à ce jour.
 - ~~**Binaires autonomes**~~ — fait pour Windows, Linux et macOS (x64 et arm64), voir [Binaires
   autonomes](docs/demarrer/installation.md#binaires-autonomes) : self-contained, fichier unique, workflow de release
   GitHub prêt (`vX.Y.Z` poussé), pas encore déclenché. Native AOT essayé réellement et
@@ -132,8 +132,8 @@ qui bloque littéralement tout le reste, et c'est aussi le moins cher à traiter
   mesure, un projet externe pouvait écrire un scénario mais pas le lancer, contrairement à
   NBomber, cité en référence quelques lignes plus haut. Vérifié par un vrai tir depuis un projet
   xUnit externe qui ne référence que ces quatre paquets (aucun `ProjectReference` vers ce dépôt).
-  Pas encore publiés sur nuget.org — le dépôt reste privé (bullet précédent, maintenant fait :
-  seule la visibilité GitHub reste un geste manuel).
+  Pas encore publiés sur nuget.org : la publication est déclenchée par un tag `vX.Y.Z`, jamais
+  poussé à ce jour. Le dépôt, lui, est public depuis le 5 août 2026 (bullet suivant).
 - ~~**Rendre le dépôt public**~~ — fait, licence ([Apache License 2.0](LICENSE), celle de k6 et
   Gatling), README d'accueil et démarrage rapide en trois commandes faits, et le dépôt est
   désormais public sur GitHub (`github.com/coulibalyousmane/Sirocco`). **Clôt entièrement la
@@ -681,7 +681,7 @@ NuGet bibliothèque, licence, démarrage rapide, et le dépôt est maintenant pu
 qui a été construit — la fusion d'histogrammes exacte, les quatre modes gRPC, le mode distribué
 sécurisé, l'installation en une commande — a désormais de la valeur pour quelqu'un d'autre que
 son auteur. Deux gestes restent ouverts, non bloquants pour la suite : publier les paquets NuGet
-sur nuget.org (actuellement installables depuis une source locale ou un flux privé seulement) et
+sur nuget.org (actuellement installables depuis une source locale seulement) et
 déclencher le workflow de release GitHub pour les binaires autonomes (`vX.Y.Z`, prêt mais jamais
 poussé).
 

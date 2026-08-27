@@ -13,11 +13,17 @@
   </PropertyGroup>
 
   <!--
-    Metadonnees NuGet communes a tous les paquets publiables du depot (Sirocco.Domain,
-    Sirocco.Application, Sirocco.Infrastructure, Sirocco.Scenarios, Sirocco.Cli) : un seul
-    endroit pour la licence, l'URL du depot et la version, plutot que quatre copies qui
-    divergeraient tot ou tard. Sans effet sur les projets non publiables (IsPackable=false,
-    comme Sirocco.Host ou les tests) : ces proprietes ne sont lues qu'au moment du pack.
+    Metadonnees NuGet communes aux dix paquets publiables du depot : les cinq bibliotheques du
+    moteur (Sirocco.Domain, Sirocco.Application, Sirocco.Infrastructure, Sirocco.Scenarios,
+    Sirocco.Cli) et les cinq extensions de reference (Sirocco.Extensions.Sql, .Sse, .Mqtt,
+    .GraphQl, .Browser). Un seul endroit pour la licence, l'URL du depot et la version, plutot
+    que dix copies qui divergeraient tot ou tard. Sans effet sur les projets non publiables
+    (IsPackable=false, comme Sirocco.Host ou les tests) : ces proprietes ne sont lues qu'au
+    moment du pack.
+
+    Ce que ces paquets promettent, et a quel niveau selon le paquet : docs/projet/versionnement.md.
+    Seul Sirocco.Domain porte un contrat de compatibilite ; les quatre autres bibliotheques sont
+    publiees pour composer son propre hote, sans garantie de stabilite avant la 1.0.
   -->
   <PropertyGroup>
     <!--
@@ -26,7 +32,7 @@
       Sirocco.SamplePlugin heritaient du IsPackable=true implicite du SDK. Un envoi sur nuget.org
       etant DEFINITIF (on masque un paquet, on ne le supprime jamais), le mode de defaillance doit
       etre "un paquet manque a l'appel", jamais "un identifiant est squatte pour toujours". Les
-      cinq projets reellement publies posent donc IsPackable=true explicitement, et un projet
+      dix projets reellement publies posent donc IsPackable=true explicitement, et un projet
       ajoute plus tard ne partira pas tout seul.
     -->
     <IsPackable>false</IsPackable>
@@ -35,6 +41,28 @@
     <PackageProjectUrl>https://github.com/coulibalyousmane/Sirocco</PackageProjectUrl>
     <RepositoryUrl>https://github.com/coulibalyousmane/Sirocco</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <!--
+    Symboles et SourceLink (AUDIT-MATURITE.md, M5). Un consommateur qui reference Sirocco.Domain
+    doit pouvoir poser un point d'arret et entrer dans le code : sans paquet de symboles, il ne
+    voit rien. Rattraper apres coup est impossible — un paquet deja publie reste sans symboles
+    pour toujours.
+
+    Aucune reference a Microsoft.SourceLink.* n'est necessaire : depuis .NET 8 le SDK l'embarque,
+    et PublishRepositoryUrl suffit a ce que les PDB pointent vers les sources GitHub du commit
+    empaquete.
+
+    ContinuousIntegrationBuild n'est pose QUE sur un runner : il normalise les chemins de source
+    embarques, ce qui est exactement ce qu'on veut pour un paquet publie et exactement ce qu'on ne
+    veut pas en local, ou le debogueur doit retrouver les fichiers sur le disque.
+  -->
+  <PropertyGroup>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
   <!--

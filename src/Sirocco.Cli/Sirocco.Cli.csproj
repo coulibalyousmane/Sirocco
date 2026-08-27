@@ -38,8 +38,12 @@
     Packaging dotnet tool (roadmap phase 1, deuxieme bullet) : dotnet pack produit un .nupkg
     installable en outil global (dotnet tool install, options globale et add source, vers
     Sirocco.Cli), avec le nom de commande "sirocco" plutot que le nom du paquet. Pas encore
-    publie sur nuget.org : le depot reste prive (bullet suivant de la meme phase) ; ce paquet
-    s'installe aujourd'hui depuis une source locale ou un flux prive.
+    publie sur nuget.org : la publication est declenchee par un tag "vX.Y.Z" (release.yml), jamais
+    pousse a ce jour ; ce paquet s'installe donc aujourd'hui depuis une source locale.
+
+    Ce que les options de cette CLI et ses codes de sortie promettent a une CI tierce :
+    docs/projet/versionnement.md, qui les place au meme niveau de contrat que l'API publique de
+    Sirocco.Domain, car c'est d'eux que depend un pipeline, pas des types.
   -->
   <PropertyGroup>
     <!-- Microsoft.NET.Sdk.Web desactive IsPackable par defaut (un site web ne se publie pas

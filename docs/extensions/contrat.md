@@ -41,7 +41,8 @@ Limites volontaires de cette première version :
 `samples/Sirocco.SamplePlugin` est la preuve réelle du contrat, pas un exemple théorique : un
 projet de bibliothèque .NET ordinaire, **jamais référencé par `Sirocco.Host`/`Sirocco.Cli`/
 `Sirocco.Scenarios`**, dont la seule dépendance est `Sirocco.Domain` (`ProjectReference` ici
-uniquement parce que le dépôt reste privé — un vrai plugin tiers utiliserait le paquet NuGet). Il
+parce que ce projet vit dans le dépôt — un plugin tiers utilisera le paquet NuGet dès la première
+version publiée). Il
 implémente un `IWorkflow` minimal qui appelle `IVirtualUserContext.HttpClient` exactement comme
 `DynamicCheckoutWorkflow`. Vérifié par deux vrais tirs contre `Sirocco.SampleTarget`, l'assembly
 compilée séparément puis chargée par son chemin : sélection automatique du seul type disponible,

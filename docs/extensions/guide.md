@@ -78,9 +78,11 @@ une des méthodes suivantes avant de sortir de la méthode :
 dotnet new classlib -n MonPlugin -o MonPlugin
 ```
 
-Le `.csproj` n'a besoin que d'une référence à `Sirocco.Domain` (`ProjectReference` tant que ce dépôt
-reste privé ; paquet NuGet `Sirocco.Domain` pour une extension tierce réelle une fois le dépôt
-public) :
+Le `.csproj` n'a besoin que d'une référence à `Sirocco.Domain` — le seul paquet portant un
+engagement de compatibilité, voir [Versionnement et support](../projet/versionnement.md).
+L'exemple ci-dessous utilise un `ProjectReference` parce qu'il vit dans ce dépôt ; une extension
+tierce prendra un `PackageReference` vers `Sirocco.Domain` dès la première version publiée sur
+nuget.org (aucun tag `vX.Y.Z` n'a encore été poussé à ce jour) :
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">

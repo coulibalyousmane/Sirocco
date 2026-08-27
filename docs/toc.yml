@@ -64,6 +64,8 @@
   items:
     - name: Architecture et décisions
       href: projet/architecture.md
+    - name: Versionnement et support
+      href: projet/versionnement.md
     - name: Pipeline CI
       href: projet/ci.md
     - name: Historique

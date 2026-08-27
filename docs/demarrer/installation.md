@@ -50,9 +50,10 @@ dotnet tool install --global --add-source src/Sirocco.Cli/bin/Release Sirocco.Cl
 sirocco run --target-url http://localhost:5299 --rps 50 --duration 30s
 ```
 
-Pas encore publié sur nuget.org — le dépôt reste privé (bullet suivant de la phase 1) — donc
-l'installation se fait aujourd'hui depuis une source locale (`--add-source`) ou un flux privé.
-Sans empaquetage, `sirocco` reste utilisable via `dotnet run --project src/Sirocco.Cli --`.
+Pas encore publié sur nuget.org : le dépôt est public, mais la publication est déclenchée par un tag
+`vX.Y.Z` et aucun n'a encore été poussé. L'installation se fait donc aujourd'hui depuis une source
+locale (`--add-source`), exactement comme ci-dessus. Sans empaquetage, `sirocco` reste utilisable
+via `dotnet run --project src/Sirocco.Cli --`.
 
 Vérifié par un vrai `dotnet tool install --global`, `sirocco` réellement sur le `PATH`, puis un
 tir depuis un répertoire sans rapport avec le dépôt (`/tmp`), contre `Sirocco.SampleTarget`, avec
@@ -136,7 +137,8 @@ vers ce dépôt, uniquement les quatre `.nupkg` via une source NuGet locale) : `
 (`Sirocco.Scenarios`) exécuté à travers `AddSiroccoEngine`/`AddSiroccoMetrics`, contre
 `Sirocco.SampleTarget`, avec un rapport contenant bien l'étape `checkout`.
 
-**Limite restante** : pas encore publiés sur nuget.org (le dépôt reste privé). Les quatre paquets
-s'installent aujourd'hui depuis une source locale (`dotnet pack` puis `--add-source`) ou un flux
-privé, comme `Sirocco.Cli`.
+**Limite restante** : pas encore publiés sur nuget.org, faute d'un tag `vX.Y.Z` poussé. Les quatre
+paquets s'installent aujourd'hui depuis une source locale (`dotnet pack` puis `--add-source`), comme
+`Sirocco.Cli`. Ce qu'ils promettront une fois publiés — et à quel niveau selon le paquet — est écrit
+dans [Versionnement et support](../projet/versionnement.md).
 

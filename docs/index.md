@@ -13,10 +13,10 @@ dotnet run --project src/Sirocco.Cli -- run --target-url https://votre-cible --r
 Pas de scénario à écrire, pas de configuration : ces trois commandes suffisent pour un premier tir
 contre n'importe quelle URL.
 
-> Les paquets ne sont **pas encore publiés sur nuget.org** : `dotnet tool install -g Sirocco.Cli`
-> ne fonctionne aujourd'hui que depuis une source locale ou un flux privé. Un binaire autonome, qui
-> ne demande ni `git clone` ni le SDK .NET, reste la voie la plus courte — voir
-> [Installation](demarrer/installation.md).
+> Les paquets ne sont **pas encore publiés sur nuget.org** : le dépôt est public et clonable, mais
+> aucun tag `vX.Y.Z` n'a encore été poussé, et c'est un tag qui déclenche la publication. En
+> attendant, `dotnet tool install -g Sirocco.Cli` fonctionne depuis une source locale — voir
+> [Installation](demarrer/installation.md), qui donne les trois commandes.
 
 ## Le seul outil qui vous dit quand ses propres chiffres deviennent faux
 

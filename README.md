@@ -51,7 +51,7 @@ vraie cible à chaque commit. Un exemple qui cesserait de fonctionner casse le b
 | Lire les résultats | [Mesure et rapport](docs/rapports/mesure.md) · [Seuils et comparaison](docs/rapports/seuils-et-comparaison.md) |
 | Autres protocoles | [Intégrés](docs/protocoles/integres.md) · [Contrat de plugin](docs/extensions/contrat.md) · [Guide d'extension](docs/extensions/guide.md) |
 | Dépasser une machine | [Mode distribué](docs/distribue/mode-distribue.md) · [Kubernetes](docs/distribue/kubernetes.md) · [Conteneurisation](docs/distribue/conteneurisation.md) |
-| Comprendre le projet | [Architecture et décisions](docs/projet/architecture.md) · [Pipeline CI](docs/projet/ci.md) · [Historique](docs/projet/historique.md) |
+| Comprendre le projet | [Architecture et décisions](docs/projet/architecture.md) · [Versionnement et support](docs/projet/versionnement.md) · [Pipeline CI](docs/projet/ci.md) · [Historique](docs/projet/historique.md) |
 
 Voir aussi la [roadmap concurrentielle](ROADMAP.md), qui situe Sirocco face à k6, Gatling et
 NBomber sans minimiser l'écart, et le [benchmark comparatif](benchmark/README.md) qui le mesure.

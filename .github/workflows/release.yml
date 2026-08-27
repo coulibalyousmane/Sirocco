@@ -14,7 +14,43 @@ permissions:
   contents: write
 
 jobs:
+  # Controles prealables, partages par les deux jobs a effet de bord (AUDIT-MATURITE.md, M10).
+  # Ils vivaient dans le job nuget, qui tournait en PARALLELE de binaries : rien n'empechait alors
+  # binaries de publier une release GitHub pendant que nuget echouait sur le controle de version,
+  # laissant un tag avec quatre binaires, zero paquet, et un Directory.Build.props incoherent.
+  # Ici, ni la release GitHub ni l'envoi nuget.org n'ont lieu si l'un de ces controles echoue.
+  verifications:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cloner le depot
+        uses: actions/checkout@v4
+
+      - name: Installer .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Verifier que le tag correspond a la version declaree
+        run: |
+          set -euo pipefail
+          tag="${{ github.ref_name }}"
+          expected="${tag#v}"
+          declared=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | head -1)
+          echo "tag=$tag  version attendue=$expected  Directory.Build.props=$declared"
+          if [ "$expected" != "$declared" ]; then
+            echo "::error::Le tag $tag implique la version $expected, mais Directory.Build.props declare $declared." >&2
+            exit 1
+          fi
+
+      - name: Suite de tests
+        run: dotnet test tests/Sirocco.UnitTests --configuration Release
+
+  # Depend AUSSI de nuget, et pas seulement des verifications : l'envoi sur nuget.org est le seul
+  # geste vraiment irreversible de cette release, donc il passe en premier. Le seul mode de
+  # defaillance restant -- paquets publies puis creation de la release GitHub en echec -- est
+  # rattrapable a la main (relancer le job, ou "gh release create"), contrairement a son inverse.
   binaries:
+    needs: [verifications, nuget]
     runs-on: ubuntu-latest
     steps:
       - name: Cloner le depot
@@ -53,14 +89,19 @@ jobs:
   # "vX.Y.Z" et rien d'autre. Ce job existe pour que la cle d'API nuget.org ne quitte jamais les
   # secrets du depot -- personne n'a a la manipuler pour couper une release.
   #
-  # Un envoi sur nuget.org est DEFINITIF : un paquet se masque, ne se supprime pas. Les trois
-  # verifications ci-dessous sont donc des garde-fous sur un geste irreversible, pas de la
-  # ceremonie -- chacune correspond a une erreur reellement possible :
+  # Un envoi sur nuget.org est DEFINITIF : un paquet se masque, ne se supprime pas. Les garde-fous
+  # qui l'encadrent ne sont donc pas de la ceremonie -- chacun correspond a une erreur reellement
+  # possible :
   #   1. tag et <Version> qui divergent : publier 0.1.0 sous une release v0.2.0, sans recours ;
   #   2. suite de tests : le tag peut viser un commit que la CI n'a jamais vu ;
+  #      (1 et 2 vivent desormais dans le job "verifications", partage avec binaries -- voir sa
+  #       remarque)
   #   3. compte de paquets : un projet ajoute plus tard qui redeviendrait packable squatterait un
   #      identifiant pour toujours. Le defaut IsPackable=false de Directory.Build.props est la
   #      premiere barriere, ce compte est la seconde.
+  #   4. compte de paquets de symboles : un paquet publie sans symboles reste sans symboles pour
+  #      toujours (AUDIT-MATURITE.md, M5). Ce compte attrape une regression silencieuse sur
+  #      IncludeSymbols, que le compte des .nupkg ne verrait pas.
   #
   # Dix paquets depuis le 27 aout 2026 : les cinq bibliotheques du moteur, plus les cinq
   # extensions de reference (ROADMAP.md, ligne "Ecosysteme d'extensions communautaire") -- sans une
@@ -68,6 +109,7 @@ jobs:
   # copier. Cette liste reste explicite et exhaustive, precisement pour que l'ajout d'un nouveau
   # projet packable soit un geste conscient et non un effet de bord.
   nuget:
+    needs: verifications
     runs-on: ubuntu-latest
     steps:
       - name: Cloner le depot
@@ -77,21 +119,6 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
-
-      - name: Verifier que le tag correspond a la version declaree
-        run: |
-          set -euo pipefail
-          tag="${{ github.ref_name }}"
-          expected="${tag#v}"
-          declared=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | head -1)
-          echo "tag=$tag  version attendue=$expected  Directory.Build.props=$declared"
-          if [ "$expected" != "$declared" ]; then
-            echo "::error::Le tag $tag implique la version $expected, mais Directory.Build.props declare $declared." >&2
-            exit 1
-          fi
-
-      - name: Suite de tests
-        run: dotnet test tests/Sirocco.UnitTests --configuration Release
 
       - name: Empaqueter
         run: dotnet pack Sirocco.sln --configuration Release --output dist-nuget
@@ -109,6 +136,18 @@ jobs:
             exit 1
           fi
 
+      - name: Verifier que les dix paquets de symboles sont la
+        run: |
+          set -euo pipefail
+          compte=$(cd dist-nuget && ls -1 *.snupkg | wc -l)
+          echo "paquets de symboles : $compte"
+          if [ "$compte" -ne 10 ]; then
+            echo "::error::10 paquets de symboles attendus, $compte trouves. IncludeSymbols/SymbolPackageFormat ont-ils disparu de Directory.Build.props ?" >&2
+            exit 1
+          fi
+
+      # Le glob ne nomme que les .nupkg : "dotnet nuget push" envoie de lui-meme le .snupkg
+      # homonyme trouve a cote. Les nommer tous les deux enverrait les symboles deux fois.
       - name: Pousser sur nuget.org
         run: |
           dotnet nuget push "dist-nuget/*.nupkg" \
