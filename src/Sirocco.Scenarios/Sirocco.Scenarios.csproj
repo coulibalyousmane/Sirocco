@@ -21,9 +21,10 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.14.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.9.0" />
     <!-- Resolution NuGet d'un plugin (roadmap phase 6, deuxieme bullet) : client officiel plutot
          que reimplementer le protocole v3 (decouverte de version, telechargement de .nupkg). -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
     <PackageReference Include="NuGet.Protocol" Version="7.9.0" />
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
