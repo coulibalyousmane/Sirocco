@@ -56,6 +56,11 @@ vraie cible à chaque commit. Un exemple qui cesserait de fonctionner casse le b
 Voir aussi la [roadmap concurrentielle](ROADMAP.md), qui situe Sirocco face à k6, Gatling et
 NBomber sans minimiser l'écart, et le [benchmark comparatif](benchmark/README.md) qui le mesure.
 
+Pour contribuer ou signaler un problème : [CONTRIBUTING.md](CONTRIBUTING.md) — joignez la sortie de
+`sirocco --version`, elle contient le commit dont votre binaire est issu. Ce qui a changé d'une
+version à l'autre est dans [CHANGELOG.md](CHANGELOG.md), et ce sur quoi vous pouvez vous appuyer dans
+[Versionnement et support](docs/projet/versionnement.md).
+
 **Article de fond** — [Zéro erreur, et pourtant inutilisable : la dette
 d'ordonnancement](docs/articles/dette-ordonnancement.md)
 ([English](docs/articles/scheduling-debt.md)) : pourquoi un rapport de charge entièrement vert peut

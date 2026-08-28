@@ -16,9 +16,13 @@ La différence de nature compte : `AUDIT.md` demandait « ce code est-il correct
 **versionné**, **documenté** et **vérifié** autour de lui. Les chantiers sont numérotés `M1..M10`
 pour ne pas entrer en collision avec les précédents.
 
-**Le bloc pré-tag est traité le 27 août 2026** : `M1`, `M2`, `M5`, `M6`, `M9` et `M10`, c'est-à-dire
-tout ce qui devient irréversible au premier tag ou faux dès la première minute. Restent ouverts
-`M3`, `M4`, `M7` et `M8` — voir les priorités en fin de document.
+**Les dix constats sont traités le 27 août 2026** — le bloc pré-tag (`M1`, `M2`, `M5`, `M6`, `M9`,
+`M10`) d'abord, puis les quatre autres (`M3`, `M4`, `M7`, `M8`).
+
+Un constat a changé de nature en cours de traitement : `M7` était classé « défaut de lisibilité, pas
+un bug ». La lecture du code a montré l'inverse — la dette d'ordonnancement était la seule grandeur
+non fenêtrée de l'agrégateur, si bien que la courbe de dette du rapport HTML était monotone par
+construction. Le constat était juste sur le symptôme et faux sur la cause ; sa section le dit.
 
 ## Méthode
 
@@ -196,7 +200,7 @@ rattrapera, après coup.
 
 ---
 
-## M3 — Aucun moyen de savoir quelle version tourne
+## M3 — Aucun moyen de savoir quelle version tourne ✅ traité
 
 **Moyen** — vérifié sur l'outil réellement installé, pas sur le code.
 
@@ -222,9 +226,35 @@ Sirocco va publier. Deux binaires différents, un même `0.1.0`, et rien pour le
 
 **Coût** : une branche dans le parseur, lisant l'`InformationalVersion` de l'assemblage. Une heure.
 
+**Traité le 27 août 2026.** `sirocco --version` rapporte trois lignes — version, runtime, système et
+RID — reconnues n'importe où dans la ligne de commande et **avant** toute validation, puisque c'est
+la commande qu'on tape quand le reste ne marche pas.
+
+**La correction de M5 la rend bien meilleure que prévu.** Sur le binaire réellement construit :
+
+```text
+sirocco 0.1.0+23521b12413881f08835706c91b540dd18f421bc
+runtime  .NET 10.0.11
+systeme  Microsoft Windows 10.0.26200 (win-x64)
+```
+
+Le suffixe après `+` vient du `SourceRevisionId` que SourceLink renseigne — activé en corrigeant
+`M5`. `--version` ne dit donc pas seulement *quelle version*, mais **quel commit**, ce qui est la
+seule information qu'un rapport de bug ne peut pas reconstituer après coup. Les deux constats se
+complètent : l'un rend le binaire identifiable, l'autre rend son code retrouvable.
+
+Six tests couvrent la mise en forme (valeurs manquantes, commit conservé tel quel, trois lignes pour
+que ça se colle dans une issue sans retouche), dont un qui vérifie le **relevé réel** et non
+seulement la mise en forme : si le SDK cessait d'émettre `AssemblyInformationalVersion`, `--version`
+se dégraderait silencieusement en « version inconnue » et ce constat se rouvrirait sans que rien ne
+le signale.
+
+Effet de bord utile, exploité par `M4` : `--version` n'exige ni cible, ni scénario, ni réseau. C'est
+le fumigène minimal pour prouver qu'un binaire publié démarre sur sa plateforme.
+
 ---
 
-## M4 — Deux des quatre binaires publiés n'ont jamais été exécutés par personne
+## M4 — Deux des quatre binaires publiés n'ont jamais été exécutés par personne ✅ traité
 
 **Moyen**.
 
@@ -247,6 +277,28 @@ CI ([Sirocco.Cli.csproj:28](src/Sirocco.Cli/Sirocco.Cli.csproj)), exactement dan
 **Coût** : une matrice `runs-on: [ubuntu-latest, windows-latest, macos-latest]` sur `build-and-test`
 seul — les runners macOS sont plus chers, mais c'est le job le plus court. Une demi-journée avec les
 ajustements de chemins.
+
+**Traité le 27 août 2026**, mais autrement que prévu. Matricer `build-and-test` aurait triplé la
+collecte de couverture et son plancher, dont le script est du bash spécifique au runner Ubuntu, pour
+ne rien mesurer de plus. Nouveau job `binaires-par-plateforme` à la place, en matrice
+`fail-fast: false` sur `ubuntu-latest`/`windows-latest`/`macos-latest`, qui pour chaque plateforme :
+exécute la suite de tests, **publie le binaire autonome en fichier unique** pour le RID
+correspondant, puis **lance le binaire produit** et vérifie qu'il rapporte sa version.
+
+**Ce que cela couvre et que rien ne couvrait, sur aucune plateforme** : le chemin de publication
+self-contained lui-même. Correction d'une imprécision de ce document — `linux-x64` y était décrit
+comme « couvert par la CI », ce qui était vrai du *code* mais pas du *binaire de release*. Les trois
+binaires exécutables sont désormais lancés, pas seulement compilés. C'est aussi la zone exacte où un
+bug de packaging par RID a déjà cassé la CI.
+
+**Vérifié localement pour ce qui pouvait l'être** : les étapes du job reproduites à l'identique sur
+`win-x64` — publication self-contained fichier unique, puis `--version` satisfaisant le `grep` du
+garde-fou, commit inclus. Le YAML est parsé par YamlDotNet et le graphe des cinq jobs est conforme.
+Windows et macOS sur runner ne seront exercés que par la CI de ce commit.
+
+**Résidu assumé** : `macos-latest` est arm64, donc `osx-arm64` est exécuté nativement et **`osx-x64`
+reste cross-compilé sans être lancé** — Rosetta n'est pas un socle de vérification fiable. Un binaire
+non exécuté sur quatre au lieu de deux ; la limite rétrécit, elle ne disparaît pas.
 
 ---
 
@@ -312,10 +364,15 @@ ouvrir une issue décrivant la contrainte.
 
 ---
 
-## M7 — La colonne du différenciateur n'est pas lisible par un inconnu
+## M7 — La colonne du différenciateur n'est pas lisible par un inconnu ✅ traité
 
 **Moyen** — et c'est le constat le plus intéressant de l'audit, parce qu'il ne porte pas sur un défaut
 mais sur une **mesure exacte et pourtant trompeuse**.
+
+> **Ce diagnostic était incomplet.** En traitant le constat, la lecture du code a montré autre chose
+> qu'un défaut de présentation : la dette d'ordonnancement était la **seule grandeur non fenêtrée**
+> de l'agrégateur. Voir « Ce que le traitement a réellement trouvé », plus bas — le constat était
+> juste sur le symptôme et faux sur la cause.
 
 Deux tirs réels, même cible, même effectif, seule la durée change :
 
@@ -348,9 +405,59 @@ Avant, le transitoire était noyé dans un artefact bien plus gros — 63 s de d
 une correction mais une décision de produit — et elle gagne à être prise avant que le chiffre ne soit
 lu par des tiers.
 
+### Ce que le traitement a réellement trouvé
+
+**C'était un bug, pas un arbitrage de présentation.** Dans `StepAccumulator`, la réponse, le service,
+les issues et les octets avaient chacun leur anneau de paniers temporels ; la dette
+d'ordonnancement, elle, n'avait qu'un **champ cumulé unique**, que le snapshot de portée
+**glissante** lisait tel quel. Conséquences, toutes vérifiables dans le code d'avant :
+
+- la colonne « dette max » de la série temporelle et la **courbe de dette du rapport HTML** — le
+  graphe présenté comme la signature visuelle d'une saturation — étaient **monotones par
+  construction** : elles ne pouvaient jamais redescendre ;
+- `/report/live`, le tableau de bord rafraîchi pendant un tir, affichait des centiles glissants à
+  côté d'une dette cumulée, sans que rien ne distingue les deux ;
+- la documentation, elle, **promettait déjà le bon comportement** : `docs/rapports/mesure.md`
+  décrivait ces colonnes comme « tous relevés sur la fenêtre glissante ». La doc avait raison sur
+  l'intention et tort sur les faits — signe supplémentaire qu'il s'agissait d'un oubli, pas d'un
+  choix.
+
+**Corrigé le 27 août 2026** : la dette suit désormais le même anneau que le reste, avec un maximum
+par panier remis à zéro quand le panier expire. Les portées **cumulative** et **distribuée** sont
+inchangées — un maximum historique y est le bon comportement, et fusionner des maxima de fenêtres
+entre travailleurs n'aurait aucun sens.
+
+**Prouvé par un vrai tir**, le même que celui du constat (`--vus 4 --duration 20s`, fenêtre glissante
+de 10 s) :
+
+| t | p99 | dette max — avant | dette max — après |
+|---:|---:|---:|---:|
+| 2,0 s | 421,78 ms | 363,45 ms | 363,45 ms |
+| 8,0 s | 344,06 ms | 363,45 ms | 363,45 ms |
+| **12,0 s** | 156,67 ms | 363,45 ms | **105,51 ms** |
+| 20,1 s | 152,57 ms | 363,45 ms | 103,25 ms |
+
+Le pic tient pendant les dix premières secondes — il est réellement dans la fenêtre, c'est correct —
+puis **retombe** dès qu'il en sort. Avant, la colonne affichait 363,45 ms de la première à la dernière
+ligne. Un lecteur peut maintenant distinguer un transitoire d'une saturation, ce qui était
+précisément l'objet du constat.
+
+Deux tests le verrouillent : la dette glissante retombe quand le pic quitte la fenêtre pendant que le
+cumul le conserve, et — contre-épreuve — elle rapporte toujours le pire de **toute** la fenêtre, pas
+seulement du dernier panier. 26/26 sur cinq exécutions consécutives ; ils sont déterministes,
+l'horloge de la fenêtre étant celle des données et non celle du mur.
+
+`docs/rapports/mesure.md` gagne une section « Lire la colonne dette max » qui énonce les deux cas et
+les deux conséquences pratiques : sur un tir plus court que la fenêtre, rien n'en sort jamais et la
+colonne reste au maximum du tir ; et la ligne de bilan de fin de tir reste, elle, un maximum cumulé.
+
+**Résidu** : cette ligne de bilan n'a toujours pas d'horodatage. Quelqu'un qui ne lirait *que* le
+résumé peut encore prendre un transitoire pour une saturation — mais la série temporelle qui le
+désambiguïse est imprimée juste en dessous, ce qui n'était pas le cas avant.
+
 ---
 
-## M8 — Rien pour accueillir la contribution que la roadmap attend
+## M8 — Rien pour accueillir la contribution que la roadmap attend ✅ traité
 
 **Faible**.
 
@@ -367,6 +474,35 @@ l'arrivée.
 
 **Coût** : une demi-journée pour les trois fichiers utiles — `CHANGELOG`, `CONTRIBUTING`, et un
 gabarit d'issue de bug demandant la version, qui n'existe pas encore (`M3`).
+
+**Traité le 27 août 2026** :
+
+- **[CHANGELOG.md](CHANGELOG.md)** — format Keep a Changelog, section `0.1.0` à paraître. Il porte la
+  règle propre à un outil de mesure que la politique de version a posée : quand une entrée corrige un
+  biais de mesure, elle dit **l'effet attendu sur les chiffres**. Les deux corrections de cette
+  semaine y sont écrites ainsi — la file de jetons (74 itérations en 71,8 s → 11 en 12,5 s) et la
+  courbe de dette (363 ms figés → 105 ms après la fenêtre). C'est la seule façon pour un utilisateur
+  de comprendre pourquoi son p99 a bougé sans que sa cible ait changé.
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — la barrière en quatre commandes, les deux pièges qui font
+  échouer la CI sans échouer un `dotnet build` (le formatage, et les deux projets de benchmark hors
+  solution), le piège `--` dans un commentaire XML de `.csproj`, et surtout l'exigence de
+  vérification du dépôt : un vrai tir, pas un double du protocole — avec son corollaire, énoncer une
+  vérification impossible plutôt que la laisser supposer.
+- **Gabarits d'issue** (`bug.yml`, `amelioration.yml`) — le premier champ du gabarit de bug est la
+  sortie de `sirocco --version`, ce qui n'était pas possible avant `M3`. Il demande aussi le canal
+  d'installation, le modèle de charge, et signale que le comportement d'une cible qui met en file
+  diffère radicalement de celle qui déleste. Le `config.yml` renvoie les failles vers un avis de
+  sécurité privé au lieu d'une issue publique.
+- **`PULL_REQUEST_TEMPLATE.md`** — la barrière en cases à cocher, plus une section compatibilité qui
+  ne se remplit que si une surface de niveau 1 change.
+- **`dependabot.yml`** — ferme aussi `DEP-2` de `AUDIT.md`. Mises à jour **regroupées** par
+  écosystème : sur un graphe de 122 paquets, dix PR par semaine ne se relisent pas, donc ne se
+  fusionnent pas, et un dépôt où les PR de mise à jour s'empilent est moins sûr qu'un dépôt qui n'en
+  reçoit pas.
+
+Les cinq fichiers YAML ajoutés sont parsés sans erreur (YamlDotNet, via le SDK du dépôt). Leur
+comportement réel côté GitHub — rendu des formulaires, ouverture des PR Dependabot — ne s'observera
+qu'une fois poussés.
 
 ---
 
@@ -440,11 +576,14 @@ moteur, les tests, la CI, le packaging, l'installation, jusqu'au tir réel depui
 installé. Presque rien de ce qui se **promet** n'était écrit : ni ce qui est stable, ni ce qui est
 supporté, ni ce qui a changé, ni ce que le chiffre phare veut dire.
 
-**Après le bloc pré-tag** : ce qui est stable et ce qui est supporté sont désormais écrits, et le
-premier tag ne peut plus produire une release incohérente ni des paquets sans symboles. Restent hors
-de l'écrit : **ce qui a changé** (`M8`, faute de `CHANGELOG`) et **ce que la dette max veut dire**
-(`M7`). Un inconnu peut utiliser Sirocco et sait maintenant sur quoi il s'engage en en dépendant ; il
-ne sait toujours pas quelle version il exécute (`M3`).
+**Après les dix constats** : ce qui est stable, ce qui est supporté, ce qui a changé et ce que le
+chiffre phare veut dire sont écrits ; un binaire dit quelle version et quel commit il est ; trois des
+quatre binaires publiés sont désormais lancés avant d'être expédiés ; et la courbe de dette peut enfin
+redescendre. Le contrat a rattrapé le produit.
+
+Ce que cela ne rend pas vrai pour autant : **rien n'outille la politique de version** (pas
+d'analyseur d'API publique), **`osx-x64` reste cross-compilé sans être exécuté**, et la ligne de bilan
+`dette max` n'a toujours pas d'horodatage. Trois limites énoncées, aucune découverte plus tard.
 
 ## Priorités
 
@@ -460,30 +599,61 @@ sont traités le 27 août 2026.**
 | `M9` | Le raisonnement qui protège des identifiants squattés doit rester exact | ✅ cinq → dix paquets |
 | `M10` | Évite une release publique incohérente sur le premier tag | ✅ `verifications → nuget → binaries`, plus un garde-fou sur les symboles |
 
-Barrière repassée après correction : build Release **0 avertissement / 0 erreur**, **801 tests**
+**Ensuite, avant que le premier inconnu n'arrive. Les quatre sont traités le 27 août 2026.**
+
+| # | Pourquoi | État |
+|---|---|---|
+| `M3` | Sans version, aucune issue n'est exploitable | ✅ `sirocco --version`, commit inclus grâce à `M5` |
+| `M8` | De quoi accueillir cette issue | ✅ `CHANGELOG`, `CONTRIBUTING`, gabarits d'issue et de PR, `dependabot` (ferme aussi `DEP-2`) |
+| `M4` | Ne plus expédier de binaire jamais exécuté | ✅ job en matrice qui publie **et lance** le binaire sur 3 plateformes ; `osx-x64` reste le résidu |
+| `M7` | La colonne que les concurrents ne publient pas doit être la plus lisible | ✅ **c'était un bug** : la dette n'était pas fenêtrée. Corrigé et prouvé par un vrai tir |
+
+Barrière repassée après correction : build Release **0 avertissement / 0 erreur**, **811 tests**
 verts, `dotnet format --verify-no-changes --severity info` à 0 violation sur la solution **et** sur
-les deux projets du harnais de benchmark, `docfx --warningsAsErrors` à 0 avertissement, et
-`dotnet pack` produisant exactement 10 `.nupkg` + 10 `.snupkg`.
+les deux projets du harnais de benchmark, `docfx --warningsAsErrors` à 0 avertissement,
+`dotnet pack` produisant exactement 10 `.nupkg` + 10 `.snupkg`, les huit fichiers YAML du dépôt
+parsés sans erreur, et deux vrais tirs — l'un depuis l'outil global installé hors du dépôt, l'autre
+pour prouver la correction de `M7`.
 
-**Ensuite, avant que le premier inconnu n'arrive** : `M3` (version, sans quoi aucune issue n'est
-exploitable), `M8` (de quoi accueillir cette issue), `M4` (ne plus expédier deux binaires jamais
-exécutés).
+**L'échec de test non identifié a été identifié.** Cette section disait, le 27 août : *« une
+exécution de la suite a rapporté 1 échec sur 811, le nom du test n'a pas été capturé […] c'est un
+échec dont la cause n'est pas établie »*. La barrière rejouée le 28 août l'a reproduit **et nommé** :
+`NuGetPluginResolverSignatureTests.A_signed_package_whose_content_changed_since_signing_is_rejected`,
+`IOException` « fichier ayant une section mappée utilisateur ouverte ».
 
-**À décider, pas à corriger** : `M7`. Ce n'est pas un défaut à réparer mais un arbitrage de produit
-sur la présentation du différenciateur — et il gagne à être tranché avant que le chiffre ne soit lu
-par des tiers, pas après.
+Cause réelle : le test réécrivait **sur place** le `.nupkg` que l'API de signature NuGet venait de
+produire. Sous Windows, le mappage mémoire d'un fichier fraîchement écrit n'est pas relâché de façon
+déterministe ; seule la charge de la suite complète décale assez le minutage pour que la réécriture
+tombe dans cette fenêtre — isolé, le test passe **huit fois sur huit**. Corrigé en signant dans un
+dossier de transit, puis en déposant les octets altérés dans la source comme un fichier **neuf** :
+il n'y a plus de réécriture sur place, donc plus de fenêtre. Cinq suites complètes vertes ensuite
+(811/811 × 5).
+
+C'était un défaut du **test**, pas du moteur — mais un défaut réel, qui aurait fait clignoter la CI
+sans que personne ne sache pourquoi. Le garder consigné comme « cause non établie » plutôt que de le
+qualifier de « flaky connu » est précisément ce qui a permis de le rouvrir.
+
+**Correction de cet encadré** : il portait aussi *« À décider, pas à corriger : `M7` — un arbitrage
+de produit sur la présentation du différenciateur, pas un défaut à réparer »*. Le traitement a montré
+l'inverse (voir `M7` ci-dessus). La phrase est remplacée plutôt que supprimée, pour que l'erreur
+d'audit reste lisible.
 
 ## Limites de cet audit
 
 Trois, énoncées plutôt que laissées à découvrir :
 
-1. **Aucune vérification sur macOS**, faute de machine — c'est l'objet de `M4`, pas sa résolution.
+1. **Aucune vérification sur macOS depuis cette machine**, faute d'en avoir une. `M4` fait porter
+   cette vérification à la CI ; son premier verdict tiendra lieu de preuve, et il n'est pas encore
+   tombé au moment où ces lignes sont écrites.
 2. **La performance de l'injecteur lui-même n'est pas auditée.** C'est le second audit manquant du
    projet, identifié et volontairement non mené ici : il demande de vrais tirs de saturation, pas des
    lectures de code. La contre-épreuve « à partir de quand l'injecteur est-il lui-même le goulot ? »
    reste ouverte, comme l'énonce déjà l'article de fond.
-3. **Un audit de maturité ne trouve pas les défauts de comportement.** Le bug de la file de jetons,
-   corrigé le 27 août, n'aurait été trouvé ni par `AUDIT.md` ni par celui-ci : il a fallu un vrai tir
-   navigateur avec des itérations de l'ordre de la seconde. `M7` n'existe d'ailleurs que grâce à cette
-   correction. Ce document dit ce qui est promis et ce qui manque autour du code — pas ce que le code
-   fait sous charge.
+3. **Un audit de maturité trouve des défauts de comportement, mais seulement en exécutant.**
+   Formulation corrigée : ce document affirmait d'abord qu'un tel audit n'en trouve pas. Il en a
+   trouvé un — la dette non fenêtrée de `M7` — et la façon dont il l'a trouvé est la leçon utile. Ce
+   n'est pas la lecture du code qui l'a révélé, c'est **un chiffre bizarre dans un vrai tir**
+   (`dette max` 586 ms à 3 s contre 391 ms à 20 s), suivi jusqu'au code. Le bug de la file de jetons,
+   corrigé la veille, s'était laissé prendre exactement de la même manière, sur un tir navigateur.
+   Ce que ce document ne fait toujours pas : dire ce que le code fait **sous charge soutenue** — voir
+   la limite 2.

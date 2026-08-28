@@ -79,6 +79,10 @@ const string USAGE = """
       --report-json <fichier>   Ecrit le rapport final en JSON a la fin du tir (meme format que
                                  /report ; lisible par Sirocco.Compare).
 
+      --version                 Affiche la version, le commit dont elle est issue, le runtime et
+                                 le systeme, puis se termine. A joindre a tout rapport de bug.
+      -h, --help                Affiche cette aide, puis se termine.
+
     Sans --rps ni --from-rps/--to-rps, le profil de charge est lu depuis la section
     Sirocco:Profile d'un appsettings.json du repertoire courant, s'il existe — de meme pour les
     seuils (Sirocco:Thresholds) en l'absence de --threshold, pour les options avancees d'un
@@ -95,6 +99,15 @@ const string USAGE = """
     (Master/Workers), qui reste l'affaire de Sirocco.Host. Le port d'ecoute suit les conventions
     ASP.NET Core habituelles (variable d'environnement ASPNETCORE_URLS).
     """;
+
+// Avant l'aide, et avant la validation de la commande : `sirocco --version` doit repondre meme
+// quand tout le reste est mal forme, puisque c'est ce qu'on tape pour renseigner un rapport de bug
+// (AUDIT-MATURITE.md, M3). Reconnu n'importe ou dans la ligne de commande, comme l'aide.
+if (args.Any(argument => argument is "--version"))
+{
+    Console.WriteLine(SiroccoVersion.Describe());
+    return 0;
+}
 
 // L'aide est reconnue n'importe ou dans la ligne de commande, pas seulement en premier argument :
 // la documentation (README et docs/demarrer/cli.md) ecrit `sirocco run --help`, forme qui partait

@@ -1,0 +1,13 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Signaler une faille de sécurité
+    url: https://github.com/coulibalyousmane/Sirocco/security/advisories/new
+    about: >
+      N'ouvrez pas d'issue publique. Sirocco est un outil dual-use : un signalement passe par un
+      avis de sécurité privé, qui reste confidentiel jusqu'à publication d'un correctif (voir
+      SECURITY.md).
+  - name: Documentation
+    url: https://coulibalyousmane.github.io/Sirocco/
+    about: >
+      Installation, format de scénario, modèles de charge, rapports, mode distribué, Kubernetes,
+      écriture d'extension. Ses exemples sont de vrais fichiers du dépôt, exécutés par la CI.

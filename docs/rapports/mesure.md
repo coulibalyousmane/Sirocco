@@ -46,6 +46,30 @@ suit, et une dette d'ordonnancement qui apparaît dès que la cible commence à 
 charge — la même donnée que `/report/live`, mais gardée dans le temps plutôt qu'écrasée à chaque
 sondage.
 
+### Lire la colonne « dette max »
+
+C'est un **maximum sur la fenêtre glissante**, pas depuis le début du tir. La distinction est ce qui
+permet de séparer deux situations que la même valeur décrirait autrement :
+
+- un **transitoire de démarrage** — la première itération de chaque utilisateur virtuel est souvent
+  la plus longue (connexion, authentification, caches froids), et pendant ce temps la file de jetons
+  se remplit. La dette monte, puis **redescend** dès que le pic quitte la fenêtre ;
+- une **saturation en cours** — la dette monte et *reste* haute, fenêtre après fenêtre.
+
+Exemple mesuré, modèle fermé à 4 utilisateurs virtuels sur 20 s, avec une étape `login` qui ne tourne
+qu'une fois par utilisateur : la colonne affiche 363 ms pendant les dix premières secondes — le pic
+est réellement dans la fenêtre — puis retombe à 105 ms, la dette du régime établi. Un p99 de 152 ms
+et une durée tenue à 0,14 s près confirment que rien n'était saturé.
+
+Deux conséquences pratiques :
+
+- sur un tir **plus court que la fenêtre glissante**, rien ne sort jamais de la fenêtre : la colonne
+  reste donc au maximum du tir, et c'est correct ;
+- la ligne de bilan en fin de tir (`dette max` du résumé) est, elle, un maximum **cumulé** sur tout
+  le tir, comme le rapport `/report` en portée cumulative et comme l'agrégat du mode distribué. Elle
+  ne redescend jamais, par construction : c'est la série temporelle qui situe ce maximum dans le
+  temps.
+
 Techniquement, `TimeSeriesRecorder` (`Sirocco.Application.Metrics`) tourne en parallèle du moteur
 plutôt qu'à l'intérieur de lui — `TargetRpsLoadEngine` ne détient aucune référence vers un
 `MetricsAggregator`, il ne fait qu'écrire des mesures dans un puits — et relève à chaque

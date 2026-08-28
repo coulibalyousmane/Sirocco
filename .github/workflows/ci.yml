@@ -104,6 +104,71 @@ jobs:
       - name: Verifier le formatage
         run: dotnet format Sirocco.sln --verify-no-changes --severity info
 
+  # AUDIT-MATURITE.md, M4. release.yml publie quatre binaires autonomes (win-x64, linux-x64,
+  # osx-x64, osx-arm64), et les quatre jobs de cette CI tournaient tous sur ubuntu-latest : deux des
+  # quatre n'avaient jamais ete executes par personne, ni par une machine ni a la main. Expedier a un
+  # inconnu sur Mac un binaire jamais lance, c'est jouer son premier contact - et le premier contact
+  # ne se rejoue pas.
+  #
+  # Ce job ne duplique pas build-and-test : il exerce le chemin de PUBLICATION self-contained en
+  # fichier unique, que rien ne verifiait, sur aucune plateforme. C'est precisement la zone ou un bug
+  # de packaging par RID a deja casse la CI (commit a01498d, voir le commentaire de
+  # Sirocco.Cli.csproj). La couverture et son plancher restent l'affaire du seul job Ubuntu : les
+  # dupliquer trois fois ne mesurerait rien de plus.
+  #
+  # Le fumigene est `--version` (M3) : aucune cible, aucun reseau, aucun scenario a fournir. Il ne
+  # prouve pas que le tir fonctionne, il prouve que le binaire DEMARRE sur cette plateforme - ce que
+  # rien ne prouvait.
+  #
+  # fail-fast: false pour que l'echec d'une plateforme ne masque pas le resultat des deux autres.
+  binaires-par-plateforme:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+            binaire: sirocco
+          - os: windows-latest
+            rid: win-x64
+            binaire: sirocco.exe
+          # macos-latest est arm64 : osx-arm64 est donc execute nativement. osx-x64 reste
+          # cross-compile sans etre lance (Rosetta n'est pas un socle de verification fiable) -
+          # limite residuelle assumee, et bien plus petite que "les deux binaires macOS".
+          - os: macos-latest
+            rid: osx-arm64
+            binaire: sirocco
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Cloner le depot
+        uses: actions/checkout@v4
+
+      - name: Installer .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Tests unitaires
+        run: dotnet test tests/Sirocco.UnitTests --configuration Release
+
+      - name: Publier le binaire autonome
+        run: >
+          dotnet publish src/Sirocco.Cli --configuration Release
+          --runtime ${{ matrix.rid }} --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -o publish-${{ matrix.rid }}
+
+      - name: Executer le binaire publie
+        shell: bash
+        run: |
+          set -euo pipefail
+          binaire="publish-${{ matrix.rid }}/${{ matrix.binaire }}"
+          chmod +x "$binaire" || true
+          sortie=$("$binaire" --version)
+          echo "$sortie"
+          echo "$sortie" | grep -q "^sirocco 0\." \
+            || { echo "::error::Le binaire ${{ matrix.rid }} n'a pas rapporte sa version." >&2; exit 1; }
+
   # Les deux projets .NET du harnais de benchmark sont volontairement hors de Sirocco.sln (voir le
   # commentaire en tete de benchmark/nbomber/NBomberCheckout.csproj : NBomber est sous licence
   # commerciale, payante pour un usage organisationnel, et n'a rien a faire dans le restore/build

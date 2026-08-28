@@ -29,6 +29,15 @@ internal sealed class StepAccumulator
     private readonly long[][] _windowByOutcome;
     private readonly long[] _windowBytes;
 
+    // La dette d'ordonnancement suit le meme anneau que le reste (AUDIT-MATURITE.md, M7). Elle ne
+    // le suivait pas : un seul champ cumule alimentait AUSSI la portee glissante, si bien que la
+    // colonne "dette max" de la serie temporelle et la courbe de dette du rapport HTML etaient
+    // monotones par construction — elles ne pouvaient jamais redescendre. Un transitoire de
+    // demarrage y restait donc affiche jusqu'a la fin du tir, indistinguable d'une saturation en
+    // cours. C'est la seule grandeur que ni k6, ni Gatling, ni NBomber ne publient : elle ne peut
+    // pas etre celle qu'on lit de travers.
+    private readonly long[] _windowMaxSchedulingDelayTicks;
+
     // Tampons reutilises a chaque interrogation de la fenetre : eviter d'allouer 24 Ko
     // d'histogramme a chaque collecte Prometheus.
     private readonly LatencyHistogram _scratchResponse = new();
@@ -50,6 +59,7 @@ internal sealed class StepAccumulator
         _windowResponse = CreateHistograms(windowBucketCount);
         _windowService = CreateHistograms(windowBucketCount);
         _windowBytes = new long[windowBucketCount];
+        _windowMaxSchedulingDelayTicks = new long[windowBucketCount];
         _windowByOutcome = new long[windowBucketCount][];
         for (int i = 0; i < windowBucketCount; i++)
         {
@@ -90,6 +100,11 @@ internal sealed class StepAccumulator
             {
                 _maxSchedulingDelayTicks = result.SchedulingDelayTicks;
             }
+
+            if (result.SchedulingDelayTicks > _windowMaxSchedulingDelayTicks[slot])
+            {
+                _windowMaxSchedulingDelayTicks[slot] = result.SchedulingDelayTicks;
+            }
         }
     }
 
@@ -118,7 +133,12 @@ internal sealed class StepAccumulator
         lock (_gate)
         {
             return scope == StatisticsScope.Cumulative
-                ? Build(_cumulativeResponse, _cumulativeService, _cumulativeByOutcome, _cumulativeBytes)
+                ? Build(
+                    _cumulativeResponse,
+                    _cumulativeService,
+                    _cumulativeByOutcome,
+                    _cumulativeBytes,
+                    _maxSchedulingDelayTicks)
                 : SnapshotWindow(nowTicks);
         }
     }
@@ -133,12 +153,18 @@ internal sealed class StepAccumulator
         _scratchService.Reset();
         Array.Clear(_scratchByOutcome);
         long bytes = 0L;
+        long maxSchedulingDelayTicks = 0L;
 
         for (int i = 0; i < _windowResponse.Length; i++)
         {
             _scratchResponse.Add(_windowResponse[i]);
             _scratchService.Add(_windowService[i]);
             bytes += _windowBytes[i];
+
+            if (_windowMaxSchedulingDelayTicks[i] > maxSchedulingDelayTicks)
+            {
+                maxSchedulingDelayTicks = _windowMaxSchedulingDelayTicks[i];
+            }
 
             long[] bucketOutcomes = _windowByOutcome[i];
             for (int outcome = 0; outcome < _scratchByOutcome.Length; outcome++)
@@ -147,14 +173,15 @@ internal sealed class StepAccumulator
             }
         }
 
-        return Build(_scratchResponse, _scratchService, _scratchByOutcome, bytes);
+        return Build(_scratchResponse, _scratchService, _scratchByOutcome, bytes, maxSchedulingDelayTicks);
     }
 
     private StepStatistics Build(
         LatencyHistogram response,
         LatencyHistogram service,
         long[] byOutcome,
-        long bytesReceived)
+        long bytesReceived,
+        long maxSchedulingDelayTicks)
     {
         long total = 0L;
         long[] outcomes = new long[byOutcome.Length];
@@ -173,7 +200,7 @@ internal sealed class StepAccumulator
             DroppedCount = outcomes[(int)RequestOutcome.Dropped],
             CountByOutcome = outcomes,
             BytesReceived = bytesReceived,
-            MaxSchedulingDelayMicroseconds = ToMicroseconds(_maxSchedulingDelayTicks),
+            MaxSchedulingDelayMicroseconds = ToMicroseconds(maxSchedulingDelayTicks),
             Response = response.Snapshot(),
             Service = service.Snapshot(),
             ResponseHistogram = response.Export(),
@@ -227,6 +254,7 @@ internal sealed class StepAccumulator
         _windowResponse[index].Reset();
         _windowService[index].Reset();
         _windowBytes[index] = 0L;
+        _windowMaxSchedulingDelayTicks[index] = 0L;
         Array.Clear(_windowByOutcome[index]);
     }
 

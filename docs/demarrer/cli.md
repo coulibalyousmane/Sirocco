@@ -14,6 +14,28 @@ dotnet run --project src/Sirocco.Cli -c Release -- run scenarios/smoke-test.yaml
   --report-html rapport.html --report-json rapport.json
 ```
 
+## Savoir quelle version tourne
+
+```bash
+sirocco --version
+```
+
+```text
+sirocco 0.1.0+1ee092db1b8b57de0b78ff30a9529e657447d6a8
+runtime  .NET 10.0.11
+systeme  Microsoft Windows 10.0.26200 (win-x64)
+```
+
+Le suffixe après `+` est le **commit** dont ce binaire est issu : les paquets embarquant SourceLink,
+la version rapportée suffit à retrouver le code exact qui tourne. C'est l'information à joindre à
+toute issue — les gabarits du dépôt la demandent en premier champ, et elle est la seule qu'un rapport
+ne peut pas reconstituer après coup, en particulier pour un binaire autonome téléchargé depuis une
+release GitHub.
+
+L'option est reconnue n'importe où dans la ligne de commande et n'exige rien d'autre : ni cible, ni
+scénario, ni réseau. C'est aussi à ce titre qu'elle sert de fumigène en CI, où elle prouve que le
+binaire publié pour une plateforme démarre réellement dessus.
+
 Sans fichier de scénario, `--workflow <nom>` sélectionne un scénario intégré
 (`dynamic-checkout` par défaut, `websocket-echo`, `grpc-echo`, `grpc-stream-echo`,
 `grpc-client-stream-echo`, `grpc-bidi-stream-echo`) — les mêmes que `Sirocco.Host`. Le profil de

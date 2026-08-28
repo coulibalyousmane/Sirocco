@@ -1,0 +1,71 @@
+name: Signaler un bug
+description: Un comportement qui ne correspond pas à ce que la documentation annonce.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Pour une **faille de sécurité**, n'utilisez pas ce formulaire : suivez
+        [SECURITY.md](https://github.com/coulibalyousmane/Sirocco/blob/main/SECURITY.md).
+
+  - type: textarea
+    id: version
+    attributes:
+      label: Sortie de `sirocco --version`
+      description: >
+        Collez-la telle quelle. Elle contient le commit dont votre binaire est issu, ce qui est la
+        seule information qu'un rapport ne peut pas reconstituer après coup.
+      placeholder: |
+        sirocco 0.1.0+1ee092db1b8b57de0b78ff30a9529e657447d6a8
+        runtime  .NET 10.0.11
+        systeme  Microsoft Windows 10.0.26200 (win-x64)
+      render: text
+    validations:
+      required: true
+
+  - type: dropdown
+    id: canal
+    attributes:
+      label: Comment Sirocco a-t-il été installé ?
+      options:
+        - Outil dotnet (dotnet tool install -g Sirocco.Cli)
+        - Binaire autonome téléchargé depuis une release GitHub
+        - Compilé depuis les sources
+        - Image conteneur
+        - Bibliothèque référencée depuis mon propre projet
+    validations:
+      required: true
+
+  - type: textarea
+    id: commande
+    attributes:
+      label: La commande ou la configuration exacte
+      description: >
+        La ligne de commande complète, ou le scénario et la section `Sirocco:` utilisés. Le modèle de
+        charge compte beaucoup : un même symptôme n'a pas la même cause en modèle ouvert (`--rps`) et
+        en modèle fermé (`--vus`).
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: attendu
+    attributes:
+      label: Ce que vous attendiez, et ce que vous avez obtenu
+      description: >
+        Si le problème porte sur des chiffres, collez la partie utile du rapport plutôt que de la
+        décrire — les percentiles, la dette d'ordonnancement et le nombre d'itérations se lisent
+        ensemble.
+    validations:
+      required: true
+
+  - type: textarea
+    id: cible
+    attributes:
+      label: La cible du tir
+      description: >
+        Optionnel, mais souvent décisif. Une cible qui **met en file** et une cible qui **déleste**
+        (503 après un délai) produisent des rapports opposés pour un même système — voir l'article
+        sur la dette d'ordonnancement.
+    validations:
+      required: false

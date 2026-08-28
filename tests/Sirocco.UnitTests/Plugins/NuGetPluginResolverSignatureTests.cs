@@ -34,14 +34,24 @@ public sealed class NuGetPluginResolverSignatureTests
     public async Task A_signed_package_whose_content_changed_since_signing_is_rejected()
     {
         (string feed, string cache) = NuGetPluginResolverTests.CreateDirectories();
-        string nupkgPath = BuildSignedLocalPackage(feed, "Sirocco.Test.TamperedPlugin", "1.0.0", "tampered");
+        string staging = Directory.CreateDirectory(
+            Path.Combine(Path.GetTempPath(), $"sirocco-nuget-signe-{Guid.NewGuid():N}")).FullName;
+        string signedPath = BuildSignedLocalPackage(staging, "Sirocco.Test.TamperedPlugin", "1.0.0", "tampered");
 
         // Modifie un octet du .nupkg signe, en dehors de la manoeuvre de signature elle-meme :
         // le contenu ne correspond plus a ce que la signature atteste, exactement le scenario
         // qu'une source compromise ou un cache local altere reproduirait.
-        byte[] bytes = await File.ReadAllBytesAsync(nupkgPath);
+        byte[] bytes = await File.ReadAllBytesAsync(signedPath);
         bytes[bytes.Length / 3] ^= 0xFF;
-        await File.WriteAllBytesAsync(nupkgPath, bytes);
+
+        // Le paquet altere est depose dans la source comme un fichier neuf, jamais reecrit sur
+        // place. Reecrire le .nupkg que la signature vient de produire echoue par intermittence
+        // sous Windows (« section mappee utilisateur ouverte ») : le mappage memoire du fichier
+        // fraichement ecrit n'est pas relache de facon deterministe, et la charge de la suite
+        // complete suffit a decaler le minutage assez pour que ca arrive — isole, ce test passait
+        // huit fois sur huit. Le detour ne change rien a ce qui est prouve : les octets deposes
+        // sont bien ceux d'un paquet reellement signe, puis altere.
+        await File.WriteAllBytesAsync(Path.Combine(feed, Path.GetFileName(signedPath)), bytes);
 
         FormatException ex = await Assert.ThrowsAsync<FormatException>(
             () => NuGetPluginResolver.ResolveAssemblyPathAsync("Sirocco.Test.TamperedPlugin", "1.0.0", [feed], cache));
@@ -54,7 +64,7 @@ public sealed class NuGetPluginResolverSignatureTests
     /// (<see cref="CreateSelfSignedTestCertificate"/>) — <see cref="SigningUtility.SignAsync"/> est
     /// l'API que <c>nuget sign</c> appelle elle-meme, pas une simulation.
     /// </summary>
-    private static string BuildSignedLocalPackage(string feedDirectory, string packageId, string version, string workflowName)
+    private static string BuildSignedLocalPackage(string destinationDirectory, string packageId, string version, string workflowName)
     {
         string dllPath = NuGetPluginResolverTests.CompileWorkflowAssembly(workflowName);
 
@@ -71,13 +81,13 @@ public sealed class NuGetPluginResolverSignatureTests
             TargetPath = $"lib/net10.0/{Path.GetFileName(dllPath)}",
         });
 
-        string unsignedPath = Path.Combine(feedDirectory, $"{packageId}.{version}.unsigned.nupkg");
+        string unsignedPath = Path.Combine(destinationDirectory, $"{packageId}.{version}.unsigned.nupkg");
         using (FileStream stream = File.Create(unsignedPath))
         {
             builder.Save(stream);
         }
 
-        string signedPath = Path.Combine(feedDirectory, $"{packageId}.{version}.nupkg");
+        string signedPath = Path.Combine(destinationDirectory, $"{packageId}.{version}.nupkg");
         using X509Certificate2 certificate = CreateSelfSignedTestCertificate();
         AuthorSignPackageRequest signRequest = new(certificate, NuGet.Common.HashAlgorithmName.SHA256) { AllowUntrustedRoot = true };
         X509SignatureProvider signatureProvider = new(timestampProvider: null);

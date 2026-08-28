@@ -1,0 +1,35 @@
+# Ferme DEP-2 de AUDIT.md et le dernier point de M8 dans AUDIT-MATURITE.md. L'audit du 23 aout
+# relevait zero paquet vulnerable et zero deprecie -- mais releve a la main, une fois. Sans ce
+# fichier, la prochaine vulnerabilite d'une transitive n'est vue que si quelqu'un relance la commande.
+#
+# Regroupement volontaire : sur un depot a 122 paquets dans son graphe, dix PR par semaine ne se
+# relisent pas, donc ne se fusionnent pas -- et un depot ou les PR de mise a jour s'empilent est
+# moins sur qu'un depot qui n'en recoit pas. Une PR par ecosysteme et par semaine se traite.
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      # Les paquets Microsoft.* / System.* suivent la cadence du SDK et montent ensemble : les
+      # separer produit des PR qui se cassent mutuellement au restore.
+      runtime-et-sdk:
+        patterns:
+          - "Microsoft.*"
+          - "System.*"
+      reste:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "Microsoft.*"
+          - "System.*"
+
+  # Les actions sont epinglees par version majeure (actions/checkout@v4) : les mises a jour sont
+  # rares mais ce sont elles qui portent les correctifs de securite du runner.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2

@@ -343,4 +343,72 @@ public sealed class MetricsAggregatorTests
             CreateRegistry(),
             new MetricsAggregatorOptions { WindowDuration = TimeSpan.Zero }));
     }
+
+    /// <summary>
+    /// Debut d'un panier, pour que le decoupage de la fenetre soit exact dans les deux tests
+    /// suivants : les creneaux se calculent depuis les ticks absolus, pas depuis le premier
+    /// enregistrement.
+    /// </summary>
+    private static long AlignedStart(out long bucketTicks)
+    {
+        bucketTicks = SiroccoClock.FromTimeSpan(_windowDuration) / 10L;
+        return SiroccoClock.Now / bucketTicks * bucketTicks;
+    }
+
+    /// <summary>
+    /// Le constat M7 de AUDIT-MATURITE.md : la dette d'ordonnancement etait la seule grandeur non
+    /// fenetree, si bien que la portee glissante rendait un maximum <b>cumule</b>. La colonne
+    /// "dette max" de la serie temporelle et la courbe de dette du rapport HTML etaient donc
+    /// monotones par construction, et un pic de demarrage y restait affiche jusqu'a la fin du tir —
+    /// indistinguable d'une saturation en cours.
+    /// </summary>
+    [Fact]
+    public void The_sliding_scheduling_debt_falls_back_once_the_spike_has_left_the_window()
+    {
+        StepRegistry registry = CreateRegistry();
+        MetricsAggregator aggregator = new(registry, _options);
+        registry.TryGetId(LOGIN_STEP, out StepId login);
+
+        long start = AlignedStart(out long bucketTicks);
+
+        // Pic de demarrage : 400 ms de dette (response 500 - service 100).
+        aggregator.Record(Metric(login, start, responseMilliseconds: 500d, serviceMilliseconds: 100d));
+
+        // Neuf paniers plus tard, regime etabli : 20 ms de dette.
+        long later = start + (9L * bucketTicks);
+        aggregator.Record(Metric(login, later, responseMilliseconds: 120d, serviceMilliseconds: 100d));
+
+        // Un panier de plus, et le pic sort de la fenetre : la dette glissante doit retomber sur ce
+        // que la fenetre contient encore, jamais rester sur un maximum historique.
+        long afterSpikeExpired = start + (10L * bucketTicks);
+        StepStatistics sliding = aggregator.SnapshotStep(login, StatisticsScope.Sliding, afterSpikeExpired);
+
+        Assert.Equal(20d, sliding.MaxSchedulingDelayMilliseconds, precision: 0);
+
+        // Le cumul, lui, reste une marque de crue : c'est son role, et c'est ce que le bilan de fin
+        // de tir et l'export inter-process doivent continuer de rapporter.
+        StepStatistics cumulative = aggregator.SnapshotStep(login, StatisticsScope.Cumulative, afterSpikeExpired);
+
+        Assert.Equal(400d, cumulative.MaxSchedulingDelayMilliseconds, precision: 0);
+    }
+
+    [Fact]
+    public void The_sliding_scheduling_debt_still_reports_the_worst_of_the_whole_window()
+    {
+        // Contre-epreuve du test precedent : fenetrer la dette ne doit pas la reduire au dernier
+        // panier. Tant que le pic est DANS la fenetre, c'est lui qu'on veut voir.
+        StepRegistry registry = CreateRegistry();
+        MetricsAggregator aggregator = new(registry, _options);
+        registry.TryGetId(LOGIN_STEP, out StepId login);
+
+        long start = AlignedStart(out long bucketTicks);
+
+        aggregator.Record(Metric(login, start, responseMilliseconds: 500d, serviceMilliseconds: 100d));
+        aggregator.Record(Metric(login, start + (2L * bucketTicks), responseMilliseconds: 120d, serviceMilliseconds: 100d));
+
+        StepStatistics sliding = aggregator.SnapshotStep(
+            login, StatisticsScope.Sliding, start + (2L * bucketTicks));
+
+        Assert.Equal(400d, sliding.MaxSchedulingDelayMilliseconds, precision: 0);
+    }
 }

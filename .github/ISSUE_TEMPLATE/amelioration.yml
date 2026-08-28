@@ -1,0 +1,44 @@
+name: Proposer une amélioration
+description: Une capacité qui manque, ou une contrainte de votre environnement que Sirocco ne couvre pas.
+labels: ["amelioration"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Deux choses utiles à savoir avant d'écrire :
+
+        - La [roadmap](https://github.com/coulibalyousmane/Sirocco/blob/main/ROADMAP.md) situe Sirocco
+          face à k6, Gatling et NBomber sans minimiser l'écart. Un manque y est peut-être déjà nommé,
+          avec le motif pour lequel il n'est pas traité.
+        - Un protocole ou une intégration n'a **pas** besoin d'entrer dans ce dépôt : le
+          [contrat de plugin](https://github.com/coulibalyousmane/Sirocco/blob/main/docs/extensions/guide.md)
+          permet de l'écrire à côté, avec `Sirocco.Domain` pour seule dépendance.
+
+  - type: textarea
+    id: besoin
+    attributes:
+      label: Le besoin, décrit par ce que vous cherchez à mesurer
+      description: >
+        Ce que vous voulez apprendre de votre système, plutôt que la fonctionnalité qui vous semble
+        y répondre. C'est ce qui permet de voir si une capacité existante y répond déjà autrement.
+    validations:
+      required: true
+
+  - type: textarea
+    id: contournement
+    attributes:
+      label: Ce que vous faites aujourd'hui à la place
+      description: Y compris « je suis resté sur un autre outil » — c'est une information, pas un reproche.
+    validations:
+      required: false
+
+  - type: input
+    id: cible-framework
+    attributes:
+      label: Version de .NET de votre projet
+      description: >
+        À renseigner surtout si elle n'est pas `net10.0` : Sirocco ne cible que `net10.0`, et la
+        [politique de support](https://github.com/coulibalyousmane/Sirocco/blob/main/docs/projet/versionnement.md)
+        indique que le multi-ciblage attend précisément qu'une contrainte réelle soit exprimée.
+    validations:
+      required: false
