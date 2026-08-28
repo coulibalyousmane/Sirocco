@@ -20,8 +20,8 @@
          de reference GraphQL (Sirocco.Extensions.GraphQl) : juste le moteur d'execution, aucune
          integration ASP.NET supplementaire (le point d'ecoute HTTP est cable a la main, comme
          REST/WebSocket). -->
-    <PackageReference Include="GraphQL" Version="8.8.4" />
-    <PackageReference Include="GraphQL.SystemTextJson" Version="8.8.4" />
+    <PackageReference Include="GraphQL" Version="8.8.5" />
+    <PackageReference Include="GraphQL.SystemTextJson" Version="8.8.5" />
   </ItemGroup>
 
   <ItemGroup>
