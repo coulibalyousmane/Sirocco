@@ -15,8 +15,25 @@ ailleurs que sur la machine de son auteur.
 
 Trois concurrents comptent réellement. **k6** (Grafana) domine par l'écosystème et l'intégration.
 **Gatling** reste la référence du rapport d'analyse. **NBomber** est le concurrent direct sur
-.NET — même terrain, même public, et il a déjà une offre managée (NBomber Studio, ordonnancement
-Kubernetes).
+.NET — même terrain, même public.
+
+> **Correction du 28 août 2026.** Ce paragraphe affirmait que NBomber « a déjà une offre
+> managée (NBomber Studio, ordonnancement Kubernetes) ». C'est faux, et l'erreur ne portait pas
+> sur une simple ligne de tableau : elle soutenait une conclusion stratégique de ce document
+> (voir « Décision sur l'offre managée » plus bas). **NBomber Studio s'installe chez le
+> client** — la documentation officielle en décrit l'installation Docker et Kubernetes au sein
+> de l'organisation utilisatrice. Ce n'est pas un service hébergé par l'éditeur. La case
+> « offre hébergée .NET » est donc **vide**, pas occupée.
+>
+> La vérification a mis au jour un écart plus important, et dans l'autre sens : **NBomber
+> n'est plus utilisable gratuitement par une organisation.** La version 6.x est sous « NBomber
+> License Agreement v3.0 », effective le 1er septembre 2025, payante pour un usage
+> organisationnel ; le dépôt GitHub ne porte plus de fichier de licence et l'API n'y détecte
+> aucune licence open source. Le fait était déjà établi dans
+> [benchmark/README.md](benchmark/README.md), en lisant le `LICENSE` réel du paquet NuGet — mais
+> il manquait **ici**, là où il pèse sur la stratégie plutôt que sur la conformité d'un harnais
+> de mesure. Sirocco reste sous Apache 2.0 sans distinction d'usage : c'est désormais une ligne
+> du tableau ci-dessous, parce que c'est un écart de fond et non de fonctionnalité.
 
 Légende : ● solide · ◐ partiel · ○ absent
 
@@ -35,6 +52,7 @@ Légende : ● solide · ◐ partiel · ○ absent
 | Écosystème d'extensions communautaire | ○ | ● `xk6` | ◐ | ◐ plugins officiels |
 | Conversion HAR / OpenAPI / Postman / *recorder* proxy | ● les quatre | ● | ● *recorder* proxy | ○ |
 | Test navigateur (Web Vitals) | ◐ `Sirocco.Extensions.Browser` | ● k6 browser | ◐ Enterprise | ○ |
+| Licence pour un usage en entreprise | ● Apache 2.0 | ● AGPL 3.0, copyleft si intégré | ● Apache 2.0 | ○ licence Business ou Enterprise requise |
 
 **L'écosystème d'extensions reste `○` sciemment**, malgré un modèle d'extension entièrement fait
 (phase 6) : un écosystème se mesure à des extensions **tierces** publiées, pas à la mécanique qui
@@ -650,9 +668,12 @@ qu'on ne peut pas ignorer. Sirocco en a une à disposition, et elle est reproduc
   arrivent, pas au calendrier.
 
   **Risque accepté plutôt que passé sous silence** : si une offre hébergée devait un jour être la
-  seule source de financement viable, décider tard laisse le terrain à qui décide tôt — et NBomber
-  Studio occupe déjà cette place sur .NET, comme le note « Le paysage concurrentiel » en tête de ce
-  document. C'est assumé : l'alternative — la construire maintenant — est exactement le
+  seule source de financement viable, décider tard laisse le terrain à qui décide tôt. Ce paragraphe
+  ajoutait « et NBomber Studio occupe déjà cette place sur .NET » : c'est faux, Studio s'installe
+  chez le client (voir la correction en tête de ce document). **La place est libre** — le risque de
+  retard est donc plus faible qu'écrit ici, sans que l'arbitrage change pour autant.
+
+  C'est assumé : l'alternative — la construire maintenant — est exactement le
   « construire le SaaS trop tôt » que « Trois façons de perdre du temps » liste comme deuxième
   façon d'en perdre, et elle coûterait précisément le temps qui manque encore à la distribution.
 
