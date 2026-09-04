@@ -26,7 +26,7 @@
          moteur GraphQL.NET, pas une simulation par correspondance de chaine. -->
     <PackageReference Include="GraphQL" Version="8.8.4" />
     <PackageReference Include="GraphQL.SystemTextJson" Version="8.8.4" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
