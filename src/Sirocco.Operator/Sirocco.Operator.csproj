@@ -4,6 +4,8 @@
     <PackageReference Include="KubeOps.Operator" Version="13.1.2" />
     <PackageReference Include="KubeOps.Abstractions" Version="13.1.2" />
     <PackageReference Include="KubeOps.Generator" Version="13.1.2" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics" Version="10.0.14" />
   </ItemGroup>
 
   <PropertyGroup>
