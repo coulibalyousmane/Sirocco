@@ -3,14 +3,14 @@
   "isRoot": true,
   "tools": {
     "kubeops.cli": {
-      "version": "13.1.2",
+      "version": "14.0.0",
       "commands": [
         "kubeops"
       ],
       "rollForward": false
     },
     "dotnet-reportgenerator-globaltool": {
-      "version": "5.5.11",
+      "version": "5.6.0",
       "commands": [
         "reportgenerator"
       ],

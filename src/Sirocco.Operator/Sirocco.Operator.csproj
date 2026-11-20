@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <PackageReference Include="KubeOps.Operator" Version="13.1.2" />
-    <PackageReference Include="KubeOps.Abstractions" Version="13.1.2" />
-    <PackageReference Include="KubeOps.Generator" Version="13.1.2" PrivateAssets="all" />
+    <PackageReference Include="KubeOps.Operator" Version="14.0.0" />
+    <PackageReference Include="KubeOps.Abstractions" Version="14.0.0" />
+    <PackageReference Include="KubeOps.Generator" Version="14.0.0" PrivateAssets="all" />
   </ItemGroup>
 
   <PropertyGroup>
